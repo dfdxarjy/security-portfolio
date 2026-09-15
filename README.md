@@ -33,3 +33,14 @@ Training profiles live under `src/content/docs/training/`. Every page's frontmat
 ## Production
 
 The canonical site URL is configured as `site` in `astro.config.mjs`. The build emits a static site to `dist/`, including `sitemap-index.xml`.
+
+## Branches and deployment
+
+Two long-lived branches:
+
+| Branch | Purpose | Deployment |
+|---|---|---|
+| `dev` | All work, experiments, and local verification. | None — pushing `dev` publishes nothing. |
+| `main` | Permanent, confirmed changes only. | `.github/workflows/deploy.yml` builds and deploys to GitHub Pages at https://taktak.hu/. |
+
+Work and test on `dev` (`pnpm dev` for the local server, `pnpm build` to verify the static output). Move a change to `main` only once it is final and confirmed, since pushing `main` publishes the live site. Do not force-push or rewrite published history on `main`; undo a published change with a new corrective commit on `dev`.
