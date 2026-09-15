@@ -1,0 +1,23 @@
+{
+  "name": "security-portfolio",
+  "type": "module",
+  "version": "0.0.1",
+  "description": "Security case studies across offensive security and digital forensics.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dfdxarjy/security-portfolio.git"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/sitemap": "3.7.4",
+    "@astrojs/starlight": "^0.42.0",
+    "astro": "^7.2.10",
+    "sharp": "^0.35.3"
+  }
+}

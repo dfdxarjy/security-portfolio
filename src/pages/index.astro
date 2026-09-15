@@ -1,0 +1,1111 @@
+---
+import { getCollection } from "astro:content";
+import "../styles/portfolio.css";
+
+const title = "Takács Bence — Security Portfolio";
+const description =
+    "Security case studies by Takács Bence across offensive security and digital forensics.";
+const studies = (
+    await getCollection(
+        "docs",
+        ({ id, data }) =>
+            id.startsWith("case-studies/") &&
+            data.type === "case-study" &&
+            data.status === "published-ready",
+    )
+).sort((a, b) => a.data.title.localeCompare(b.data.title));
+
+// Category derived from collection path so cards show factual, path-based labels.
+const category = (study: (typeof studies)[number]) => {
+    if (study.id.includes("/sherlocks/")) return "dfir";
+    if (study.id.includes("/windows/")) return "windows";
+    return "linux";
+};
+const counts = {
+    all: studies.length,
+    linux: studies.filter((study) => category(study) === "linux").length,
+    windows: studies.filter((study) => category(study) === "windows").length,
+    dfir: studies.filter((study) => category(study) === "dfir").length,
+};
+const contentTypeCount = new Set(
+    studies.map((study) => study.data.content_type),
+).size;
+// Latest additions: explicit immutable `addedAt` (portfolio-addition date) descending,
+// then stable id ascending. Entries without `addedAt` are omitted here but stay in the
+// explorer. No Git commit time or file mtime is read.
+const latest = studies
+    .filter((study) => Boolean(study.data.addedAt))
+    .sort(
+        (a, b) =>
+            (b.data.addedAt ?? "").localeCompare(a.data.addedAt ?? "") ||
+            a.id.localeCompare(b.id),
+    )
+    .slice(0, 6);
+const label = (kind: string) =>
+    kind === "dfir"
+        ? "DFIR / Sherlock"
+        : `${kind[0].toUpperCase()}${kind.slice(1)} machine`;
+const cleanDescription = (value: string) =>
+    value
+        .replace(/^A\s+sanitized\s+/i, "")
+        .replace(/^sanitized\s+/i, "")
+        .replace(/^./, (char) => char.toUpperCase());
+// Normalized, lowercased haystack of the same user-visible fields the cards render.
+const searchableText = (study: (typeof studies)[number]) =>
+    [
+        study.data.title,
+        cleanDescription(study.data.description),
+        category(study),
+        label(category(study)),
+        ...(study.data.tags ?? []),
+        study.data.objective,
+        ...(study.data.tools ?? []),
+        study.data.skill,
+        study.data.outcome,
+    ]
+        .filter(Boolean)
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+---
+
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="description" content={description} />
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+        <title>{title}</title>
+        {/* Match Starlight's theme contract: shared `starlight-theme` key, set before paint. */}
+        <script is:inline>
+            (() => {
+                const stored = (() => {
+                    try {
+                        return localStorage.getItem("starlight-theme");
+                    } catch {
+                        return null;
+                    }
+                })();
+                const prefersLight = window.matchMedia(
+                    "(prefers-color-scheme: light)",
+                ).matches;
+                const theme =
+                    stored === "light" || stored === "dark"
+                        ? stored
+                        : prefersLight
+                          ? "light"
+                          : "dark";
+                document.documentElement.dataset.theme = theme;
+            })();
+        </script>
+        <style>
+            /* Palette aliases point at the shared Starlight tokens in portfolio.css. */
+            :root {
+                --ink: var(--portfolio-ink);
+                --muted: var(--portfolio-muted);
+                --line: var(--portfolio-line);
+                --card: var(--portfolio-surface-raised);
+                --accent: var(--portfolio-accent);
+                --soft: var(--portfolio-accent-soft);
+            }
+            *,
+            *::before,
+            *::after {
+                box-sizing: border-box;
+            }
+            /* Shared body colour/type come from portfolio.css. The decorative grid is
+         scoped to this homepage only so docs/article pages stay solid. */
+            body {
+                margin: 0;
+                font-size: 1rem;
+                line-height: 1.6;
+                background-image:
+                    linear-gradient(var(--portfolio-grid) 1px, transparent 1px),
+                    linear-gradient(
+                        90deg,
+                        var(--portfolio-grid) 1px,
+                        transparent 1px
+                    );
+                background-size: 2.5rem 2.5rem;
+            }
+            a {
+                color: inherit;
+            }
+            .portfolio-shell {
+                max-width: 76rem;
+                margin: auto;
+                padding: 1.25rem clamp(1.25rem, 4vw, 4rem) 4rem;
+            }
+            .portfolio-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 1rem;
+                padding: 0.5rem 0 3rem;
+            }
+            .portfolio-brand {
+                font-weight: 750;
+                letter-spacing: -0.02em;
+                text-decoration: none;
+            }
+            .portfolio-header-actions {
+                display: flex;
+                align-items: center;
+                gap: 1rem;
+                min-width: 0;
+            }
+            .portfolio-nav {
+                display: flex;
+                gap: 1rem;
+                color: var(--muted);
+                font-size: 0.9rem;
+            }
+            .portfolio-nav a:hover,
+            .portfolio-nav a:focus-visible {
+                color: var(--accent);
+            }
+            .portfolio-theme-toggle {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.4rem;
+                border: 1px solid var(--line);
+                border-radius: 999px;
+                padding: 0.35rem 0.7rem;
+                background: var(--card);
+                color: var(--ink);
+                font: inherit;
+                font-size: 0.85rem;
+                cursor: pointer;
+            }
+            .portfolio-theme-toggle:hover,
+            .portfolio-theme-toggle:focus-visible {
+                border-color: var(--accent);
+                color: var(--accent);
+            }
+            .portfolio-theme-icon {
+                width: 1em;
+                height: 1em;
+            }
+            .portfolio-theme-icon-moon {
+                display: none;
+            }
+            .portfolio-theme-toggle[aria-pressed="true"]
+                .portfolio-theme-icon-sun {
+                display: none;
+            }
+            .portfolio-theme-toggle[aria-pressed="true"]
+                .portfolio-theme-icon-moon {
+                display: inline;
+            }
+            :global(html) {
+                color-scheme: light;
+            }
+            :global(html[data-theme="dark"]) {
+                color-scheme: dark;
+            }
+            .portfolio-hero {
+                display: grid;
+                grid-template-columns: minmax(0, 1.25fr) minmax(15rem, 0.75fr);
+                gap: 3rem;
+                align-items: end;
+                padding: 3rem 0 4rem;
+            }
+            .portfolio-kicker {
+                color: var(--accent);
+                font-size: 0.78rem;
+                font-weight: 750;
+                letter-spacing: 0.12em;
+                text-transform: uppercase;
+            }
+            h1,
+            h2,
+            h3,
+            p {
+                margin-top: 0;
+            }
+            h1 {
+                max-width: 14ch;
+                margin-bottom: 1.25rem;
+                font-size: clamp(3rem, 8vw, 6.5rem);
+                line-height: 0.95;
+                letter-spacing: -0.07em;
+            }
+            .portfolio-lede {
+                max-width: 39rem;
+                color: var(--muted);
+                font-size: 1.15rem;
+            }
+            .portfolio-actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.75rem;
+                margin-top: 1.75rem;
+            }
+            .portfolio-button {
+                display: inline-block;
+                border: 1px solid var(--accent);
+                border-radius: 999px;
+                padding: 0.7rem 1.1rem;
+                background: var(--accent);
+                color: white;
+                font-weight: 700;
+                text-decoration: none;
+            }
+            .portfolio-button-secondary {
+                background: transparent;
+                color: var(--accent);
+            }
+            .portfolio-button:hover,
+            .portfolio-button:focus-visible {
+                filter: brightness(1.12);
+            }
+            .portfolio-proof {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 1px;
+                overflow: hidden;
+                border: 1px solid var(--line);
+                border-radius: 1rem;
+                background: var(--line);
+            }
+            .portfolio-proof-item {
+                padding: 1.25rem;
+                background: var(--card);
+            }
+            .portfolio-proof-number {
+                display: block;
+                font-size: 2.1rem;
+                font-weight: 750;
+                line-height: 1;
+            }
+            .portfolio-proof-label {
+                color: var(--muted);
+                font-size: 0.82rem;
+            }
+            .portfolio-section {
+                padding: 3rem 0;
+            }
+            .portfolio-section-heading {
+                display: flex;
+                justify-content: space-between;
+                align-items: end;
+                gap: 1rem;
+                margin-bottom: 1.5rem;
+            }
+            .portfolio-section-heading h2 {
+                margin-bottom: 0;
+                font-size: clamp(1.7rem, 3vw, 2.4rem);
+                letter-spacing: -0.04em;
+            }
+            .portfolio-section-heading p {
+                margin-bottom: 0.2rem;
+                color: var(--muted);
+            }
+            /* Focus cards form a balanced 2×2 on desktop; the six latest features use three columns. */
+            .portfolio-category-grid {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 1rem;
+            }
+            .portfolio-feature-grid {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 1rem;
+            }
+            .portfolio-category,
+            .portfolio-feature,
+            .portfolio-study {
+                border: 1px solid var(--line);
+                border-radius: 0.9rem;
+                background: var(--card);
+            }
+            .portfolio-category {
+                padding: 1.25rem;
+                text-decoration: none;
+            }
+            .portfolio-category:hover,
+            .portfolio-category:focus-visible,
+            .portfolio-feature:hover,
+            .portfolio-feature:focus-within {
+                border-color: var(--accent);
+            }
+            .portfolio-category h3 {
+                margin: 0.75rem 0 0.25rem;
+            }
+            .portfolio-category p {
+                margin-bottom: 0;
+                color: var(--muted);
+                font-size: 0.9rem;
+            }
+            .portfolio-category-count {
+                color: var(--accent);
+                font-size: 1.8rem;
+                font-weight: 750;
+            }
+            .portfolio-feature {
+                display: block;
+                padding: 1.25rem;
+                text-decoration: none;
+            }
+            .portfolio-feature h3 {
+                margin: 0.6rem 0;
+                font-size: 1.1rem;
+            }
+            .portfolio-feature p {
+                margin-bottom: 0;
+                color: var(--muted);
+                font-size: 0.9rem;
+            }
+            .portfolio-feature-evidence {
+                display: grid;
+                grid-template-columns: auto 1fr;
+                gap: 0.2rem 0.6rem;
+                margin: 0.8rem 0 0;
+                padding-top: 0.8rem;
+                border-top: 1px solid var(--line);
+            }
+            .portfolio-feature-evidence dt {
+                color: var(--accent);
+                font-size: 0.7rem;
+                font-weight: 750;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+            }
+            .portfolio-feature-evidence dd {
+                margin: 0;
+                color: var(--muted);
+                font-size: 0.85rem;
+            }
+            .portfolio-eyebrow {
+                color: var(--accent);
+                font-size: 0.75rem;
+                font-weight: 750;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .portfolio-explorer {
+                border-top: 1px solid var(--line);
+            }
+            .portfolio-explorer-subtitle {
+                margin: -1rem 0 1.5rem;
+                color: var(--muted);
+                font-size: 0.95rem;
+            }
+            /* Search/sort row stays separate from the focus filters. */
+            .portfolio-search-row {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.5rem 0.75rem;
+                align-items: center;
+                margin-bottom: 1rem;
+            }
+            .portfolio-controls {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.75rem;
+                align-items: center;
+                margin-bottom: 1.5rem;
+            }
+            .portfolio-filter-list {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.4rem;
+                list-style: none;
+                margin: 0;
+                padding: 0;
+            }
+            .portfolio-filter {
+                border: 1px solid var(--line);
+                border-radius: 999px;
+                padding: 0.55rem 0.85rem;
+                background: var(--card);
+                color: var(--ink);
+                cursor: pointer;
+                font: inherit;
+            }
+            .portfolio-filter[aria-pressed="true"],
+            .portfolio-filter:hover,
+            .portfolio-filter:focus-visible {
+                border-color: var(--accent);
+                background: var(--soft);
+                color: var(--accent);
+            }
+            .portfolio-search {
+                min-width: min(100%, 16rem);
+                flex: 1 1 16rem;
+                border: 1px solid var(--line);
+                border-radius: 0.5rem;
+                padding: 0.65rem 0.8rem;
+                background: var(--card);
+                color: var(--ink);
+                font: inherit;
+            }
+            .portfolio-search-label,
+            .portfolio-sort-label {
+                color: var(--muted);
+                font-size: 0.9rem;
+            }
+            .portfolio-sort {
+                border: 1px solid var(--line);
+                border-radius: 0.5rem;
+                padding: 0.6rem 0.7rem;
+                background: var(--card);
+                color: var(--ink);
+                font: inherit;
+            }
+            .portfolio-study-grid {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 1rem;
+            }
+            .portfolio-study {
+                display: flex;
+                flex-direction: column;
+                padding: 1.15rem;
+            }
+            /* `display: flex` above would otherwise beat the UA `[hidden]` rule. */
+            .portfolio-study[hidden] {
+                display: none;
+            }
+            .portfolio-load-more-wrap {
+                display: flex;
+                justify-content: center;
+                margin-top: 1.5rem;
+            }
+            .portfolio-load-more {
+                border: 1px solid var(--accent);
+                border-radius: 999px;
+                padding: 0.7rem 1.4rem;
+                background: var(--card);
+                color: var(--accent);
+                cursor: pointer;
+                font: inherit;
+                font-weight: 700;
+            }
+            .portfolio-load-more:hover,
+            .portfolio-load-more:focus-visible {
+                background: var(--soft);
+            }
+            .portfolio-load-more[hidden] {
+                display: none;
+            }
+            .portfolio-study h3 {
+                margin: 0.5rem 0;
+                font-size: 1.05rem;
+                line-height: 1.25;
+            }
+            .portfolio-study h3 a {
+                text-decoration: none;
+            }
+            .portfolio-study h3 a:hover,
+            .portfolio-study h3 a:focus-visible {
+                color: var(--accent);
+            }
+            .portfolio-study p {
+                margin-bottom: 1rem;
+                color: var(--muted);
+                font-size: 0.9rem;
+            }
+            .portfolio-tags {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.35rem;
+                margin-top: auto;
+                padding-top: 0.5rem;
+            }
+            .portfolio-tag {
+                border-radius: 0.25rem;
+                background: var(--soft);
+                padding: 0.2rem 0.45rem;
+                color: var(--accent);
+                font-size: 0.72rem;
+            }
+            .portfolio-empty {
+                display: none;
+                border: 1px dashed var(--line);
+                border-radius: 0.75rem;
+                padding: 2rem;
+                color: var(--muted);
+                text-align: center;
+            }
+            @media (max-width: 48rem) {
+                .portfolio-hero {
+                    grid-template-columns: 1fr;
+                    gap: 2rem;
+                }
+                .portfolio-category-grid,
+                .portfolio-feature-grid,
+                .portfolio-study-grid {
+                    grid-template-columns: 1fr;
+                }
+                .portfolio-section-heading {
+                    display: block;
+                }
+                .portfolio-section-heading p {
+                    margin-top: 0.4rem;
+                }
+            }
+            @media (max-width: 380px) {
+                .portfolio-header {
+                    align-items: stretch;
+                    flex-direction: column;
+                }
+                .portfolio-nav {
+                    flex-wrap: wrap;
+                    min-width: 0;
+                }
+                .portfolio-nav a {
+                    overflow-wrap: anywhere;
+                }
+            }
+            .portfolio-skip-link {
+                position: absolute;
+                left: 1rem;
+                top: -4rem;
+                z-index: 10;
+                border: 1px solid var(--accent);
+                border-radius: 0.5rem;
+                padding: 0.6rem 1rem;
+                background: var(--card);
+                color: var(--accent);
+                font-weight: 700;
+                text-decoration: none;
+                transition: top 0.15s ease;
+            }
+            .portfolio-skip-link:focus {
+                top: 1rem;
+                outline: 3px solid var(--accent);
+                outline-offset: 2px;
+            }
+        </style>
+    </head>
+    <body>
+        <a class="portfolio-skip-link" href="#main-content">
+            Skip to main content
+        </a>
+        <div class="portfolio-shell">
+            <header class="portfolio-header">
+                <a class="portfolio-brand" href="/">
+                    taktak.hu
+                </a>
+                <div class="portfolio-header-actions">
+                    <nav class="portfolio-nav" aria-label="Primary navigation">
+                        <a href="/case-studies/">Case Studies</a>
+                        <a href="/training/">Training &amp; Profiles</a>
+                    </nav>
+                    <button
+                        class="portfolio-theme-toggle"
+                        id="portfolio-theme-toggle"
+                        type="button"
+                        aria-pressed="false"
+                        aria-label="Dark theme"
+                        title="Toggle light and dark theme"
+                    >
+                        <svg
+                            class="portfolio-theme-icon portfolio-theme-icon-sun"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                            focusable="false"
+                        >
+                            <circle cx="12" cy="12" r="4" />
+                            <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+                        </svg>
+                        <svg
+                            class="portfolio-theme-icon portfolio-theme-icon-moon"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                            focusable="false"
+                        >
+                            <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+                        </svg>
+                        <span class="portfolio-theme-label">Theme</span>
+                    </button>
+                </div>
+            </header>
+
+            <main id="main-content">
+                <section
+                    class="portfolio-hero"
+                    aria-labelledby="portfolio-title"
+                >
+                    <div>
+                        <p class="portfolio-kicker">Security case studies</p>
+                        <h1 id="portfolio-title">DFDXARJY</h1>
+                        <p class="portfolio-lede">
+                            I document offensive-security and digital-forensics
+                            work: repeatable methods, evidence, and analysis
+                            from Linux and Windows machines and DFIR
+                            investigations. Browse the curated highlights, then
+                            filter the full case-study explorer by focus or
+                            keyword.
+                        </p>
+                        <div class="portfolio-actions">
+                            <a class="portfolio-button" href="#explorer">
+                                View case studies
+                            </a>
+                            {/* Primary action placeholder: uncomment once a contact email or profile URL exists.
+              <a class="portfolio-button portfolio-button-secondary" href="mailto:ADD_EMAIL">Contact me</a>
+              */}
+                        </div>
+                    </div>
+                    <div
+                        class="portfolio-proof"
+                        role="group"
+                        aria-label="Portfolio totals"
+                    >
+                        <div class="portfolio-proof-item">
+                            <span class="portfolio-proof-number">
+                                {counts.all}
+                            </span>
+                            <span class="portfolio-proof-label">
+                                published studies
+                            </span>
+                        </div>
+                        <div class="portfolio-proof-item">
+                            <span class="portfolio-proof-number">
+                                {counts.linux + counts.windows}
+                            </span>
+                            <span class="portfolio-proof-label">
+                                machine studies
+                            </span>
+                        </div>
+                        <div class="portfolio-proof-item">
+                            <span class="portfolio-proof-number">
+                                {counts.dfir}
+                            </span>
+                            <span class="portfolio-proof-label">
+                                DFIR studies
+                            </span>
+                        </div>
+                        <div class="portfolio-proof-item">
+                            <span class="portfolio-proof-number">
+                                {contentTypeCount}
+                            </span>
+                            <span class="portfolio-proof-label">
+                                content types
+                            </span>
+                        </div>
+                    </div>
+                </section>
+
+                <section
+                    class="portfolio-section"
+                    aria-labelledby="portfolio-categories-title"
+                >
+                    <div class="portfolio-section-heading">
+                        <h2 id="portfolio-categories-title">Browse by focus</h2>
+                        <p>Choose an analytical lens.</p>
+                    </div>
+                    <div class="portfolio-category-grid">
+                        {(["linux", "windows", "dfir"] as const).map((kind) => (
+                            <a
+                                class="portfolio-category"
+                                href={
+                                    kind === "dfir"
+                                        ? "/case-studies/htb/sherlocks/dfir/"
+                                        : `/case-studies/htb/machines/${kind}/`
+                                }
+                            >
+                                <span class="portfolio-category-count">
+                                    {counts[kind]}
+                                </span>
+                                <h3>{label(kind)}</h3>
+                                <p>
+                                    {kind === "dfir"
+                                        ? "Timeline reconstruction, log analysis, and persistence."
+                                        : kind === "windows"
+                                          ? "Active Directory attack paths, delegation, and domain escalation."
+                                          : "Web and service exploitation, credential recovery, and local privilege escalation."}
+                                </p>
+                            </a>
+                        ))}
+                        <a class="portfolio-category" href="/training/">
+                            <span class="portfolio-category-count">↗</span>
+                            <h3>Training &amp; Profiles</h3>
+                            <p>Hands-on learning and profile links.</p>
+                        </a>
+                    </div>
+                </section>
+
+                <section
+                    class="portfolio-section"
+                    aria-labelledby="portfolio-latest-title"
+                >
+                    <div class="portfolio-section-heading">
+                        <h2 id="portfolio-latest-title">Latest additions</h2>
+                        <p>
+                            The six most recently added case studies, by
+                            portfolio-addition date.
+                        </p>
+                    </div>
+                    <div class="portfolio-feature-grid">
+                        {latest.map((study) => (
+                            <a class="portfolio-feature" href={`/${study.id}/`}>
+                                <span class="portfolio-eyebrow">
+                                    {label(category(study))}
+                                </span>
+                                <h3>{study.data.title}</h3>
+                                <p>
+                                    {cleanDescription(study.data.description)}
+                                </p>
+                                {(study.data.objective ||
+                                    study.data.tools?.length ||
+                                    study.data.skill ||
+                                    study.data.outcome) && (
+                                    <dl class="portfolio-feature-evidence">
+                                        {study.data.objective && (
+                                            <>
+                                                <dt>Objective</dt>
+                                                <dd>{study.data.objective}</dd>
+                                            </>
+                                        )}
+                                        {study.data.tools?.length ? (
+                                            <>
+                                                <dt>Tools</dt>
+                                                <dd>
+                                                    {study.data.tools.join(
+                                                        ", ",
+                                                    )}
+                                                </dd>
+                                            </>
+                                        ) : null}
+                                        {study.data.skill && (
+                                            <>
+                                                <dt>Skill demonstrated</dt>
+                                                <dd>{study.data.skill}</dd>
+                                            </>
+                                        )}
+                                        {study.data.outcome && (
+                                            <>
+                                                <dt>Outcome</dt>
+                                                <dd>{study.data.outcome}</dd>
+                                            </>
+                                        )}
+                                    </dl>
+                                )}
+                            </a>
+                        ))}
+                    </div>
+                </section>
+
+                <section
+                    class="portfolio-section portfolio-explorer"
+                    id="explorer"
+                    aria-labelledby="portfolio-explorer-title"
+                >
+                    <div class="portfolio-section-heading">
+                        <h2 id="portfolio-explorer-title">
+                            Case-study explorer
+                        </h2>
+                        <p aria-live="polite" aria-atomic="true" role="status">
+                            <span id="portfolio-result-count">
+                                {studies.length}
+                            </span>{" "}
+                            results
+                        </p>
+                    </div>
+                    <p class="portfolio-explorer-subtitle">
+                        Browse all {studies.length} published case studies, then
+                        narrow by focus or keyword.
+                    </p>
+                    {/* Search/sort row is separate from the focus filters below. */}
+                    <div class="portfolio-search-row">
+                        <label
+                            class="portfolio-search-label"
+                            for="portfolio-search"
+                        >
+                            Search case studies
+                        </label>
+                        <input
+                            class="portfolio-search"
+                            id="portfolio-search"
+                            type="search"
+                            placeholder="Title, tag, category, or keyword"
+                        />
+                        <label
+                            class="portfolio-sort-label"
+                            for="portfolio-sort"
+                        >
+                            Sort by
+                        </label>
+                        <select class="portfolio-sort" id="portfolio-sort">
+                            <option value="newest" selected>
+                                Newest
+                            </option>
+                            <option value="az">A–Z</option>
+                            <option value="category">Category</option>
+                        </select>
+                    </div>
+                    <div
+                        class="portfolio-controls"
+                        role="group"
+                        aria-label="Filter case studies"
+                    >
+                        <ul class="portfolio-filter-list">
+                            {(["all", "linux", "windows", "dfir"] as const).map(
+                                (kind) => (
+                                    <li>
+                                        <button
+                                            class="portfolio-filter"
+                                            type="button"
+                                            data-filter={kind}
+                                            aria-pressed={
+                                                kind === "all"
+                                                    ? "true"
+                                                    : "false"
+                                            }
+                                        >
+                                            {kind === "all"
+                                                ? "All"
+                                                : label(kind)}{" "}
+                                            <span>({counts[kind]})</span>
+                                        </button>
+                                    </li>
+                                ),
+                            )}
+                        </ul>
+                    </div>
+                    <div class="portfolio-study-grid" id="portfolio-study-grid">
+                        {studies.map((study, index) => {
+                            const kind = category(study);
+                            return (
+                                <article
+                                    class="portfolio-study"
+                                    data-kind={kind}
+                                    data-title={study.data.title}
+                                    data-added={study.data.addedAt ?? ""}
+                                    data-id={study.id}
+                                    data-search={searchableText(study)}
+                                    hidden={index >= 12}
+                                >
+                                    <span class="portfolio-eyebrow">
+                                        {label(kind)}
+                                    </span>
+                                    <h3>
+                                        <a href={`/${study.id}/`}>
+                                            {study.data.title}
+                                        </a>
+                                    </h3>
+                                    <p>
+                                        {cleanDescription(
+                                            study.data.description,
+                                        )}
+                                    </p>
+                                    <div
+                                        class="portfolio-tags"
+                                        aria-label="Topics"
+                                    >
+                                        {(study.data.tags ?? [])
+                                            .slice(0, 4)
+                                            .map((tag) => (
+                                                <span class="portfolio-tag">
+                                                    {tag}
+                                                </span>
+                                            ))}
+                                    </div>
+                                </article>
+                            );
+                        })}
+                    </div>
+                    <div class="portfolio-load-more-wrap">
+                        <button
+                            class="portfolio-load-more"
+                            type="button"
+                            id="portfolio-load-more"
+                            aria-controls="portfolio-study-grid"
+                            hidden
+                        >
+                            Load more case studies
+                        </button>
+                    </div>
+                    {/* No-JS fallback: paging and the button are JS-only, so reveal every card. */}
+                    <noscript>
+                        <style is:global>
+                            .portfolio-study[hidden] {
+                                display: flex !important;
+                            }
+                            .portfolio-load-more-wrap {
+                                display: none;
+                            }
+                        </style>
+                    </noscript>
+                    <p
+                        class="portfolio-empty"
+                        id="portfolio-empty"
+                        role="status"
+                    >
+                        No studies match filters. Try another focus or search
+                        term.
+                    </p>
+                </section>
+            </main>
+
+            <footer class="portfolio-footer">
+                <p>&copy; 2026 dfdxarjy</p>
+                <nav class="portfolio-footer-links" aria-label="Footer">
+                    <a href="/">Home</a>
+                    <a href="/case-studies/">Case Studies</a>
+                    <a href="/training/">Training &amp; Profiles</a>
+                </nav>
+                {/* Future contact and profile slots — add real values and uncomment when available.
+        <ul class="portfolio-footer-links">
+          <li>Email: <a href="mailto:ADD_EMAIL">ADD_EMAIL</a></li>
+          <li><a href="ADD_LINKEDIN_URL">LinkedIn</a></li>
+          <li><a href="ADD_GITHUB_URL">GitHub</a></li>
+          <li><a href="ADD_RESUME_URL">Résumé</a></li>
+        </ul>
+        */}
+            </footer>
+        </div>
+        <script is:inline>
+            const buttons = [...document.querySelectorAll("[data-filter]")];
+            const grid = document.querySelector("#portfolio-study-grid");
+            let cards = [...grid.querySelectorAll("[data-kind]")];
+            const search = document.querySelector("#portfolio-search");
+            const sort = document.querySelector("#portfolio-sort");
+            const resultCount = document.querySelector(
+                "#portfolio-result-count",
+            );
+            const empty = document.querySelector("#portfolio-empty");
+            const loadMore = document.querySelector("#portfolio-load-more");
+            const PAGE_SIZE = 12;
+            let active = "all";
+            let shown = PAGE_SIZE;
+
+            const collator = new Intl.Collator(undefined, {
+                sensitivity: "base",
+            });
+            const titleKey = (card) => card.dataset.title || "";
+            const idKey = (card) => card.dataset.id || "";
+            const addedKey = (card) => card.dataset.added || "";
+            // Newest: explicit `addedAt` desc (missing values last), stable id tie-break.
+            // A–Z: title. Category: category then title. All tie-break on id.
+            const comparators = {
+                newest: (a, b) => {
+                    const addedA = addedKey(a);
+                    const addedB = addedKey(b);
+                    if (addedA !== addedB) {
+                        if (!addedA) return 1;
+                        if (!addedB) return -1;
+                        return addedB.localeCompare(addedA);
+                    }
+                    return idKey(a).localeCompare(idKey(b));
+                },
+                az: (a, b) =>
+                    collator.compare(titleKey(a), titleKey(b)) ||
+                    idKey(a).localeCompare(idKey(b)),
+                category: (a, b) =>
+                    collator.compare(
+                        a.dataset.kind || "",
+                        b.dataset.kind || "",
+                    ) ||
+                    collator.compare(titleKey(a), titleKey(b)) ||
+                    idKey(a).localeCompare(idKey(b)),
+            };
+            // Keep `cards` in current DOM order so paging picks the first N by sort order.
+            const applySort = () => {
+                const comparator =
+                    comparators[sort.value] || comparators.newest;
+                cards = [...cards].sort(comparator);
+                cards.forEach((card) => grid.appendChild(card));
+            };
+
+            const matches = (card, query) =>
+                (active === "all" || card.dataset.kind === active) &&
+                card.dataset.search.includes(query);
+
+            const update = () => {
+                const query = search.value
+                    .trim()
+                    .toLowerCase()
+                    .replace(/\s+/g, " ");
+                // While browsing (no focus/keyword) reveal pages of 12. An active
+                // search or filter reveals every matching card and updates the count.
+                const browsing = active === "all" && !query;
+                const matched = cards.filter((card) => matches(card, query));
+                const limit = browsing ? shown : matched.length;
+                const visible = new Set(matched.slice(0, limit));
+                cards.forEach((card) => {
+                    card.hidden = !visible.has(card);
+                });
+                resultCount.textContent = matched.length;
+                empty.style.display = matched.length ? "none" : "block";
+                loadMore.hidden = !(browsing && matched.length > shown);
+            };
+
+            buttons.forEach((button) =>
+                button.addEventListener("click", () => {
+                    active = button.dataset.filter;
+                    shown = PAGE_SIZE;
+                    buttons.forEach((item) =>
+                        item.setAttribute(
+                            "aria-pressed",
+                            String(item === button),
+                        ),
+                    );
+                    update();
+                }),
+            );
+            search.addEventListener("input", update);
+            sort.addEventListener("change", () => {
+                applySort();
+                update();
+            });
+            loadMore.addEventListener("click", () => {
+                shown += PAGE_SIZE;
+                update();
+            });
+
+            applySort();
+            update();
+        </script>
+        <script is:inline>
+            (() => {
+                const root = document.documentElement;
+                const toggle = document.querySelector(
+                    "#portfolio-theme-toggle",
+                );
+                if (!toggle) return;
+                const systemLight = window.matchMedia(
+                    "(prefers-color-scheme: light)",
+                );
+                const sync = (theme) => {
+                    root.dataset.theme = theme;
+                    toggle.setAttribute(
+                        "aria-pressed",
+                        String(theme === "dark"),
+                    );
+                };
+                sync(root.dataset.theme === "dark" ? "dark" : "light");
+                toggle.addEventListener("click", () => {
+                    const next =
+                        root.dataset.theme === "dark" ? "light" : "dark";
+                    sync(next);
+                    try {
+                        localStorage.setItem("starlight-theme", next);
+                    } catch {}
+                });
+                // Follow the system only while no explicit preference is stored (mirrors Starlight "auto").
+                systemLight.addEventListener("change", (event) => {
+                    let stored = null;
+                    try {
+                        stored = localStorage.getItem("starlight-theme");
+                    } catch {}
+                    if (stored !== "light" && stored !== "dark")
+                        sync(event.matches ? "light" : "dark");
+                });
+            })();
+        </script>
+    </body>
+</html>

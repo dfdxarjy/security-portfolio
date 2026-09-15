@@ -1,0 +1,30 @@
+---
+// Doc-page footer override. Keeps Starlight's default page meta/pagination and
+// appends the shared branded footer so docs and homepage share one identity.
+import EditLink from '@astrojs/starlight/components/EditLink.astro';
+import LastUpdated from '@astrojs/starlight/components/LastUpdated.astro';
+import Pagination from '@astrojs/starlight/components/Pagination.astro';
+---
+
+<div class="portfolio-doc-meta">
+  <EditLink />
+  <LastUpdated />
+</div>
+<Pagination />
+
+<footer class="portfolio-footer">
+  <p>&copy; 2026 Takács Bence</p>
+  <nav class="portfolio-footer-links" aria-label="Footer">
+    <a href="/">Home</a>
+    <a href="/case-studies/">Case Studies</a>
+    <a href="/training/">Training &amp; Profiles</a>
+  </nav>
+  {/* Future contact and profile slots — add real values and uncomment when available.
+  <ul class="portfolio-footer-links">
+    <li>Email: <a href="mailto:ADD_EMAIL">ADD_EMAIL</a></li>
+    <li><a href="ADD_LINKEDIN_URL">LinkedIn</a></li>
+    <li><a href="ADD_GITHUB_URL">GitHub</a></li>
+    <li><a href="ADD_RESUME_URL">Résumé</a></li>
+  </ul>
+  */}
+</footer>
