@@ -13,5 +13,6 @@ overrides:
 
 # Two extract-zip advisories remain open and cannot be overridden:
 # GHSA-7pqw-9j4j-h8q3 and GHSA-jmr9-qjv8-65gv. The advisory covers <= 2.0.1 and
-# 2.0.1 is the newest release, so no patched version exists. Left open by
-# decision on 2026-09-16 rather than dismissed.
+# 2.0.1 is the newest release, so no patched version exists. Treated as waiting
+# for an upstream release rather than dismissed, so the alerts stay visible and
+# the reasoning is readable. Tracked as TO17 in the audit checklist.
