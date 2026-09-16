@@ -1,16 +1,17 @@
 ---
 // VI4 — preview-only typography route (AGENTS.md §12.3).
 //
-// Renders a real case study in the current treatment and in one proposed
-// change: Source Serif 4 headings with a neutral system sans body. It is not
-// linked from the navigation or the homepage, and it changes nothing on the
-// real pages. Astro's sitemap integration has no filter configured here, so
-// this route does appear in sitemap-0.xml — reported, not silently fixed.
+// Renders a real case study in the current treatment and in the two candidate
+// body faces: the neutral system sans the owner already approved, and the
+// self-hosted IBM Plex Sans candidate (`--font-sans`). It is not linked from
+// the navigation or the homepage, and it changes nothing on the real pages.
+// Astro's sitemap integration has no filter configured here, so this route
+// does appear in sitemap-0.xml — reported, not silently fixed.
 //
 // The single property under test is the BODY text face. Headings stay
 // Source Serif 4 (`--font-display`), code and metadata stay IBM Plex Mono
-// (`--font-mono`), and no webfont is added: the sans here is a system stack
-// stand-in for the self-hosted face that would be chosen later.
+// (`--font-mono`). Only the preview route references the new `--font-sans`
+// token; the real pages are untouched.
 import { getEntry, render } from "astro:content";
 import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
 
@@ -30,7 +31,7 @@ const { Content } = await render(entry);
 	frontmatter={{
 		title: "Preview — sans body, serif headings (VI4)",
 		description:
-			"Preview-only route for judging one typography change: Source Serif 4 headings with a neutral system sans body, shown on the real Helix case study.",
+			"Preview-only route for judging one typography change: Source Serif 4 headings with a sans body. Shows the current serif body alongside the approved system sans and the self-hosted IBM Plex Sans candidate on the real Helix case study.",
 	}}
 >
 	<p class="vi4-banner" role="note">
@@ -42,8 +43,8 @@ const { Content } = await render(entry);
 	<p>
 		The site currently sets body copy in Source Serif 4, with IBM Plex Mono
 		for metadata. This route shows the same case study with the body copy in
-		a neutral system sans, to judge the direction before anything real is
-		changed.
+		the two candidate sans faces, to make the final pick before anything
+		real is changed.
 	</p>
 	<ul>
 		<li>
@@ -55,17 +56,19 @@ const { Content } = await render(entry);
 			metadata (IBM Plex Mono), palette, spacing, layout and font sizes.
 		</li>
 		<li>
-			<strong>Caveat:</strong> the sans below is a plain system stack
-			(<code>system-ui</code> and friends). It is a stand-in; the final
-			face would be a self-hosted sans chosen later. Judge the
-			<i>direction</i>, not this exact typeface.
+			<strong>Trade-off:</strong> the system stack adds <i>no</i> asset
+			and renders natively, but looks different on Windows, macOS and
+			Linux, so the site's typographic identity becomes machine-dependent.
+			IBM Plex Sans costs two small woff2 files but keeps the deliberate
+			self-hosted identity consistent, and pairs with the Plex Mono
+			already in use.
 		</li>
 	</ul>
 
-	<h2>Side by side: current vs proposed</h2>
+	<h2>Three candidates for the body face</h2>
 	<p>
 		The same representative passage from the Helix case study, in the
-		current treatment and in the proposed one.
+		current treatment and in the two candidate sans faces.
 	</p>
 	<div class="vi4-compare">
 		<section class="vi4-panel vi4-serif" aria-labelledby="vi4-current">
@@ -79,8 +82,19 @@ const { Content } = await render(entry);
 			</p>
 			<pre><code>rustscan -a &lt;TARGET_IP&gt; --ulimit 5000 -- -Pn -sC -sV -oN &lt;OUT_FILE&gt;</code></pre>
 		</section>
-		<section class="vi4-panel vi4-sans" aria-labelledby="vi4-proposed">
-			<h3 id="vi4-proposed">Proposed — system sans body</h3>
+		<section class="vi4-panel vi4-system" aria-labelledby="vi4-system">
+			<h3 id="vi4-system">System sans — approved direction</h3>
+			<p>
+				Helix is a Medium-rated Hack The Box Linux lab in which an
+				unauthenticated Apache NiFi instance on a virtual host is abused
+				through CVE-2023-34468 — an H2-backed <code>DBCPConnectionPool</code>
+				driving an <code>ExecuteSQL</code> processor — to gain command
+				execution as the NiFi service account.
+			</p>
+			<pre><code>rustscan -a &lt;TARGET_IP&gt; --ulimit 5000 -- -Pn -sC -sV -oN &lt;OUT_FILE&gt;</code></pre>
+		</section>
+		<section class="vi4-panel vi4-plex" aria-labelledby="vi4-plex">
+			<h3 id="vi4-plex">IBM Plex Sans — self-hosted candidate</h3>
 			<p>
 				Helix is a Medium-rated Hack The Box Linux lab in which an
 				unauthenticated Apache NiFi instance on a virtual host is abused
@@ -94,21 +108,24 @@ const { Content } = await render(entry);
 
 	<h2>Full case study in the proposed treatment</h2>
 	<p>
-		The real <i>Helix</i> case study, rendered with the sans body: dense
-		prose, a command block, tables and the full heading hierarchy.
+		The real <i>Helix</i> case study, rendered in the self-hosted
+		<i>IBM Plex Sans</i> candidate: dense prose, a command block, tables and
+		the full heading hierarchy.
 	</p>
-	<div class="vi4-sans vi4-full">
+	<div class="vi4-plex vi4-full">
 		<Content />
 	</div>
 </StarlightPage>
 
 <style is:global>
-	/* Proposed body face: neutral system sans, no webfont. Headings and code
-	   keep their existing explicit faces from portfolio.css, so only inherited
-	   body copy changes. */
-	.vi4-sans {
+	/* Candidate body faces. Headings and code keep their existing explicit
+	   faces from portfolio.css, so only inherited body copy changes. */
+	.vi4-system {
 		font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica,
 			Arial, sans-serif;
+	}
+	.vi4-plex {
+		font-family: var(--font-sans);
 	}
 	.vi4-serif {
 		font-family: var(--font-body);
@@ -123,7 +140,7 @@ const { Content } = await render(entry);
 	}
 	.vi4-compare {
 		display: grid;
-		grid-template-columns: 1fr 1fr;
+		grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
 		gap: 1rem;
 	}
 	.vi4-panel {

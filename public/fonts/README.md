@@ -1,9 +1,9 @@
 # Self-hosted webfonts
 
-These are the four self-hosted latin-subset faces that make up the site's type
-system — Source Serif 4 for display and body, IBM Plex Mono for metadata,
-labels and code — declared in `src/styles/portfolio.css` and shipped with the
-site.
+These are the six self-hosted latin-subset faces that make up the site's type
+system — Source Serif 4 for display and body, IBM Plex Sans as the candidate
+sans body face, IBM Plex Mono for metadata, labels and code — declared in
+`src/styles/portfolio.css` and shipped with the site.
 
 ## Licence
 
@@ -35,7 +35,13 @@ Exact woff2 source URLs (all `latin` subset):
 | `source-serif-4-latin-600-normal.woff2` | `https://fonts.bunny.net/source-serif-4/files/source-serif-4-latin-600-normal.woff2` | 21532 |
 | `ibm-plex-mono-latin-400-normal.woff2` | `https://fonts.bunny.net/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff2` | 14708 |
 | `ibm-plex-mono-latin-500-normal.woff2` | `https://fonts.bunny.net/ibm-plex-mono/files/ibm-plex-mono-latin-500-normal.woff2` | 14888 |
+| `ibm-plex-sans-latin-400-normal.woff2` | `https://fonts.bunny.net/ibm-plex-sans/files/ibm-plex-sans-latin-400-normal.woff2` | 22588 |
+| `ibm-plex-sans-latin-600-normal.woff2` | `https://fonts.bunny.net/ibm-plex-sans/files/ibm-plex-sans-latin-600-normal.woff2` | 24252 |
 
-Total: **71216 bytes** (4 files).
+Total: **118056 bytes** (6 files).
+
+Retrieved 2026-09-16 from the Bunny Fonts CSS API
+(`https://fonts.bunny.net/css?family=ibm-plex-sans:400,600`), keeping only the
+`/* latin */` woff2 URLs above.
 
 The `taktak.hu` brand mark's lowercase `t` is derived from the bundled Source Serif 4 600 face under the same SIL Open Font License 1.1; the outline is generated locally by `scripts/extract-brand-glyph.py` and no font binary is duplicated into the brand assets.
