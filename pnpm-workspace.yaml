@@ -1,3 +1,12 @@
 allowBuilds:
   esbuild: true
   sharp: true
+
+# Transitive advisories pulled in by @lhci/cli (dev-only; never shipped).
+# Dependabot cannot resolve patched versions inside that tree, so it fails its
+# update run on every schedule. Pin to the lowest non-vulnerable releases
+# instead: uuid >= 11.1.1 is outside every affected range and stays
+# CommonJS-capable, and tmp >= 0.2.4 fixes the path-traversal advisory.
+overrides:
+  uuid: ^11.1.1
+  tmp: ^0.2.4
