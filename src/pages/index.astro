@@ -30,9 +30,10 @@ const counts = {
 const contentTypeCount = new Set(
     studies.map((study) => study.data.content_type),
 ).size;
-// Latest additions: explicit immutable `addedAt` (portfolio-addition date) descending,
-// then stable id ascending. Entries without `addedAt` are omitted here but stay in the
-// explorer. No Git commit time or file mtime is read.
+// Deterministic preview (not the newest content): explicit immutable `addedAt`
+// (portfolio-addition date) descending, then stable id ascending. Entries without
+// `addedAt` are omitted here but stay in the explorer. No Git commit time or file
+// mtime is read.
 const latest = studies
     .filter((study) => Boolean(study.data.addedAt))
     .sort(
@@ -76,6 +77,17 @@ const searchableText = (study: (typeof studies)[number]) =>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="description" content={description} />
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+        <link rel="icon" href="/favicon.ico" sizes="32x32" />
+        <link rel="canonical" href="https://taktak.hu/" />
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="taktak.hu" />
+        <meta property="og:title" content={title} />
+        <meta property="og:description" content={description} />
+        <meta property="og:url" content="https://taktak.hu/" />
+        <meta property="og:image" content="https://taktak.hu/og-default.png" />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta name="twitter:card" content="summary_large_image" />
         <title>{title}</title>
         {/* Match Starlight's theme contract: shared `starlight-theme` key, set before paint. */}
         <script is:inline>
@@ -654,9 +666,6 @@ const searchableText = (study: (typeof studies)[number]) =>
                             <a class="portfolio-button" href="#explorer">
                                 View case studies
                             </a>
-                            {/* Primary action placeholder: uncomment once a contact email or profile URL exists.
-              <a class="portfolio-button portfolio-button-secondary" href="mailto:ADD_EMAIL">Contact me</a>
-              */}
                         </div>
                     </div>
                     <div
@@ -743,10 +752,10 @@ const searchableText = (study: (typeof studies)[number]) =>
                     aria-labelledby="portfolio-latest-title"
                 >
                     <div class="portfolio-section-heading">
-                        <h2 id="portfolio-latest-title">Latest additions</h2>
+                        <h2 id="portfolio-latest-title">Start here</h2>
                         <p>
-                            The three most recently added case studies, by
-                            portfolio-addition date.
+                            Three case studies worth starting with; the explorer
+                            below lists every published study.
                         </p>
                     </div>
                     <div class="portfolio-feature-grid">
@@ -958,14 +967,6 @@ const searchableText = (study: (typeof studies)[number]) =>
                     <a href="/case-studies/">Case Studies</a>
                     <a href="/training/">Training &amp; Profiles</a>
                 </nav>
-                {/* Future contact and profile slots — add real values and uncomment when available.
-        <ul class="portfolio-footer-links">
-          <li>Email: <a href="mailto:ADD_EMAIL">ADD_EMAIL</a></li>
-          <li><a href="ADD_LINKEDIN_URL">LinkedIn</a></li>
-          <li><a href="ADD_GITHUB_URL">GitHub</a></li>
-          <li><a href="ADD_RESUME_URL">Résumé</a></li>
-        </ul>
-        */}
             </footer>
         </div>
         <script is:inline>

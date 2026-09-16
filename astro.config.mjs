@@ -10,10 +10,36 @@ export default defineConfig({
 		starlight({
 			title: 'taktak.hu',
 			customCss: ['./src/styles/portfolio.css'],
+			lastUpdated: true,
+			editLink: {
+				baseUrl: 'https://github.com/dfdxarjy/security-portfolio/edit/main/',
+			},
+			head: [
+				{
+					tag: 'meta',
+					attrs: {
+						property: 'og:image',
+						content: 'https://taktak.hu/og-default.png',
+					},
+				},
+				{
+					tag: 'meta',
+					attrs: { property: 'og:image:width', content: '1200' },
+				},
+				{
+					tag: 'meta',
+					attrs: { property: 'og:image:height', content: '630' },
+				},
+				{
+					tag: 'meta',
+					attrs: { name: 'twitter:card', content: 'summary_large_image' },
+				},
+			],
 			components: {
 				// Supported Starlight override: swaps only the doc-page footer.
 				// Header, sidebar, search, and theme picker stay default.
 				Footer: './src/components/SiteFooter.astro',
+				PageTitle: './src/components/PageTitle.astro',
 			},
 			sidebar: [
 				{ label: 'All Work', link: '/#explorer' },
