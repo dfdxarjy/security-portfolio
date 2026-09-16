@@ -22,7 +22,7 @@ export default defineConfig({
 			customCss: ['./src/styles/portfolio.css'],
 			lastUpdated: true,
 			editLink: {
-				baseUrl: 'https://github.com/dfdxarjy/security-portfolio/edit/main/',
+				baseUrl: 'https://github.com/taktak0x/security-portfolio/edit/main/',
 			},
 			head: [
 				{

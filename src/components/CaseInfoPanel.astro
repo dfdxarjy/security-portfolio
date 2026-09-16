@@ -26,7 +26,7 @@ const data = entry.data as {
 // reuse it instead of rebuilding the repo path.
 const editUrl = Astro.locals.starlightRoute.editUrl;
 const pageUrl = new URL(Astro.url.pathname, Astro.site).toString();
-const reportUrl = `https://github.com/dfdxarjy/security-portfolio/issues/new?${new URLSearchParams(
+const reportUrl = `https://github.com/taktak0x/security-portfolio/issues/new?${new URLSearchParams(
 	{
 		title: `Correction: ${entry.data.title}`,
 		body: `Page: ${pageUrl}\n\nWhich specific claim needs correcting, and what should it say?`,
