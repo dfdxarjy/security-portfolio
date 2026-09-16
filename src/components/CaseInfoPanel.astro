@@ -20,6 +20,19 @@ const data = entry.data as {
 	evidenceQuality?: string;
 };
 
+// Starlight resolves `editUrl` as `ensureTrailingSlash(editLink.baseUrl) +
+// entry.filePath` (see @astrojs/starlight routing/data.js) and exposes it on
+// the route, which is exactly what the default EditLink.astro consumes, so
+// reuse it instead of rebuilding the repo path.
+const editUrl = Astro.locals.starlightRoute.editUrl;
+const pageUrl = new URL(Astro.url.pathname, Astro.site).toString();
+const reportUrl = `https://github.com/dfdxarjy/security-portfolio/issues/new?${new URLSearchParams(
+	{
+		title: `Correction: ${entry.data.title}`,
+		body: `Page: ${pageUrl}\n\nWhich specific claim needs correcting, and what should it say?`,
+	},
+).toString()}`;
+
 const tools = (data.tools ?? []).filter((tool) => tool.trim());
 const tags = (data.tags ?? []).filter((tag) => tag.trim());
 const published = data.publishedAt ?? data.addedAt;
@@ -138,6 +151,24 @@ const related = (await getCollection('docs'))
 			</nav>
 		)
 	}
+
+	<nav class="case-info__provenance" aria-label="Provenance">
+		<h2 class="case-info__title">Provenance</h2>
+		<ul class="case-info__list">
+			{
+				editUrl && (
+					<li>
+						<a href={editUrl}>{'Edit on GitHub'}</a>
+					</li>
+				)
+			}
+			<li>
+				<a href={reportUrl} target="_blank" rel="noopener noreferrer">
+					Report an error
+				</a>
+			</li>
+		</ul>
+	</nav>
 </aside>
 
 <style>
@@ -167,7 +198,8 @@ const related = (await getCollection('docs'))
 		color: var(--portfolio-muted);
 		overflow-wrap: anywhere;
 	}
-	.case-info__related {
+	.case-info__related,
+	.case-info__provenance {
 		border-top: 1px solid var(--portfolio-line);
 		padding-top: 0.9rem;
 	}
@@ -190,6 +222,9 @@ const related = (await getCollection('docs'))
 		font-size: 0.78rem;
 	}
 	.case-info__list a {
+		display: inline-flex;
+		align-items: center;
+		min-height: 1.5rem;
 		color: var(--portfolio-ink);
 		text-decoration: none;
 	}
