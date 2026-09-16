@@ -32,6 +32,10 @@ Technique is preserved; only values are replaced. Command syntax, including flag
 
 A case study states what the evidence supports and where it stops, using consistent wording: "the source records" a result, a "documented result" is given, a result is "not reproduced" from the write-up, or a "limitation" is noted. These notes appear in the closing evidence paragraph of a case study rather than as a separate heading.
 
+## What the notes do not preserve
+
+These case studies are written from notes taken while the work was in progress. They document the path that worked. Approaches that were abandoned, dead ends and wrong assumptions were not generally recorded at the time, so most studies do not describe them. Where a study does describe an obstacle or a change of approach, that is because the notes recorded it.
+
 ## The standard statement
 
 Each case study cites the same line:
