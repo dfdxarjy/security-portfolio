@@ -157,7 +157,7 @@ for (const [href, files] of canonicals) {
 }
 
 // Duplicate meta descriptions: identical summaries are a defect on case-study
-// pages, where each investigation should describe itself. Index, training and
+// pages, where each investigation should describe itself. Index, prolabs and
 // other pages may legitimately repeat a short description, so they only warn.
 for (const [content, entries] of descriptionsByContent) {
 	if (entries.length < 2) continue;

@@ -57,6 +57,7 @@
 	--portfolio-accent: #7a3e2a;
 	--portfolio-accent-strong: #5e2e1f;
 	--portfolio-accent-soft: #f0e4dc;
+	--portfolio-accent-contrast: #ffffff;
 	--portfolio-grid: rgba(122, 62, 42, 0.06);
 	--portfolio-shadow: 0 1rem 3rem rgba(58, 42, 32, 0.1);
 	--portfolio-radius: 0.8rem;
@@ -75,6 +76,7 @@
 	--portfolio-accent: #c98a63;
 	--portfolio-accent-strong: #e0a57e;
 	--portfolio-accent-soft: #3a2a20;
+	--portfolio-accent-contrast: #1a1a17;
 	--portfolio-grid: rgba(201, 138, 99, 0.08);
 	--portfolio-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.32);
 	--control-line: #6f675d;
@@ -179,11 +181,11 @@ select {
 .portfolio-doc-meta { display: flex; flex-wrap: wrap; gap: 0.75rem 3rem; justify-content: space-between; margin-top: 3rem; font-size: var(--sl-text-sm); color: var(--portfolio-muted); }
 .portfolio-doc-meta > :where(a, p) { margin: 0; }
 
-/* Shared training certificate embed, used by the five training pages. */
-.training-certificate { width: 100%; height: 760px; min-height: 65vh; border: 1px solid var(--portfolio-line); border-radius: var(--portfolio-radius); background: var(--portfolio-surface-raised); }
+/* Shared credential certificate embed, used by the credential pages. */
+.credential-certificate { width: 100%; height: 760px; min-height: 65vh; border: 1px solid var(--portfolio-line); border-radius: var(--portfolio-radius); background: var(--portfolio-surface-raised); }
 
 @media (max-width: 720px) {
-	.training-certificate { height: 65vh; min-height: 22rem; overflow: auto; }
+	.credential-certificate { height: 65vh; min-height: 22rem; overflow: auto; }
 }
 
 @media (max-width: 380px) {

@@ -11,6 +11,7 @@
     "dev": "astro dev",
     "start": "astro dev",
     "build": "astro build",
+    "build:brand": "node scripts/build-brand.mjs",
     "check:meta": "node scripts/check-metadata.mjs",
     "check:content": "node scripts/check-content.mjs",
     "preview": "astro preview",

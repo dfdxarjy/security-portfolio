@@ -13,7 +13,10 @@ import { join, relative, resolve } from 'node:path';
 const root = resolve(import.meta.dirname, '..');
 const CORPUS_DIRS = [
 	join(root, 'src/content/docs/case-studies'),
-	join(root, 'src/content/docs/training'),
+	// The corpus is the case-study tree only. The `prolabs` and `profiles`
+	// sections are deliberately excluded because their pages are short,
+	// uniform or owner-authored narrative rather than case studies, so this
+	// regularity report does not cover them.
 ];
 
 // Thresholds that only matter under `--strict`.
@@ -26,6 +29,14 @@ const ABSTRACT_VOCAB = [
 	'structured', 'broader', 'strengthened', 'developed', 'disciplined', 'repeatable',
 	'robust', 'approach', 'context', 'understanding', 'judgment', 'methodology',
 	'value', 'leverage', 'utilize', 'demonstrate',
+];
+// Habitual abstractions from the editorial voice pass. This is a warn list, not a ban.
+const HABITUAL_ABSTRACTIONS = [
+	'structured', 'broader', 'strengthened', 'disciplined', 'repeatable',
+	'methodology', 'comprehensive', 'robust', 'leverage', 'utilise', 'holistic',
+	'seamless', 'landscape', 'realm', 'testament', 'pivotal', 'crucial', 'delve',
+	'myriad', 'nuanced', 'multifaceted', 'underscore', 'showcase', 'foster',
+	'streamline',
 ];
 const UNCERTAINTY_MARKERS = [
 	'expected', 'inferred', 'could not verify', 'not reproduced', 'reconstructed',
@@ -142,7 +153,7 @@ const log = (line = '') => lines.push(line);
 const pct = (n, d) => (d === 0 ? '0.0' : ((100 * n) / d).toFixed(1));
 const title = (text) => log(`\n== ${text} ==`);
 
-log(`check-content: ${records.length} file(s) analysed (case-studies/** and training/**)`);
+log(`check-content: ${records.length} file(s) analysed (case-studies/**)`);
 log(`mode: ${STRICT ? 'strict' : 'report'} (informational${STRICT ? '' : '; exit 0 always'})`);
 
 // --- 1. Cross-file similarity ------------------------------------------------
@@ -342,6 +353,28 @@ for (const path of zeroDecisions) log(`  - ${path}`);
 log('highest counts:');
 for (const f of [...decisionPerFile].sort((x, y) => y.count - x.count || x.path.localeCompare(y.path)).slice(0, 10)) {
 	log(`  ${String(f.count).padStart(3)}  ${f.path}${f.examples[0] ? `  e.g. "${f.examples[0]}"` : ''}`);
+}
+
+// --- 9. Habitual abstract vocabulary (warn list, not a ban) ------------------
+
+const habitualTotals = new Map(HABITUAL_ABSTRACTIONS.map((term) => [term, 0]));
+const habitualPerFile = records.map((record) => {
+	const lowered = record.prose.toLowerCase();
+	const counts = new Map();
+	let total = 0;
+	for (const term of HABITUAL_ABSTRACTIONS) {
+		const n = (lowered.match(new RegExp(`\\b${term}\\b`, 'g')) ?? []).length;
+		if (n > 0) counts.set(term, n);
+		habitualTotals.set(term, habitualTotals.get(term) + n);
+		total += n;
+	}
+	return { path: record.path, total, counts };
+}).sort((x, y) => y.total - x.total || x.path.localeCompare(y.path));
+
+title('9. Habitual abstract vocabulary (warn list, not a ban)');
+log(`corpus totals: ${[...habitualTotals.entries()].filter(([, n]) => n > 0).sort((x, y) => y[1] - x[1]).map(([t, n]) => `${t} ${n}`).join(', ') || 'none'}`);
+for (const f of habitualPerFile.filter((f) => f.total > 0)) {
+	log(`  ${String(f.total).padStart(3)}  ${f.path}  (${[...f.counts.entries()].map(([t, n]) => `${t} x${n}`).join(', ')})`);
 }
 
 // --- Strict gate --------------------------------------------------------------

@@ -26,13 +26,13 @@ const pathname = Astro.url.pathname.replace(/\/+$/, '') || '/';
 // falls back to title-casing its hyphenated words.
 const SEGMENT_LABELS: Record<string, string> = {
 	'case-studies': 'Case Studies',
+	prolabs: 'Pro Labs',
 	htb: 'Hack The Box',
 	sherlocks: 'Sherlocks',
 	dfir: 'DFIR',
 	machines: 'Machines',
 	windows: 'Windows',
 	linux: 'Linux',
-	training: 'Training & Profiles',
 };
 const labelFor = (segment: string) =>
 	SEGMENT_LABELS[segment] ??

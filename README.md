@@ -28,7 +28,7 @@ case-studies/htb/machines/linux/<slug>.md
 case-studies/htb/sherlocks/dfir/<slug>.md
 ```
 
-Training profiles live under `src/content/docs/training/`. Every page's frontmatter is validated against the schema in `src/content.config.ts`; the homepage explorer and the sidebar pick up new entries automatically.
+Profile links live under `src/content/docs/profiles/`, and completed Pro Lab credential records live under `src/content/docs/prolabs/`. Every page's frontmatter is validated against the schema in `src/content.config.ts`; the homepage explorer and the sidebar pick up new entries automatically.
 
 ## Production
 

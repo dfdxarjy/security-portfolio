@@ -9,6 +9,12 @@ export default defineConfig({
 	redirects: {
 		'/case-studies/htb/machines/windows/monitorsfour/':
 			'/case-studies/htb/machines/linux/monitorsfour/',
+		'/training/': '/profiles/',
+		'/training/dante/': '/prolabs/dante/',
+		'/training/zephyr/': '/prolabs/zephyr/',
+		'/training/offshore/': '/prolabs/offshore/',
+		'/training/mythical/': '/prolabs/mythical/',
+		'/training/puppet/': '/prolabs/puppet/',
 	},
 	integrations: [
 		starlight({
@@ -46,6 +52,9 @@ export default defineConfig({
 				PageTitle: './src/components/PageTitle.astro',
 				// Appends JSON-LD (Article + BreadcrumbList) to Starlight's head.
 				Head: './src/components/Head.astro',
+				// Supported Starlight override for the header brand; the component
+				// preserves Starlight's `site-title` contract.
+				SiteTitle: './src/components/SiteTitle.astro',
 				// Case-file shell: these four only change case-study pages, and
 				// render Starlight's default component everywhere else.
 				Sidebar: './src/components/Sidebar.astro',
@@ -56,7 +65,8 @@ export default defineConfig({
 			},
 			sidebar: [
 				{ label: 'All Work', link: '/#explorer' },
-				{ label: 'Training & Profiles', link: '/training/' },
+				{ label: 'Pro Labs', link: '/prolabs/' },
+				{ label: 'Profiles', link: '/profiles/' },
 				{
 					label: 'Offensive Security',
 					collapsed: true,

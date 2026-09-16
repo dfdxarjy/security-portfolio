@@ -1,6 +1,7 @@
 ---
 import { getCollection } from "astro:content";
 import "../styles/portfolio.css";
+import BrandLockup from "../components/BrandLockup.astro";
 
 const title = "taktak.hu — Security Portfolio";
 const description =
@@ -174,7 +175,8 @@ const searchableText = (study: (typeof studies)[number]) =>
                 padding: 0.5rem 0 3rem;
             }
             .portfolio-brand {
-                font-weight: 750;
+                font-weight: 600;
+                font-synthesis: none;
                 letter-spacing: -0.02em;
                 text-decoration: none;
             }
@@ -186,6 +188,7 @@ const searchableText = (study: (typeof studies)[number]) =>
             }
             .portfolio-nav {
                 display: flex;
+                flex-wrap: wrap;
                 gap: 1rem;
                 color: var(--muted);
                 font-size: 0.9rem;
@@ -274,7 +277,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                 border-radius: var(--portfolio-radius);
                 padding: 0.7rem 1.1rem;
                 background: var(--accent);
-                color: white;
+                color: var(--portfolio-accent-contrast);
                 font-weight: 700;
                 text-decoration: none;
             }
@@ -442,6 +445,12 @@ const searchableText = (study: (typeof studies)[number]) =>
                 border-color: var(--accent);
                 background: var(--soft);
                 color: var(--accent);
+            }
+            /* Pressed state also carries a non-colour cue, matching the theme
+               control: colour alone is not enough (WCAG 1.4.1). */
+            .portfolio-filter[aria-pressed="true"] {
+                text-decoration: underline;
+                text-underline-offset: 0.25em;
             }
             .portfolio-search {
                 min-width: min(100%, 16rem);
@@ -639,13 +648,12 @@ const searchableText = (study: (typeof studies)[number]) =>
         </a>
         <div class="portfolio-shell">
             <header class="portfolio-header">
-                <a class="portfolio-brand" href="/">
-                    taktak.hu
-                </a>
+                <BrandLockup class="portfolio-brand" />
                 <div class="portfolio-header-actions">
                     <nav class="portfolio-nav" aria-label="Primary navigation">
                         <a href="/case-studies/">Case Studies</a>
-                        <a href="/training/">Training &amp; Profiles</a>
+                        <a href="/prolabs/">Pro Labs</a>
+                        <a href="/profiles/">Profiles</a>
                     </nav>
                     <div
                         class="portfolio-theme"
@@ -741,10 +749,10 @@ const searchableText = (study: (typeof studies)[number]) =>
                                 </p>
                             </a>
                         ))}
-                        <a class="portfolio-category" href="/training/">
+                        <a class="portfolio-category" href="/prolabs/">
                             <span class="portfolio-category-count">↗</span>
-                            <h3>Training &amp; Profiles</h3>
-                            <p>Hands-on learning and profile links.</p>
+                            <h3>Pro Labs</h3>
+                            <p>Completed Pro Lab credentials and their certificates.</p>
                         </a>
                     </div>
                 </section>
@@ -889,6 +897,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                                     </p>
                                     <div
                                         class="portfolio-tags"
+                                        role="group"
                                         aria-label="Topics"
                                     >
                                         {(study.data.tags ?? [])
@@ -941,7 +950,8 @@ const searchableText = (study: (typeof studies)[number]) =>
                 <nav class="portfolio-footer-links" aria-label="Footer">
                     <a href="/">Home</a>
                     <a href="/case-studies/">Case Studies</a>
-                    <a href="/training/">Training &amp; Profiles</a>
+                    <a href="/prolabs/">Pro Labs</a>
+                    <a href="/profiles/">Profiles</a>
                 </nav>
             </footer>
         </div>

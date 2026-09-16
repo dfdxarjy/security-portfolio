@@ -1,0 +1,70 @@
+---
+interface Props {
+  decorative?: boolean;
+  label?: string;
+  class?: string;
+}
+
+const {
+  decorative = true,
+  label = "taktak.hu",
+  class: className = "",
+} = Astro.props;
+---
+
+<span
+  class:list={["brand-mark", className]}
+  aria-hidden={decorative ? "true" : undefined}
+  role={decorative ? undefined : "img"}
+  aria-label={decorative ? undefined : label}
+>
+  <span class="brand-mark__t">t</span><span class="brand-mark__dot" aria-hidden="true"></span>
+</span>
+
+<style>
+  .brand-mark {
+    /* The visible mark uses the exact same face as the wordmark. */
+    display: inline-flex;
+    position: relative;
+    width: 0.543em;
+    height: auto;
+    flex: none;
+    overflow: visible;
+    color: var(--portfolio-ink, #1a1a17);
+    font-family: var(--font-display, "Source Serif 4", Georgia, serif);
+    font-size: 1em;
+    font-style: normal;
+    font-weight: 600;
+    font-synthesis: none;
+    line-height: 1;
+    letter-spacing: 0;
+    align-items: flex-end;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .brand-mark__t {
+    /* At font-size 1em the Source Serif 4 `t` ink height is exactly 0.645em,
+       which is the target, so no scaling transform is applied. */
+    display: block;
+    line-height: 1;
+  }
+
+  .brand-mark__dot {
+    /* With line-height 1 the baseline sits .1495em above the box bottom
+       (half-leading (1 - 1.371)/2 plus ascent 1.036); the dot's bottom
+       belongs .0073em below the baseline, hence bottom .142em. */
+    position: absolute;
+    right: 0;
+    bottom: 0.142em;
+    width: 0.107em; height: 0.107em;
+    border-radius: .007em;
+    background: var(--portfolio-accent, #7a3e2a);
+  }
+
+  @media (forced-colors: active) {
+    .brand-mark__dot {
+      background: CanvasText;
+    }
+  }
+</style>
