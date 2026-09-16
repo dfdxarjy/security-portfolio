@@ -1,6 +1,6 @@
 ---
 title: "CozyHosting — Actuator Session Leak and sudo ssh ProxyCommand Escalation"
-description: "A Spring Boot Actuator session leak grants admin access and command injection in the SSH feature provides a foothold; credentials from the application JAR and an SSH ProxyCommand sudo rule lead to root."
+description: "A Spring Boot Actuator session leak grants admin access, and command injection in the SSH feature provides a foothold; credentials from the application JAR and an SSH ProxyCommand sudo rule lead to root."
 type: case-study
 platform: Hack The Box
 content_type: machine

@@ -12,7 +12,7 @@ tags:
   - keepass
   - cve-2023-32784
   - memory-disclosure
-objective: "Default Request Tracker credentials and KeePass CVE-2023-32784 to a root SSH key"
+objective: "Chain default Request Tracker credentials and KeePass CVE-2023-32784 to a root SSH key"
 tools:
   - nmap
   - curl
@@ -32,7 +32,7 @@ outcome: "Root SSH access"
 | Difficulty | Easy |
 | Target environment | Ubuntu 22.04 Linux host running Request Tracker 4.4.4 behind nginx |
 | Starting position | Unauthenticated network access |
-| Objective | Default Request Tracker credentials and KeePass CVE-2023-32784 to a root SSH key |
+| Objective | Chain default Request Tracker credentials and KeePass CVE-2023-32784 to a root SSH key |
 | Outcome | User-level SSH access, then direct root SSH access |
 
 ## Default credentials to KeePass memory disclosure

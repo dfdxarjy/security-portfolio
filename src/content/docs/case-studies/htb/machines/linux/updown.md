@@ -1,6 +1,6 @@
 ---
 title: "UpDown — Exposed Git Metadata, Upload Race, and Privileged Interpreter Abuse"
-description: "Exposed version-control metadata and a custom-header development virtual host lead to an upload blocklist bypass and race condition for a web-service shell; a SUID Python 2 input() helper and a package-installer sudo rule reach root."
+description: "Exposed version-control metadata and a custom-header development virtual host lead to an upload blocklist bypass and a race condition for a web-service shell; a SUID Python 2 input() helper and a package-installer sudo rule reach root."
 type: case-study
 platform: Hack The Box
 content_type: machine
