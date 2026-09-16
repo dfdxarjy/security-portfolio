@@ -1002,8 +1002,27 @@ const searchableText = (study: (typeof studies)[number]) =>
             const empty = document.querySelector("#portfolio-empty");
             const loadMore = document.querySelector("#portfolio-load-more");
             const PAGE_SIZE = 12;
-            let active = "all";
+            // Seed state from the URL so a filtered view can be linked/shared.
+            const urlParams = new URLSearchParams(window.location.search);
+            const focusParam = urlParams.get("focus");
+            let active = buttons.some(
+                (button) => button.dataset.filter === focusParam,
+            )
+                ? focusParam
+                : "all";
             let shown = PAGE_SIZE;
+            const queryParam = urlParams.get("q");
+            if (queryParam) search.value = queryParam;
+            const sortParam = urlParams.get("sort");
+            if ([...sort.options].some((option) => option.value === sortParam)) {
+                sort.value = sortParam;
+            }
+            buttons.forEach((button) =>
+                button.setAttribute(
+                    "aria-pressed",
+                    String(button.dataset.filter === active),
+                ),
+            );
 
             const collator = new Intl.Collator(undefined, {
                 sensitivity: "base",
@@ -1072,6 +1091,24 @@ const searchableText = (study: (typeof studies)[number]) =>
                 loadMore.hidden = hideLoadMore;
             };
 
+            // Mirror explorer state into the address bar so a view is shareable.
+            // Defaults are omitted so the plain homepage URL stays plain.
+            const syncUrl = () => {
+                const params = new URLSearchParams();
+                if (active !== "all") params.set("focus", active);
+                const query = search.value.trim();
+                if (query) params.set("q", query);
+                if (sort.value !== "newest") params.set("sort", sort.value);
+                const searchPart = params.toString();
+                const hash = searchPart ? "#explorer" : window.location.hash;
+                // `replaceState` (never `pushState`): typing must not fill history.
+                history.replaceState(
+                    null,
+                    "",
+                    `${window.location.pathname}${searchPart ? `?${searchPart}` : ""}${hash}`,
+                );
+            };
+
             buttons.forEach((button) =>
                 button.addEventListener("click", () => {
                     active = button.dataset.filter;
@@ -1083,12 +1120,17 @@ const searchableText = (study: (typeof studies)[number]) =>
                         ),
                     );
                     update();
+                    syncUrl();
                 }),
             );
-            search.addEventListener("input", update);
+            search.addEventListener("input", () => {
+                update();
+                syncUrl();
+            });
             sort.addEventListener("change", () => {
                 applySort();
                 update();
+                syncUrl();
             });
             loadMore.addEventListener("click", () => {
                 shown += PAGE_SIZE;
@@ -1097,6 +1139,7 @@ const searchableText = (study: (typeof studies)[number]) =>
 
             applySort();
             update();
+            syncUrl();
         </script>
         <script is:inline>
             (() => {
