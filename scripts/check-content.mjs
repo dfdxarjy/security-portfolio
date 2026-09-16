@@ -135,7 +135,11 @@ for (const dir of CORPUS_DIRS) {
 	}
 }
 
-const files = [...new Set(CORPUS_DIRS.flatMap((dir) => walk(dir, (name) => name.endsWith('.md'))))].sort();
+// Index pages are excluded for the same reason as the `prolabs` and `profiles`
+// sections: they are short, uniform navigation pages rather than case studies, so
+// including them distorts every corpus-level statistic (similarity, boilerplate
+// frequency, uncertainty markers) against a corpus of 70 leaf case studies.
+const files = [...new Set(CORPUS_DIRS.flatMap((dir) => walk(dir, (name) => name.endsWith('.md') && name !== 'index.md')))].sort();
 
 const records = files.map((file) => {
 	const raw = stripFrontmatter(readFileSync(file, 'utf-8'));
