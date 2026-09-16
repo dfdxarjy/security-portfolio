@@ -27,18 +27,30 @@ const counts = {
     windows: studies.filter((study) => category(study) === "windows").length,
     dfir: studies.filter((study) => category(study) === "dfir").length,
   };
-  // Deterministic preview (not the newest content): explicit immutable `addedAt`
-// (portfolio-addition date) descending, then stable id ascending. Entries without
-// `addedAt` are omitted here but stay in the explorer. No Git commit time or file
-// mtime is read.
-const latest = studies
+// Lead case is always the newest: explicit immutable `addedAt`
+// (portfolio-addition date) descending, then stable id ascending, first entry.
+// Entries without `addedAt` are omitted here but stay in the explorer. No Git
+// commit time or file mtime is read, and `featured` is not consulted.
+const leadStudy = studies
     .filter((study) => Boolean(study.data.addedAt))
     .sort(
         (a, b) =>
             (b.data.addedAt ?? "").localeCompare(a.data.addedAt ?? "") ||
             a.id.localeCompare(b.id),
-    )
-    .slice(0, 3);
+    )[0];
+// Mono meta line: tools and tags, omitting any empty part.
+const leadMeta = leadStudy
+    ? [
+          leadStudy.data.tools?.length
+              ? `Tools: ${leadStudy.data.tools.join(", ")}`
+              : "",
+          leadStudy.data.tags?.length
+              ? `Tags: ${leadStudy.data.tags.join(" · ")}`
+              : "",
+      ]
+          .filter(Boolean)
+          .join(" · ")
+    : "";
 const label = (kind: string) =>
     kind === "dfir"
         ? "DFIR / Sherlock"
@@ -98,7 +110,8 @@ const searchableText = (study: (typeof studies)[number]) =>
                 description,
             })}
         />
-        {/* Match Starlight's theme contract: shared `starlight-theme` key, set before paint. */}
+        {/* Match Starlight's theme contract: shared `starlight-theme` key, set before paint.
+            Absent or empty storage means auto (follow the OS). */}
         <script is:inline>
             (() => {
                 const stored = (() => {
@@ -108,16 +121,15 @@ const searchableText = (study: (typeof studies)[number]) =>
                         return null;
                     }
                 })();
-                const prefersLight = window.matchMedia(
-                    "(prefers-color-scheme: light)",
-                ).matches;
+                const explicit =
+                    stored === "light" || stored === "dark" ? stored : null;
                 const theme =
-                    stored === "light" || stored === "dark"
-                        ? stored
-                        : prefersLight
-                          ? "light"
-                          : "dark";
+                    explicit ??
+                    (window.matchMedia("(prefers-color-scheme: dark)").matches
+                        ? "dark"
+                        : "light");
                 document.documentElement.dataset.theme = theme;
+                document.documentElement.style.colorScheme = theme;
             })();
         </script>
         <style>
@@ -129,15 +141,10 @@ const searchableText = (study: (typeof studies)[number]) =>
                 --card: var(--portfolio-surface-raised);
                 --accent: var(--portfolio-accent);
                 --soft: var(--portfolio-accent-soft);
-                /* Interactive control boundary: `--line` (#d7dee8 / #26364d) is a
-                   decorative hairline at ~1.35:1, below the 3:1 WCAG 1.4.11
-                   minimum for UI component boundaries. This darker tint keeps
-                   the blue hue while reaching >=3:1 on both the page surface
-                   and the raised card. Decorative hairlines keep `--line`. */
-                --control-line: #7b8699;
-            }
-            :global(html[data-theme="dark"]) {
-                --control-line: #62748c;
+                /* Interactive control boundaries come from --control-line in
+                   portfolio.css (>=3:1 in both themes). Decorative hairlines
+                   keep --line. Do not redefine the value here: a local override
+                   would drift from the palette. */
             }
             *,
             *::before,
@@ -187,38 +194,37 @@ const searchableText = (study: (typeof studies)[number]) =>
             .portfolio-nav a:focus-visible {
                 color: var(--accent);
             }
-            .portfolio-theme-toggle {
+            /* Three-state theme control: segmented, monospace, hairline edges. */
+            .portfolio-theme {
                 display: inline-flex;
-                align-items: center;
-                gap: 0.4rem;
                 border: 1px solid var(--control-line);
                 border-radius: var(--portfolio-radius);
-                padding: 0.35rem 0.7rem;
+                overflow: hidden;
+            }
+            .portfolio-theme-option {
+                min-width: 24px;
+                min-height: 24px;
+                padding: 0.4rem 0.7rem;
+                border: 0;
+                border-inline-start: 1px solid var(--control-line);
                 background: var(--card);
                 color: var(--ink);
-                font: inherit;
-                font-size: 0.85rem;
+                font-family: var(--font-mono), ui-monospace, monospace;
+                font-size: 0.8rem;
                 cursor: pointer;
             }
-            .portfolio-theme-toggle:hover,
-            .portfolio-theme-toggle:focus-visible {
-                border-color: var(--accent);
+            .portfolio-theme-option:first-child {
+                border-inline-start: 0;
+            }
+            .portfolio-theme-option:hover,
+            .portfolio-theme-option:focus-visible {
                 color: var(--accent);
             }
-            .portfolio-theme-icon {
-                width: 1em;
-                height: 1em;
-            }
-            .portfolio-theme-icon-moon {
-                display: none;
-            }
-            .portfolio-theme-toggle[aria-pressed="true"]
-                .portfolio-theme-icon-sun {
-                display: none;
-            }
-            .portfolio-theme-toggle[aria-pressed="true"]
-                .portfolio-theme-icon-moon {
-                display: inline;
+            /* Active state uses an underline, not colour alone. */
+            .portfolio-theme-option[aria-pressed="true"] {
+                color: var(--accent);
+                text-decoration: underline;
+                text-underline-offset: 0.25em;
             }
             :global(html) {
                 color-scheme: light;
@@ -301,19 +307,13 @@ const searchableText = (study: (typeof studies)[number]) =>
                 margin-bottom: 0.2rem;
                 color: var(--muted);
             }
-            /* Focus cards form a balanced 2×2 on desktop; the three latest features use three columns. */
+            /* Focus cards form a balanced 2×2 on desktop. */
             .portfolio-category-grid {
                 display: grid;
                 grid-template-columns: repeat(2, 1fr);
                 gap: 1rem;
             }
-            .portfolio-feature-grid {
-                display: grid;
-                grid-template-columns: repeat(3, 1fr);
-                gap: 1rem;
-            }
             .portfolio-category,
-            .portfolio-feature,
             .portfolio-study {
                 border: 1px solid var(--line);
                 border-radius: var(--portfolio-radius);
@@ -324,9 +324,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                 text-decoration: none;
             }
             .portfolio-category:hover,
-            .portfolio-category:focus-visible,
-            .portfolio-feature:hover,
-            .portfolio-feature:focus-within {
+            .portfolio-category:focus-visible {
                 border-color: var(--accent);
             }
             .portfolio-category h3 {
@@ -342,39 +340,45 @@ const searchableText = (study: (typeof studies)[number]) =>
                 font-size: 1.8rem;
                 font-weight: 750;
             }
-            .portfolio-feature {
-                display: block;
-                padding: 1.25rem;
-                text-decoration: none;
-            }
-            .portfolio-feature h3 {
-                margin: 0.6rem 0;
-                font-size: 1.1rem;
-            }
-            .portfolio-feature p {
-                margin-bottom: 0;
-                color: var(--muted);
-                font-size: 0.9rem;
-            }
-            .portfolio-feature-evidence {
-                display: grid;
-                grid-template-columns: auto 1fr;
-                gap: 0.2rem 0.6rem;
-                margin: 0.8rem 0 0;
-                padding-top: 0.8rem;
+            /* Lead case: hairline rules above and below, no filled card. */
+            .portfolio-lead {
+                padding: 1.75rem 0;
                 border-top: 1px solid var(--line);
+                border-bottom: 1px solid var(--line);
             }
-            .portfolio-feature-evidence dt {
-                color: var(--accent);
-                font-size: 0.7rem;
-                font-weight: 750;
-                letter-spacing: 0.06em;
+            .portfolio-lead-eyebrow {
+                color: var(--muted);
+                font-family: var(--font-mono), ui-monospace, monospace;
+                font-size: 0.72rem;
+                letter-spacing: 0.12em;
                 text-transform: uppercase;
             }
-            .portfolio-feature-evidence dd {
-                margin: 0;
+            .portfolio-lead-headline {
+                margin: 0.75rem 0 0;
+                max-width: 30ch;
+                font-family: var(--font-display), Georgia, serif;
+                font-size: clamp(1.6rem, 3vw, 2.1rem);
+                line-height: 1.18;
+                letter-spacing: -0.01em;
+            }
+            .portfolio-lead-headline a {
+                text-decoration: none;
+            }
+            .portfolio-lead-headline a:hover,
+            .portfolio-lead-headline a:focus-visible {
+                color: var(--accent);
+            }
+            .portfolio-lead-dek {
+                margin: 0.9rem 0 0;
+                max-width: 60ch;
                 color: var(--muted);
-                font-size: 0.85rem;
+                font-size: 1.05rem;
+            }
+            .portfolio-lead-meta {
+                margin: 1rem 0 0;
+                font-family: var(--font-mono), ui-monospace, monospace;
+                font-size: 0.78rem;
+                color: var(--muted);
             }
             .portfolio-eyebrow {
                 color: var(--accent);
@@ -461,15 +465,12 @@ const searchableText = (study: (typeof studies)[number]) =>
             /* No fixed card widths; `min-width: 0` stops a long unbreakable title
                or tag from widening a grid track (and overflowing) at 320px. */
             .portfolio-category,
-            .portfolio-feature,
             .portfolio-study {
                 min-width: 0;
             }
             .portfolio-category h3,
-            .portfolio-feature h3,
             .portfolio-study h3,
             .portfolio-study p,
-            .portfolio-feature-evidence dd,
             .portfolio-tag {
                 overflow-wrap: anywhere;
             }
@@ -549,7 +550,6 @@ const searchableText = (study: (typeof studies)[number]) =>
                     gap: 2rem;
                 }
                 .portfolio-category-grid,
-                .portfolio-feature-grid,
                 .portfolio-study-grid {
                     grid-template-columns: 1fr;
                 }
@@ -595,7 +595,7 @@ const searchableText = (study: (typeof studies)[number]) =>
             /* Forced-colours: keep control boundaries, pressed state and focus
                visible using system colours (background colours are overridden). */
             @media (forced-colors: active) {
-                .portfolio-theme-toggle,
+                .portfolio-theme-option,
                 .portfolio-filter,
                 .portfolio-search,
                 .portfolio-sort,
@@ -603,13 +603,14 @@ const searchableText = (study: (typeof studies)[number]) =>
                 .portfolio-skip-link {
                     border-color: ButtonBorder;
                 }
-                .portfolio-filter[aria-pressed="true"] {
+                .portfolio-filter[aria-pressed="true"],
+                .portfolio-theme-option[aria-pressed="true"] {
                     border-color: Highlight;
                     outline: 1px solid Highlight;
                     background: Highlight;
                     color: HighlightText;
                 }
-                .portfolio-theme-toggle:focus-visible,
+                .portfolio-theme-option:focus-visible,
                 .portfolio-filter:focus-visible,
                 .portfolio-search:focus-visible,
                 .portfolio-sort:focus-visible,
@@ -618,8 +619,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                 .portfolio-study h3 a:focus-visible {
                     outline-color: Highlight;
                 }
-                .portfolio-explorer,
-                .portfolio-feature-evidence {
+                .portfolio-explorer {
                     border-top-color: ButtonText;
                 }
                 .portfolio-study {
@@ -642,43 +642,37 @@ const searchableText = (study: (typeof studies)[number]) =>
                         <a href="/case-studies/">Case Studies</a>
                         <a href="/training/">Training &amp; Profiles</a>
                     </nav>
-                    <button
-                        class="portfolio-theme-toggle"
-                        id="portfolio-theme-toggle"
-                        type="button"
-                        aria-pressed="false"
-                        aria-label="Dark theme"
-                        title="Toggle light and dark theme"
+                    <div
+                        class="portfolio-theme"
+                        id="portfolio-theme"
+                        role="group"
+                        aria-label="Colour theme"
                     >
-                        <svg
-                            class="portfolio-theme-icon portfolio-theme-icon-sun"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            aria-hidden="true"
-                            focusable="false"
+                        <button
+                            class="portfolio-theme-option"
+                            type="button"
+                            data-theme-value="auto"
+                            aria-pressed="true"
                         >
-                            <circle cx="12" cy="12" r="4" />
-                            <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-                        </svg>
-                        <svg
-                            class="portfolio-theme-icon portfolio-theme-icon-moon"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            aria-hidden="true"
-                            focusable="false"
+                            Auto
+                        </button>
+                        <button
+                            class="portfolio-theme-option"
+                            type="button"
+                            data-theme-value="light"
+                            aria-pressed="false"
                         >
-                            <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
-                        </svg>
-                        <span class="portfolio-theme-label">Theme</span>
-                    </button>
+                            Light
+                        </button>
+                        <button
+                            class="portfolio-theme-option"
+                            type="button"
+                            data-theme-value="dark"
+                            aria-pressed="false"
+                        >
+                            Dark
+                        </button>
+                    </div>
                 </div>
             </header>
 
@@ -755,62 +749,30 @@ const searchableText = (study: (typeof studies)[number]) =>
                     aria-labelledby="portfolio-latest-title"
                 >
                     <div class="portfolio-section-heading">
-                        <h2 id="portfolio-latest-title">
-                            Three cases that show how I work
-                        </h2>
+                        <h2 id="portfolio-latest-title">Latest case</h2>
                         <p>
-                            Three case studies worth starting with; the explorer
-                            below lists every published study.
+                            The most recent addition; the explorer below lists
+                            every published study.
                         </p>
                     </div>
-                    <div class="portfolio-feature-grid">
-                        {latest.map((study) => (
-                            <a class="portfolio-feature" href={`/${study.id}/`}>
-                                <span class="portfolio-eyebrow">
-                                    {label(category(study))}
-                                </span>
-                                <h3>{study.data.title}</h3>
-                                <p>
-                                    {cleanDescription(study.data.description)}
-                                </p>
-                                {(study.data.objective ||
-                                    study.data.tools?.length ||
-                                    study.data.skill ||
-                                    study.data.outcome) && (
-                                    <dl class="portfolio-feature-evidence">
-                                        {study.data.objective && (
-                                            <>
-                                                <dt>Objective</dt>
-                                                <dd>{study.data.objective}</dd>
-                                            </>
-                                        )}
-                                        {study.data.tools?.length ? (
-                                            <>
-                                                <dt>Tools</dt>
-                                                <dd>
-                                                    {study.data.tools.join(
-                                                        ", ",
-                                                    )}
-                                                </dd>
-                                            </>
-                                        ) : null}
-                                        {study.data.skill && (
-                                            <>
-                                                <dt>Skill demonstrated</dt>
-                                                <dd>{study.data.skill}</dd>
-                                            </>
-                                        )}
-                                        {study.data.outcome && (
-                                            <>
-                                                <dt>Outcome</dt>
-                                                <dd>{study.data.outcome}</dd>
-                                            </>
-                                        )}
-                                    </dl>
-                                )}
-                            </a>
-                        ))}
-                    </div>
+                    {leadStudy && (
+                        <article class="portfolio-lead">
+                            <p class="portfolio-lead-eyebrow">
+                                {label(category(leadStudy))} · latest addition
+                            </p>
+                            <h3 class="portfolio-lead-headline">
+                                <a href={`/${leadStudy.id}/`}>
+                                    {leadStudy.data.title}
+                                </a>
+                            </h3>
+                            <p class="portfolio-lead-dek">
+                                {cleanDescription(leadStudy.data.description)}
+                            </p>
+                            {leadMeta && (
+                                <p class="portfolio-lead-meta">{leadMeta}</p>
+                            )}
+                        </article>
+                    )}
                 </section>
 
                 <section
@@ -1089,38 +1051,72 @@ const searchableText = (study: (typeof studies)[number]) =>
         <script is:inline>
             (() => {
                 const root = document.documentElement;
-                const toggle = document.querySelector(
-                    "#portfolio-theme-toggle",
+                const group = document.querySelector("#portfolio-theme");
+                if (!group) return;
+                const options = [
+                    ...group.querySelectorAll("[data-theme-value]"),
+                ];
+                const media = window.matchMedia(
+                    "(prefers-color-scheme: dark)",
                 );
-                if (!toggle) return;
-                const systemLight = window.matchMedia(
-                    "(prefers-color-scheme: light)",
-                );
-                const sync = (theme) => {
+                const readStored = () => {
+                    try {
+                        return localStorage.getItem("starlight-theme");
+                    } catch {
+                        return null;
+                    }
+                };
+                const isExplicit = (value) =>
+                    value === "light" || value === "dark";
+                // Auto follows the OS; explicit wins.
+                const resolved = (value) =>
+                    isExplicit(value)
+                        ? value
+                        : media.matches
+                          ? "dark"
+                          : "light";
+                const sync = (stored) => {
+                    const theme = resolved(stored);
                     root.dataset.theme = theme;
-                    toggle.setAttribute(
-                        "aria-pressed",
-                        String(theme === "dark"),
+                    root.style.colorScheme = theme;
+                    const active = isExplicit(stored) ? stored : "auto";
+                    options.forEach((option) =>
+                        option.setAttribute(
+                            "aria-pressed",
+                            String(option.dataset.themeValue === active),
+                        ),
                     );
                 };
-                sync(root.dataset.theme === "dark" ? "dark" : "light");
-                toggle.addEventListener("click", () => {
-                    const next =
-                        root.dataset.theme === "dark" ? "light" : "dark";
-                    sync(next);
+                // Only listens while no explicit preference is stored.
+                const onSystemChange = () => {
+                    if (!isExplicit(readStored())) sync(readStored());
+                };
+                const setPreference = (value) => {
                     try {
-                        localStorage.setItem("starlight-theme", next);
+                        if (value === "auto") {
+                            localStorage.removeItem("starlight-theme");
+                        } else {
+                            localStorage.setItem("starlight-theme", value);
+                        }
                     } catch {}
-                });
-                // Follow the system only while no explicit preference is stored (mirrors Starlight "auto").
-                systemLight.addEventListener("change", (event) => {
-                    let stored = null;
-                    try {
-                        stored = localStorage.getItem("starlight-theme");
-                    } catch {}
-                    if (stored !== "light" && stored !== "dark")
-                        sync(event.matches ? "light" : "dark");
-                });
+                    const stored = readStored();
+                    if (isExplicit(stored)) {
+                        media.removeEventListener("change", onSystemChange);
+                    } else {
+                        media.addEventListener("change", onSystemChange);
+                    }
+                    sync(stored);
+                };
+                options.forEach((option) =>
+                    option.addEventListener("click", () =>
+                        setPreference(option.dataset.themeValue),
+                    ),
+                );
+                const stored = readStored();
+                if (!isExplicit(stored)) {
+                    media.addEventListener("change", onSystemChange);
+                }
+                sync(stored);
             })();
         </script>
     </body>
