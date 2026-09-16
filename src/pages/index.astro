@@ -40,7 +40,7 @@ const latest = studies
             (b.data.addedAt ?? "").localeCompare(a.data.addedAt ?? "") ||
             a.id.localeCompare(b.id),
     )
-    .slice(0, 6);
+    .slice(0, 3);
 const label = (kind: string) =>
     kind === "dfir"
         ? "DFIR / Sherlock"
@@ -302,7 +302,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                 margin-bottom: 0.2rem;
                 color: var(--muted);
             }
-            /* Focus cards form a balanced 2×2 on desktop; the six latest features use three columns. */
+            /* Focus cards form a balanced 2×2 on desktop; the three latest features use three columns. */
             .portfolio-category-grid {
                 display: grid;
                 grid-template-columns: repeat(2, 1fr);
@@ -745,7 +745,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                     <div class="portfolio-section-heading">
                         <h2 id="portfolio-latest-title">Latest additions</h2>
                         <p>
-                            The six most recently added case studies, by
+                            The three most recently added case studies, by
                             portfolio-addition date.
                         </p>
                     </div>
