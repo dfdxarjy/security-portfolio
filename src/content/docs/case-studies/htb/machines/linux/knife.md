@@ -18,7 +18,7 @@ tools:
   - netcat
   - sudo
   - knife
-skill: "Supply-chain backdoor exploitation and NOPASSWD sudo abuse"
+skill: "PHP 8.1.0-dev backdoor exploitation and NOPASSWD sudo abuse"
 outcome: "Unauthenticated remote code execution as the web user, then a root shell via knife exec"
 ---
 
