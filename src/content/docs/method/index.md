@@ -43,3 +43,7 @@ Each case study cites the same line:
 > Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved.
 
 Where a case study departs from this handling, it calls that out on the page itself.
+
+## Disclaimer
+
+Case studies are published only after a machine has retired from the active rotation on Hack The Box, in accordance with the platform's terms of service. All material on this site is shared for educational purposes only.
