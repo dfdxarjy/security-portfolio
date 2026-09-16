@@ -42,6 +42,8 @@ export const collections = {
 				platform: z.string().optional(),
 				status: z.string().optional(),
 				content_type: z.string().optional(),
+				// Optional concise browser/search title; falls back to `title` when absent.
+				seoTitle: z.string().optional(),
 				tags: z.array(z.string()).optional(),
 				objective: z.string().optional(),
 				tools: z.array(z.string()).optional(),
