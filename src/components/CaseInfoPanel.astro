@@ -1,0 +1,201 @@
+---
+// Case-page info rail: frontmatter metadata plus up to three related case
+// studies from the same category. Rendered by the TableOfContents override on
+// wide viewports and by the MobileTableOfContents override on narrow ones, so
+// the related list stays reachable at every width.
+//
+// Starlight renders overrides with no props; page data comes from
+// `Astro.locals.starlightRoute` (see Head.astro for the same pattern).
+import { getCollection } from 'astro:content';
+
+const { entry } = Astro.locals.starlightRoute;
+const data = entry.data as {
+	difficulty?: string;
+	tools?: string[];
+	skill?: string;
+	tags?: string[];
+	publishedAt?: string;
+	updatedAt?: string;
+	addedAt?: string;
+	evidenceQuality?: string;
+};
+
+const tools = (data.tools ?? []).filter((tool) => tool.trim());
+const tags = (data.tags ?? []).filter((tag) => tag.trim());
+const published = data.publishedAt ?? data.addedAt;
+const updated = data.updatedAt;
+// Starlight's footer already prints "Last updated" from the git commit when it
+// has one; reuse that label only then, otherwise call the field "Updated".
+const starlightShowsUpdated = Boolean(Astro.locals.starlightRoute.lastUpdated);
+
+// Known portfolio categories, keyed by the case's parent directory.
+const CATEGORY_LABELS: [string, string][] = [
+	['machines/windows', 'Windows'],
+	['machines/linux', 'Linux'],
+	['sherlocks/dfir', 'DFIR'],
+];
+const categoryKey = (id: string) => id.split('/').slice(0, -1).join('/');
+const currentKey = categoryKey(entry.id);
+const categoryLabel =
+	CATEGORY_LABELS.find(([suffix]) => currentKey.endsWith(suffix))?.[1] ??
+	(currentKey.split('/').at(-1) ?? 'Case').replace(/(^|[- ])\w/g, (c) => c.toUpperCase());
+
+const EVIDENCE_LABELS: Record<string, string> = {
+	'original-artifacts': 'Original artifacts',
+	'partial-artifacts': 'Partial artifacts',
+	'reconstructed-from-notes': 'Reconstructed from notes',
+};
+
+// Same-category cases, newest first, id as tiebreak, current page excluded.
+const related = (await getCollection('docs'))
+	.filter(
+		(item) =>
+			item.data.type === 'case-study' &&
+			item.id !== entry.id &&
+			categoryKey(item.id) === currentKey,
+	)
+	.sort((a, b) => {
+		const aDate = a.data.addedAt ?? '';
+		const bDate = b.data.addedAt ?? '';
+		return aDate === bDate ? a.id.localeCompare(b.id) : bDate.localeCompare(aDate);
+	})
+	.slice(0, 3);
+---
+
+<aside class="case-info" aria-label="Case information">
+	<dl class="case-info__meta">
+		<dt>Category</dt>
+		<dd>{categoryLabel}</dd>
+		{
+			data.difficulty && (
+				<>
+					<dt>Difficulty</dt>
+					<dd>{data.difficulty}</dd>
+				</>
+			)
+		}
+		{
+			tools.length > 0 && (
+				<>
+					<dt>Tools</dt>
+					<dd>{tools.join(', ')}</dd>
+				</>
+			)
+		}
+		{
+			data.skill && (
+				<>
+					<dt>Skill</dt>
+					<dd>{data.skill}</dd>
+				</>
+			)
+		}
+		{
+			tags.length > 0 && (
+				<>
+					<dt>Tags</dt>
+					<dd>{tags.join(', ')}</dd>
+				</>
+			)
+		}
+		{
+			published && (
+				<>
+					<dt>Published</dt>
+					<dd>{published}</dd>
+				</>
+			)
+		}
+		{
+			updated && (
+				<>
+					<dt>{starlightShowsUpdated ? 'Last updated' : 'Updated'}</dt>
+					<dd>{updated}</dd>
+				</>
+			)
+		}
+		{
+			data.evidenceQuality && (
+				<>
+					<dt>Evidence</dt>
+					<dd>{EVIDENCE_LABELS[data.evidenceQuality] ?? data.evidenceQuality}</dd>
+				</>
+			)
+		}
+	</dl>
+
+	{
+		related.length > 0 && (
+			<nav class="case-info__related" aria-label="Related cases">
+				<h2 class="case-info__title">Related cases</h2>
+				<ul class="case-info__list">
+					{related.map((item) => (
+						<li>
+							<a href={`/${item.id}/`}>{item.data.title}</a>
+						</li>
+					))}
+				</ul>
+			</nav>
+		)
+	}
+</aside>
+
+<style>
+	.case-info {
+		display: flex;
+		flex-direction: column;
+		gap: 1.25rem;
+		font-family: var(--font-mono);
+		text-align: left;
+	}
+	.case-info__meta {
+		display: grid;
+		grid-template-columns: auto 1fr;
+		gap: 0.35rem 1rem;
+		margin: 0;
+		font-size: 0.75rem;
+	}
+	.case-info__meta dt {
+		color: var(--portfolio-accent);
+		font-size: 0.68rem;
+		font-weight: 700;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+	}
+	.case-info__meta dd {
+		margin: 0;
+		color: var(--portfolio-muted);
+		overflow-wrap: anywhere;
+	}
+	.case-info__related {
+		border-top: 1px solid var(--portfolio-line);
+		padding-top: 0.9rem;
+	}
+	.case-info__title {
+		margin: 0 0 0.5rem;
+		color: var(--portfolio-muted);
+		font-family: var(--font-mono);
+		font-size: 0.68rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+	.case-info__list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		font-size: 0.78rem;
+	}
+	.case-info__list a {
+		color: var(--portfolio-ink);
+		text-decoration: none;
+	}
+	.case-info__list a:hover,
+	.case-info__list a:focus-visible {
+		color: var(--portfolio-accent);
+		text-decoration: underline;
+	}
+</style>

@@ -41,11 +41,18 @@ export default defineConfig({
 			],
 			components: {
 				// Supported Starlight override: swaps only the doc-page footer.
-				// Header, sidebar, search, and theme picker stay default.
+				// Header, search, and theme picker stay default.
 				Footer: './src/components/SiteFooter.astro',
 				PageTitle: './src/components/PageTitle.astro',
 				// Appends JSON-LD (Article + BreadcrumbList) to Starlight's head.
 				Head: './src/components/Head.astro',
+				// Case-file shell: these four only change case-study pages, and
+				// render Starlight's default component everywhere else.
+				Sidebar: './src/components/Sidebar.astro',
+				TableOfContents: './src/components/TableOfContents.astro',
+				// Keeps the info/related rail reachable where the right column hides.
+				MobileTableOfContents: './src/components/MobileTableOfContents.astro',
+				Pagination: './src/components/Pagination.astro',
 			},
 			sidebar: [
 				{ label: 'All Work', link: '/#explorer' },

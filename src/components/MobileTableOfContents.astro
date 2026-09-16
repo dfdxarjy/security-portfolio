@@ -1,0 +1,76 @@
+---
+// MobileTableOfContents override. Starlight hides the desktop info column below
+// 72rem and swaps in this mobile table of contents, which would otherwise hide
+// the case info/related rail at narrow widths. On case pages a collapsible
+// "Case info" bar takes its place (same position and height), keeping the
+// metadata and related links reachable. Every other page keeps the default.
+import DefaultMobileTableOfContents from '@astrojs/starlight/components/MobileTableOfContents.astro';
+import CaseInfoPanel from './CaseInfoPanel.astro';
+
+const { entry } = Astro.locals.starlightRoute;
+const isCaseStudy = (entry.data as { type?: string }).type === 'case-study';
+---
+
+{
+	isCaseStudy ? (
+		<div class="case-mobile">
+			<details>
+				<summary>
+					<span class="case-mobile__label">Case info</span>
+					<span aria-hidden="true" class="case-mobile__caret">
+						▾
+					</span>
+				</summary>
+				<div class="case-mobile__panel">
+					<CaseInfoPanel />
+				</div>
+			</details>
+		</div>
+	) : (
+		<DefaultMobileTableOfContents />
+	)
+}
+
+<style>
+	@media (max-width: 71.999rem) {
+		.case-mobile {
+			position: fixed;
+			z-index: var(--sl-z-index-toc);
+			top: calc(var(--sl-nav-height) - 1px);
+			inset-inline: 0;
+			border-top: 1px solid var(--portfolio-line);
+			background-color: var(--sl-color-bg-nav);
+		}
+		@media (min-width: 50rem) {
+			.case-mobile {
+				inset-inline-start: var(--sl-content-inline-start, 0);
+			}
+		}
+		summary {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 0.5rem;
+			height: var(--sl-mobile-toc-height);
+			border-bottom: 1px solid var(--portfolio-line);
+			padding: 0.5rem 1rem;
+			font-family: var(--font-mono);
+			font-size: var(--sl-text-xs);
+			color: var(--portfolio-muted);
+			cursor: pointer;
+			list-style: none;
+		}
+		summary::-webkit-details-marker {
+			display: none;
+		}
+		details[open] .case-mobile__caret {
+			transform: rotate(180deg);
+		}
+		.case-mobile__panel {
+			max-height: calc(85vh - var(--sl-nav-height) - var(--sl-mobile-toc-height));
+			overflow-y: auto;
+			border-bottom: 1px solid var(--portfolio-line);
+			padding: 1rem;
+		}
+	}
+</style>

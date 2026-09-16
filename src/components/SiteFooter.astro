@@ -1,13 +1,19 @@
 ---
 // Doc-page footer override. Keeps Starlight's default page meta/pagination and
 // appends the shared branded footer so docs and homepage share one identity.
+// Case pages drop the "edit this page" link (docs chrome the case-file shell
+// deliberately omits); every other page keeps it.
 import EditLink from '@astrojs/starlight/components/EditLink.astro';
 import LastUpdated from '@astrojs/starlight/components/LastUpdated.astro';
-import Pagination from '@astrojs/starlight/components/Pagination.astro';
+// Local override: renders Starlight's pagination everywhere except case pages.
+import Pagination from './Pagination.astro';
+
+const { entry } = Astro.locals.starlightRoute;
+const isCaseStudy = (entry.data as { type?: string }).type === 'case-study';
 ---
 
 <div class="portfolio-doc-meta">
-  <EditLink />
+  {!isCaseStudy && <EditLink />}
   <LastUpdated />
 </div>
 <Pagination />

@@ -232,12 +232,10 @@ const searchableText = (study: (typeof studies)[number]) =>
             :global(html[data-theme="dark"]) {
                 color-scheme: dark;
             }
+            /* Single-column editorial hero: kicker, H1, lede, CTA. More air
+               below than above. */
             .portfolio-hero {
-                display: grid;
-                grid-template-columns: minmax(0, 1.25fr) minmax(15rem, 0.75fr);
-                gap: 3rem;
-                align-items: end;
-                padding: 3rem 0 4rem;
+                padding: 2.5rem 0 5rem;
             }
             .portfolio-kicker {
                 color: var(--accent);
@@ -260,7 +258,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                 letter-spacing: -0.07em;
             }
             .portfolio-lede {
-                max-width: 39rem;
+                max-width: var(--portfolio-copy);
                 color: var(--muted);
                 font-size: 1.15rem;
             }
@@ -290,6 +288,15 @@ const searchableText = (study: (typeof studies)[number]) =>
             }
             .portfolio-section {
                 padding: 3rem 0;
+            }
+            /* Deliberate, non-uniform rhythm; values stay on the type scale.
+               Focus is the tightest; the lead case gets more air above than
+               below so its hairline pair reads as one unit. */
+            .portfolio-section--focus {
+                padding: 1.5rem 0 2rem;
+            }
+            .portfolio-section--lead {
+                padding: 5rem 0 2.5rem;
             }
             .portfolio-section-heading {
                 display: flex;
@@ -388,6 +395,8 @@ const searchableText = (study: (typeof studies)[number]) =>
                 text-transform: uppercase;
             }
             .portfolio-explorer {
+                /* Clear break from the lead section; tighter trailing space. */
+                padding: 4rem 0 3rem;
                 border-top: 1px solid var(--line);
             }
             .portfolio-explorer-subtitle {
@@ -545,10 +554,6 @@ const searchableText = (study: (typeof studies)[number]) =>
                 text-align: center;
             }
             @media (max-width: 48rem) {
-                .portfolio-hero {
-                    grid-template-columns: 1fr;
-                    gap: 2rem;
-                }
                 .portfolio-category-grid,
                 .portfolio-study-grid {
                     grid-template-columns: 1fr;
@@ -701,7 +706,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                 </section>
 
                 <section
-                    class="portfolio-section"
+                    class="portfolio-section portfolio-section--focus"
                     aria-labelledby="portfolio-categories-title"
                 >
                     <div class="portfolio-section-heading">
@@ -745,7 +750,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                 </section>
 
                 <section
-                    class="portfolio-section"
+                    class="portfolio-section portfolio-section--lead"
                     aria-labelledby="portfolio-latest-title"
                 >
                     <div class="portfolio-section-heading">

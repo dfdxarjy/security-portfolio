@@ -1,0 +1,11 @@
+---
+// Pagination override: the related-cases list in the case info panel replaces
+// prev/next on case-study pages, so nothing renders there. Every other page
+// renders Starlight's default pagination unchanged.
+import DefaultPagination from '@astrojs/starlight/components/Pagination.astro';
+
+const { entry } = Astro.locals.starlightRoute;
+const isCaseStudy = (entry.data as { type?: string }).type === 'case-study';
+---
+
+{!isCaseStudy && <DefaultPagination />}
