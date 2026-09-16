@@ -17,6 +17,7 @@ tools:
   - nmap
   - curl
   - ssh
+  - unzip
   - scp
   - keepass_dump.py
   - kpcli
