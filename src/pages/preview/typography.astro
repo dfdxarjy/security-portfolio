@@ -1,0 +1,151 @@
+---
+// VI4 — preview-only typography route (AGENTS.md §12.3).
+//
+// Renders a real case study in the current treatment and in one proposed
+// change: Source Serif 4 headings with a neutral system sans body. It is not
+// linked from the navigation or the homepage, and it changes nothing on the
+// real pages. Astro's sitemap integration has no filter configured here, so
+// this route does appear in sitemap-0.xml — reported, not silently fixed.
+//
+// The single property under test is the BODY text face. Headings stay
+// Source Serif 4 (`--font-display`), code and metadata stay IBM Plex Mono
+// (`--font-mono`), and no webfont is added: the sans here is a system stack
+// stand-in for the self-hosted face that would be chosen later.
+import { getEntry, render } from "astro:content";
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+
+const entry = await getEntry(
+	"docs",
+	"case-studies/htb/machines/linux/helix",
+);
+if (!entry) {
+	throw new Error(
+		"preview/typography: case study 'helix' not found in the docs collection.",
+	);
+}
+const { Content } = await render(entry);
+---
+
+<StarlightPage
+	frontmatter={{
+		title: "Preview — sans body, serif headings (VI4)",
+		description:
+			"Preview-only route for judging one typography change: Source Serif 4 headings with a neutral system sans body, shown on the real Helix case study.",
+	}}
+>
+	<p class="vi4-banner" role="note">
+		<strong>Preview route — not part of the published site.</strong> It
+		tests one property only: the body text face.
+	</p>
+
+	<h2>What this preview is for</h2>
+	<p>
+		The site currently sets body copy in Source Serif 4, with IBM Plex Mono
+		for metadata. This route shows the same case study with the body copy in
+		a neutral system sans, to judge the direction before anything real is
+		changed.
+	</p>
+	<ul>
+		<li>
+			<strong>Under test:</strong> the body face only — serif headings
+			with a sans body.
+		</li>
+		<li>
+			<strong>Unchanged:</strong> headings (Source Serif 4), code and
+			metadata (IBM Plex Mono), palette, spacing, layout and font sizes.
+		</li>
+		<li>
+			<strong>Caveat:</strong> the sans below is a plain system stack
+			(<code>system-ui</code> and friends). It is a stand-in; the final
+			face would be a self-hosted sans chosen later. Judge the
+			<i>direction</i>, not this exact typeface.
+		</li>
+	</ul>
+
+	<h2>Side by side: current vs proposed</h2>
+	<p>
+		The same representative passage from the Helix case study, in the
+		current treatment and in the proposed one.
+	</p>
+	<div class="vi4-compare">
+		<section class="vi4-panel vi4-serif" aria-labelledby="vi4-current">
+			<h3 id="vi4-current">Current — Source Serif 4 body</h3>
+			<p>
+				Helix is a Medium-rated Hack The Box Linux lab in which an
+				unauthenticated Apache NiFi instance on a virtual host is abused
+				through CVE-2023-34468 — an H2-backed <code>DBCPConnectionPool</code>
+				driving an <code>ExecuteSQL</code> processor — to gain command
+				execution as the NiFi service account.
+			</p>
+			<pre><code>rustscan -a &lt;TARGET_IP&gt; --ulimit 5000 -- -Pn -sC -sV -oN &lt;OUT_FILE&gt;</code></pre>
+		</section>
+		<section class="vi4-panel vi4-sans" aria-labelledby="vi4-proposed">
+			<h3 id="vi4-proposed">Proposed — system sans body</h3>
+			<p>
+				Helix is a Medium-rated Hack The Box Linux lab in which an
+				unauthenticated Apache NiFi instance on a virtual host is abused
+				through CVE-2023-34468 — an H2-backed <code>DBCPConnectionPool</code>
+				driving an <code>ExecuteSQL</code> processor — to gain command
+				execution as the NiFi service account.
+			</p>
+			<pre><code>rustscan -a &lt;TARGET_IP&gt; --ulimit 5000 -- -Pn -sC -sV -oN &lt;OUT_FILE&gt;</code></pre>
+		</section>
+	</div>
+
+	<h2>Full case study in the proposed treatment</h2>
+	<p>
+		The real <i>Helix</i> case study, rendered with the sans body: dense
+		prose, a command block, tables and the full heading hierarchy.
+	</p>
+	<div class="vi4-sans vi4-full">
+		<Content />
+	</div>
+</StarlightPage>
+
+<style is:global>
+	/* Proposed body face: neutral system sans, no webfont. Headings and code
+	   keep their existing explicit faces from portfolio.css, so only inherited
+	   body copy changes. */
+	.vi4-sans {
+		font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica,
+			Arial, sans-serif;
+	}
+	.vi4-serif {
+		font-family: var(--font-body);
+	}
+	.vi4-banner {
+		margin: 0 0 1.5rem;
+		border: 1px solid var(--portfolio-accent);
+		border-radius: var(--portfolio-radius);
+		padding: 0.75rem 1rem;
+		background: var(--portfolio-accent-soft);
+		color: var(--portfolio-accent-strong);
+	}
+	.vi4-compare {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1rem;
+	}
+	.vi4-panel {
+		border: 1px solid var(--portfolio-line);
+		border-radius: var(--portfolio-radius);
+		padding: 1rem 1.25rem;
+		background: var(--portfolio-surface-raised);
+	}
+	.vi4-panel h3 {
+		margin-top: 0;
+	}
+	.vi4-panel pre {
+		overflow-x: auto;
+	}
+	.vi4-full {
+		border-top: 1px solid var(--portfolio-line);
+		margin-top: 2rem;
+		padding-top: 1rem;
+	}
+	@media (max-width: 48rem) {
+		.vi4-compare {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>
