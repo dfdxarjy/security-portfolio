@@ -44,6 +44,8 @@ export default defineConfig({
 				// Header, sidebar, search, and theme picker stay default.
 				Footer: './src/components/SiteFooter.astro',
 				PageTitle: './src/components/PageTitle.astro',
+				// Appends JSON-LD (Article + BreadcrumbList) to Starlight's head.
+				Head: './src/components/Head.astro',
 			},
 			sidebar: [
 				{ label: 'All Work', link: '/#explorer' },
@@ -52,25 +54,14 @@ export default defineConfig({
 					label: 'Offensive Security',
 					collapsed: true,
 					items: [
-						{
-							label: 'Windows',
-							items: [{ autogenerate: { directory: 'case-studies/htb/machines/windows' } }],
-						},
-						{
-							label: 'Linux',
-							items: [{ autogenerate: { directory: 'case-studies/htb/machines/linux' } }],
-						},
+						{ label: 'Windows', link: '/case-studies/htb/machines/windows/' },
+						{ label: 'Linux', link: '/case-studies/htb/machines/linux/' },
 					],
 				},
 				{
 					label: 'Investigations',
 					collapsed: true,
-					items: [
-						{
-							label: 'DFIR',
-							items: [{ autogenerate: { directory: 'case-studies/htb/sherlocks/dfir' } }],
-						},
-					],
+					items: [{ label: 'DFIR', link: '/case-studies/htb/sherlocks/dfir/' }],
 				},
 			],
 		}),

@@ -12,6 +12,7 @@
     "start": "astro dev",
     "build": "astro build",
     "check:meta": "node scripts/check-metadata.mjs",
+    "check:content": "node scripts/check-content.mjs",
     "preview": "astro preview",
     "astro": "astro"
   },

@@ -31,6 +31,17 @@ function attr(tag, name) {
 	return match[2] ?? match[3] ?? match[4];
 }
 
+/**
+ * A dist-relative path is a case-study leaf page (not an index/library page).
+ * Astro emits every page as a directory with an index.html, so leaf vs index
+ * is decided by the source shape: case studies live under dist/case-studies/,
+ * with the one library index at dist/case-studies/index.html.
+ */
+function isCaseStudyPage(rel) {
+	const normalized = rel.split('\\').join('/');
+	return normalized.startsWith('dist/case-studies/') && normalized !== 'dist/case-studies/index.html';
+}
+
 /** Resolve a URL pathname to a generated file under dist/, if any. */
 function resolveDistFile(pathname) {
 	const trimmed = pathname.replace(/\/+$/, '');
@@ -50,8 +61,10 @@ if (!existsSync(distDir)) {
 
 const htmlFiles = walk(distDir, (name) => name.endsWith('.html')).sort();
 const problems = [];
+const warnings = [];
 const titles = new Map();
 const canonicals = new Map();
+const descriptionsByContent = new Map();
 
 for (const file of htmlFiles) {
 	const rel = relative(root, file);
@@ -118,6 +131,12 @@ for (const file of htmlFiles) {
 		problems.push(`${rel}: expected exactly one non-empty <meta name="description">, found ${nonEmptyDescriptions.length} (${descriptions.length} tag(s) total)`);
 	}
 
+	if (nonEmptyDescriptions.length === 1) {
+		const content = (attr(nonEmptyDescriptions[0], 'content') ?? '').trim();
+		if (!descriptionsByContent.has(content)) descriptionsByContent.set(content, []);
+		descriptionsByContent.get(content).push({ rel, caseStudy: isCaseStudyPage(rel) });
+	}
+
 	const h1s = matches(html, /<h1\b[^>]*>([\s\S]*?)<\/h1>/gi);
 	if (h1s.length !== 1) {
 		problems.push(`${rel}: expected exactly one <h1>, found ${h1s.length}`);
@@ -135,6 +154,18 @@ for (const [title, files] of titles) {
 }
 for (const [href, files] of canonicals) {
 	if (files.length > 1) problems.push(`duplicate canonical URL across pages: ${href} in ${files.join(', ')}`);
+}
+
+// Duplicate meta descriptions: identical summaries are a defect on case-study
+// pages, where each investigation should describe itself. Index, training and
+// other pages may legitimately repeat a short description, so they only warn.
+for (const [content, entries] of descriptionsByContent) {
+	if (entries.length < 2) continue;
+	const files = entries.map((entry) => entry.rel);
+	const allCaseStudies = entries.every((entry) => entry.caseStudy);
+	const detail = `duplicate <meta name="description"> across pages: "${content}" in ${files.join(', ')}`;
+	if (allCaseStudies) problems.push(`[case-study failure] ${detail}`);
+	else warnings.push(`[warning] ${detail}`);
 }
 
 // --- Sitemap cross-check -----------------------------------------------------
@@ -171,10 +202,16 @@ if (!existsSync(sitemapPath)) {
 	}
 }
 
+if (warnings.length > 0) {
+	console.warn(`check-metadata: ${warnings.length} non-fatal description warning(s):`);
+	for (const warning of warnings) console.warn(`  - ${warning}`);
+}
+
 if (problems.length > 0) {
 	console.error(`check-metadata: ${problems.length} problem(s) found in ${htmlFiles.length} HTML file(s):`);
 	for (const problem of problems) console.error(`  - ${problem}`);
 	process.exit(1);
 }
 
-console.log(`check-metadata: OK — ${htmlFiles.length} HTML file(s) and the sitemap passed.`);
+const warningNote = warnings.length > 0 ? ` (${warnings.length} non-fatal description warning(s))` : '';
+console.log(`check-metadata: OK — ${htmlFiles.length} HTML file(s) and the sitemap passed${warningNote}.`);

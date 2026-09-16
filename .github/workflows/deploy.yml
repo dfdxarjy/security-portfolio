@@ -44,6 +44,10 @@ jobs:
       - name: Check metadata
         run: pnpm run check:meta
 
+      - name: Check content regularity
+        run: pnpm run check:content
+        continue-on-error: true
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:

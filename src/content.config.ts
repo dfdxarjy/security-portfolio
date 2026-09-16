@@ -6,6 +6,20 @@ import { z } from 'astro/zod';
 
 const baseDocsLoader = docsLoader();
 
+// Shared ISO date validation for frontmatter dates. All fields are optional:
+// existing content carries none of them and must keep building unchanged.
+const isoDate = (field: string) =>
+	z
+		.string()
+		.regex(/^\d{4}-\d{2}-\d{2}$/, `${field} must be ISO YYYY-MM-DD`)
+		.refine((value) => {
+			const [year, month, day] = value.split('-').map(Number);
+			const date = new Date(Date.UTC(year, month - 1, day));
+			return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+		}, `${field} must be a valid calendar date`)
+		.refine((value) => value <= new Date().toISOString().slice(0, 10), `${field} cannot be in the future`)
+		.optional();
+
 // Starlight validates frontmatter only, so its schema never sees the source
 // path. Surface the entry path (attached before validation) to the schema below
 // so it can check that a machine's OS directory agrees with its `tags`.
@@ -36,15 +50,36 @@ export const collections = {
 				// Injected by `docsLoaderWithPath`; not authored in frontmatter.
 				_filePath: z.string().optional(),
 				// Immutable portfolio-addition date (not completion or last-edit).
-				addedAt: z
-					.string()
-					.regex(/^\d{4}-\d{2}-\d{2}$/, 'addedAt must be ISO YYYY-MM-DD')
-					.refine((value) => {
-						const [year, month, day] = value.split('-').map(Number);
-						const date = new Date(Date.UTC(year, month - 1, day));
-						return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
-					}, 'addedAt must be a valid calendar date')
-					.refine((value) => value <= new Date().toISOString().slice(0, 10), 'addedAt cannot be in the future')
+				addedAt: isoDate('addedAt'),
+				// Optional provenance metadata. All fields are opt-in; no content file
+				// sets them yet, so the schema stays backward compatible.
+				author: z.string().optional(),
+				publishedAt: isoDate('publishedAt'),
+				updatedAt: isoDate('updatedAt'),
+				evidenceQuality: z
+					.enum(['original-artifacts', 'partial-artifacts', 'reconstructed-from-notes'])
+					.optional(),
+				aiAssistance: z.enum(['none', 'copy-editing', 'research-assist', 'other']).optional(),
+				featured: z.boolean().default(false),
+				featuredOrder: z.number().optional(),
+				featuredReason: z.string().optional(),
+				// Hero image asset; every subfield is optional.
+				heroEvidence: z
+					.object({
+						path: z.string().optional(),
+						alt: z.string().optional(),
+						caption: z.string().optional(),
+					})
+					.optional(),
+				// External sources; every subfield is optional.
+				references: z
+					.array(
+						z.object({
+							title: z.string().optional(),
+							url: z.string().optional(),
+							publisher: z.string().optional(),
+						}),
+					)
 					.optional(),
 			}).superRefine((data, ctx) => {
 				if (data.type === undefined && data.content_type === undefined) return;

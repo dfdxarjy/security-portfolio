@@ -86,6 +86,18 @@ const searchableText = (study: (typeof studies)[number]) =>
         <meta property="og:image:height" content="630" />
         <meta name="twitter:card" content="summary_large_image" />
         <title>{title}</title>
+        {/* This page is not a Starlight route, so the Head override cannot reach it;
+            the WebSite node is emitted here instead. */}
+        <script
+            type="application/ld+json"
+            set:html={JSON.stringify({
+                "@context": "https://schema.org",
+                "@type": "WebSite",
+                name: "taktak.hu",
+                url: "https://taktak.hu/",
+                description,
+            })}
+        />
         {/* Match Starlight's theme contract: shared `starlight-theme` key, set before paint. */}
         <script is:inline>
             (() => {
@@ -117,6 +129,15 @@ const searchableText = (study: (typeof studies)[number]) =>
                 --card: var(--portfolio-surface-raised);
                 --accent: var(--portfolio-accent);
                 --soft: var(--portfolio-accent-soft);
+                /* Interactive control boundary: `--line` (#d7dee8 / #26364d) is a
+                   decorative hairline at ~1.35:1, below the 3:1 WCAG 1.4.11
+                   minimum for UI component boundaries. This darker tint keeps
+                   the blue hue while reaching >=3:1 on both the page surface
+                   and the raised card. Decorative hairlines keep `--line`. */
+                --control-line: #7b8699;
+            }
+            :global(html[data-theme="dark"]) {
+                --control-line: #62748c;
             }
             *,
             *::before,
@@ -170,7 +191,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                 display: inline-flex;
                 align-items: center;
                 gap: 0.4rem;
-                border: 1px solid var(--line);
+                border: 1px solid var(--control-line);
                 border-radius: var(--portfolio-radius);
                 padding: 0.35rem 0.7rem;
                 background: var(--card);
@@ -394,7 +415,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                 padding: 0;
             }
             .portfolio-filter {
-                border: 1px solid var(--line);
+                border: 1px solid var(--control-line);
                 border-radius: var(--portfolio-radius);
                 padding: 0.55rem 0.85rem;
                 background: var(--card);
@@ -412,7 +433,7 @@ const searchableText = (study: (typeof studies)[number]) =>
             .portfolio-search {
                 min-width: min(100%, 16rem);
                 flex: 1 1 16rem;
-                border: 1px solid var(--line);
+                border: 1px solid var(--control-line);
                 border-radius: var(--portfolio-radius);
                 padding: 0.65rem 0.8rem;
                 background: var(--card);
@@ -425,7 +446,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                 font-size: 0.9rem;
             }
             .portfolio-sort {
-                border: 1px solid var(--line);
+                border: 1px solid var(--control-line);
                 border-radius: var(--portfolio-radius);
                 padding: 0.6rem 0.7rem;
                 background: var(--card);
@@ -436,6 +457,21 @@ const searchableText = (study: (typeof studies)[number]) =>
                 display: grid;
                 grid-template-columns: repeat(3, 1fr);
                 gap: 1rem;
+            }
+            /* No fixed card widths; `min-width: 0` stops a long unbreakable title
+               or tag from widening a grid track (and overflowing) at 320px. */
+            .portfolio-category,
+            .portfolio-feature,
+            .portfolio-study {
+                min-width: 0;
+            }
+            .portfolio-category h3,
+            .portfolio-feature h3,
+            .portfolio-study h3,
+            .portfolio-study p,
+            .portfolio-feature-evidence dd,
+            .portfolio-tag {
+                overflow-wrap: anywhere;
             }
             .portfolio-study {
                 display: flex;
@@ -556,6 +592,40 @@ const searchableText = (study: (typeof studies)[number]) =>
                 outline: 3px solid var(--accent);
                 outline-offset: 2px;
             }
+            /* Forced-colours: keep control boundaries, pressed state and focus
+               visible using system colours (background colours are overridden). */
+            @media (forced-colors: active) {
+                .portfolio-theme-toggle,
+                .portfolio-filter,
+                .portfolio-search,
+                .portfolio-sort,
+                .portfolio-load-more,
+                .portfolio-skip-link {
+                    border-color: ButtonBorder;
+                }
+                .portfolio-filter[aria-pressed="true"] {
+                    border-color: Highlight;
+                    outline: 1px solid Highlight;
+                    background: Highlight;
+                    color: HighlightText;
+                }
+                .portfolio-theme-toggle:focus-visible,
+                .portfolio-filter:focus-visible,
+                .portfolio-search:focus-visible,
+                .portfolio-sort:focus-visible,
+                .portfolio-load-more:focus-visible,
+                .portfolio-skip-link:focus,
+                .portfolio-study h3 a:focus-visible {
+                    outline-color: Highlight;
+                }
+                .portfolio-explorer,
+                .portfolio-feature-evidence {
+                    border-top-color: ButtonText;
+                }
+                .portfolio-study {
+                    border-color: ButtonText;
+                }
+            }
         </style>
     </head>
     <body>
@@ -641,8 +711,13 @@ const searchableText = (study: (typeof studies)[number]) =>
                     aria-labelledby="portfolio-categories-title"
                 >
                     <div class="portfolio-section-heading">
-                        <h2 id="portfolio-categories-title">Browse by focus</h2>
-                        <p>Choose an analytical lens.</p>
+                        <h2 id="portfolio-categories-title">
+                            Pick the kind of problem
+                        </h2>
+                        <p>
+                            AD escalation, Linux footholds, or incident
+                            reconstruction.
+                        </p>
                     </div>
                     <div class="portfolio-category-grid">
                         {(["linux", "windows", "dfir"] as const).map((kind) => (
@@ -680,7 +755,9 @@ const searchableText = (study: (typeof studies)[number]) =>
                     aria-labelledby="portfolio-latest-title"
                 >
                     <div class="portfolio-section-heading">
-                        <h2 id="portfolio-latest-title">Start here</h2>
+                        <h2 id="portfolio-latest-title">
+                            Three cases that show how I work
+                        </h2>
                         <p>
                             Three case studies worth starting with; the explorer
                             below lists every published study.
@@ -768,7 +845,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                             class="portfolio-search"
                             id="portfolio-search"
                             type="search"
-                            placeholder="Title, tag, category, or keyword"
+                            placeholder="Try AD CS, Docker, Kerberos, or event logs"
                         />
                         <label
                             class="portfolio-sort-label"
@@ -813,7 +890,11 @@ const searchableText = (study: (typeof studies)[number]) =>
                             )}
                         </ul>
                     </div>
-                    <div class="portfolio-study-grid" id="portfolio-study-grid">
+                    <div
+                        class="portfolio-study-grid"
+                        id="portfolio-study-grid"
+                        tabindex="-1"
+                    >
                         {studies.map((study, index) => {
                             const kind = category(study);
                             return (
@@ -863,7 +944,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                             aria-controls="portfolio-study-grid"
                             hidden
                         >
-                            Load more case studies
+                            Show 12 more cases
                         </button>
                     </div>
                     {/* No-JS fallback: paging and the button are JS-only, so reveal every card. */}
@@ -882,8 +963,8 @@ const searchableText = (study: (typeof studies)[number]) =>
                         id="portfolio-empty"
                         role="status"
                     >
-                        No studies match filters. Try another focus or search
-                        term.
+                        Nothing matches that combination. Clear a focus filter
+                        or search for a tool, protocol, CVE, or technique.
                     </p>
                 </section>
             </main>
@@ -970,7 +1051,13 @@ const searchableText = (study: (typeof studies)[number]) =>
                 });
                 resultCount.textContent = matched.length;
                 empty.style.display = matched.length ? "none" : "block";
-                loadMore.hidden = !(browsing && matched.length > shown);
+                const hideLoadMore = !(browsing && matched.length > shown);
+                // Hiding the button that was just activated would drop focus to
+                // <body>; move it to the grid so the user stays in the explorer.
+                if (hideLoadMore && document.activeElement === loadMore) {
+                    grid.focus();
+                }
+                loadMore.hidden = hideLoadMore;
             };
 
             buttons.forEach((button) =>
