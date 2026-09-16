@@ -112,6 +112,13 @@ function headingList(text) {
 	);
 }
 
+/** Top-level `##` headings only, ignoring any `###` subheadings. */
+function topHeadingList(text) {
+	return [...text.matchAll(/^##\s+(.+?)\s*$/gm)].map((m) =>
+		m[1].replace(/[*_`]/g, '').replace(/^\d+[.)]\s*/, '').trim(),
+	);
+}
+
 function openingPattern(paragraph) {
 	const label = paragraph.match(/^([A-Za-z][A-Za-z -]{2,24}):/);
 	if (label) return `${label[1].trim().toLowerCase()}:`;
@@ -145,6 +152,7 @@ const records = files.map((file) => {
 		paragraphs: paragraphs(prose),
 		headings: headingListRaw,
 		headingKey: [...new Set(headingListRaw.map((h) => h.toLowerCase()))].sort().join('\n'),
+		topHeadingKey: [...new Set(topHeadingList(body).map((h) => h.toLowerCase()))].sort().join('\n'),
 	};
 });
 
@@ -286,6 +294,37 @@ log(`groups of files sharing an identical heading set: ${sharedHeadings.length}`
 for (const group of sharedHeadings.slice(0, 15)) {
 	log(`  ${group.files.length} file(s): [${group.headings.join(' | ')}]`);
 	log(`      ${group.files.join(', ')}`);
+}
+
+// --- 5b. Top-level heading duplication (## only) ------------------------------
+//
+// Section 5 combines `##` and `###`, so unique numbered subheadings mask the
+// shared top-level template. This block groups by `##` headings alone to make
+// that universal structure visible.
+
+const topHeadingGroups = new Map();
+for (const record of records) {
+	if (!record.topHeadingKey) continue;
+	if (!topHeadingGroups.has(record.topHeadingKey)) topHeadingGroups.set(record.topHeadingKey, []);
+	topHeadingGroups.get(record.topHeadingKey).push(record.path);
+}
+const topHeadingSets = [...topHeadingGroups.entries()]
+	.map(([key, filesInGroup]) => ({ headings: key.split('\n'), files: filesInGroup.sort() }))
+	.sort((x, y) => y.files.length - x.files.length || x.headings.join().localeCompare(y.headings.join()));
+
+title('5b. Heading duplication (top-level ## only, ### ignored)');
+log(`distinct top-level ## heading groups: ${topHeadingSets.length}`);
+for (const group of topHeadingSets) {
+	log(`  ${group.files.length} file(s): [${group.headings.join(' | ')}]`);
+	log(`      ${group.files.join(', ')}`);
+}
+const withTopHeadings = records.filter((record) => record.topHeadingKey).length;
+const [largestTopGroup] = topHeadingSets;
+if (largestTopGroup && largestTopGroup.files.length === withTopHeadings && withTopHeadings > 0) {
+	log(`** all ${withTopHeadings} analysed file(s) that declare top-level ## headings share ONE identical set — the top-level template is universal, not absent. **`);
+	if (withTopHeadings < records.length) {
+		log(`   (${records.length - withTopHeadings} analysed file(s) declare no ## headings and are excluded above.)`);
+	}
 }
 
 // --- 6. Abstract vocabulary ---------------------------------------------------
