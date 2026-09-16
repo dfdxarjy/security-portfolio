@@ -38,7 +38,7 @@ outcome: "Unauthenticated SSRF to internal Maltrail command injection for a user
 
 ## From SSRF to Maltrail injection and pager escape
 
-Sau is an Easy-rated Hack The Box Linux lab built on vulnerability chaining: an SSRF in request-baskets 1.2.1 (CVE-2023-27163) reaches a firewall-filtered internal Maltrail v0.53 service, whose login endpoint is vulnerable to unauthenticated OS command injection, yielding a shell as `puma`. A passwordless `sudo` rule for `systemctl status trail.service` is then escalated through the `less` pager (CVE-2023-26604) to root. Target and attacker addresses, basket names, and payload values are replaced with role-based placeholders; command patterns are preserved.
+Sau is an Easy-rated Hack The Box Linux lab built on vulnerability chaining: an SSRF in request-baskets 1.2.1 (CVE-2023-27163) reaches a firewall-filtered internal Maltrail v0.53 service, whose login endpoint is vulnerable to unauthenticated OS command injection, yielding a shell as `puma`. A passwordless `sudo` rule for `systemctl status trail.service` is then escalated through the `less` pager (CVE-2023-26604) to root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **request-baskets SSRF (CVE-2023-27163) → internal Maltrail v0.53 login command injection → `puma` shell → `sudo systemctl status` `less` pager escape (CVE-2023-26604) → root**
 

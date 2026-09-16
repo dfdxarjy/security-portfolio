@@ -40,7 +40,7 @@ outcome: "Interactive WinRM session in the built-in Administrator context after 
 
 ## Misconfigured ACLs to Kerberoasting and DCSync
 
-Administrator is a Medium-rated Hack The Box Active Directory lab whose compromise is driven entirely by misconfigured object-level permissions rather than a software vulnerability. Starting from a provided low-privileged domain credential, directory collection exposes ACL edges that chain Kerberoasting, a forced password reset, an FTP-hosted Password Safe vault, a WinRM foothold, a second Kerberoasting hop, and finally DCSync replication with pass-the-hash to administrative control. Credential and hash values, target addresses, and domain identifiers are replaced with role-based placeholders; command syntax is preserved.
+Administrator is a Medium-rated Hack The Box Active Directory lab whose compromise is driven entirely by misconfigured object-level permissions rather than a software vulnerability. Starting from a provided low-privileged domain credential, directory collection exposes ACL edges that chain Kerberoasting, a forced password reset, an FTP-hosted Password Safe vault, a WinRM foothold, a second Kerberoasting hop, and finally DCSync replication with pass-the-hash to administrative control. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **BloodHound ACL mapping → SPN write and Kerberoasting → forced password reset → FTP-hosted Password Safe cracking → WinRM foothold → second Kerberoasting → DCSync replication → pass-the-hash Administrator**
 

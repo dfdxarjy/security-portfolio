@@ -35,7 +35,7 @@ outcome: "Offline PSK recovery, authenticated SSH access, and root command execu
 
 Expressway is a Medium-rated Hack The Box Linux lab whose only meaningful initial attack surface is an IPsec/IKE VPN service configured with PSK authentication and Aggressive Mode. Enumerating the VPN yields the handshake material needed to capture the PSK hash, which is cracked offline and reused to authenticate over SSH. Post-access enumeration reveals a custom-compiled `sudo` binary and readable Squid proxy logs; a hostname exposed in those logs selects a permissive sudoers rule through the `sudo -h` host option and grants root.
 
-Target addresses, the VPN identity, the recovered secret, and result files are replaced with role-based placeholders; command syntax is preserved.
+Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **IKE Aggressive Mode enumeration → PSK hash capture and offline cracking → SSH access → Squid log hostname discovery → `sudo -h` hostname policy bypass → root**
 

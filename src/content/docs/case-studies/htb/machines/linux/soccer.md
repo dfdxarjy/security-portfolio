@@ -39,7 +39,7 @@ outcome: "Web-service code execution, an SSH credential recovered through WebSoc
 
 ## Default file manager to dstat root
 
-Soccer is an Easy-rated Hack The Box Linux lab that chains an exposed file manager, an executable upload directory, a WebSocket SQL injection flaw, and a delegated privilege rule into root. Default credentials open Tiny File Manager, the upload directory runs PHP, local nginx configuration reveals a second application virtual host, and its ticket-checking WebSocket is injectable and discloses an SSH credential; a `doas` rule then permits `dstat`, whose Python plugin loading yields root. Target and attacker addresses, virtual hosts, account names, credentials, and the reverse-shell payload are replaced with role-based placeholders; command syntax is preserved.
+Soccer is an Easy-rated Hack The Box Linux lab that chains an exposed file manager, an executable upload directory, a WebSocket SQL injection flaw, and a delegated privilege rule into root. Default credentials open Tiny File Manager, the upload directory runs PHP, local nginx configuration reveals a second application virtual host, and its ticket-checking WebSocket is injectable and discloses an SSH credential; a `doas` rule then permits `dstat`, whose Python plugin loading yields root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Tiny File Manager default access → upload-directory PHP execution → web-service shell → local nginx configuration → secondary virtual host → WebSocket ticket-check SQL injection → database credential recovery → SSH as lab user → delegated `doas` rule for `dstat` → Python plugin execution → root**
 

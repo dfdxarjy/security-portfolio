@@ -34,7 +34,7 @@ outcome: "User-level shell via the ThemeBleed theme upload, then SYSTEM command 
 
 ## ThemeBleed upload and CLFS escalation
 
-Aero is a Medium-rated Hack The Box Windows machine built around two public vulnerabilities. Initial access abuses CVE-2023-38146 (ThemeBleed) by uploading a malicious Windows theme that causes the host to load an attacker-controlled DLL, returning a shell as `<LAB_USER>`. Privilege escalation then applies CVE-2023-28252, a Windows Common Log File System (CLFS) driver flaw, to reach `NT AUTHORITY\SYSTEM`. Target and operator addresses, accounts, and the exploit payload are replaced with role-based placeholders; command syntax is preserved.
+Aero is a Medium-rated Hack The Box Windows machine built around two public vulnerabilities. Initial access abuses CVE-2023-38146 (ThemeBleed) by uploading a malicious Windows theme that causes the host to load an attacker-controlled DLL, returning a shell as `<LAB_USER>`. Privilege escalation then applies CVE-2023-28252, a Windows Common Log File System (CLFS) driver flaw, to reach `NT AUTHORITY\SYSTEM`. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Malicious theme upload → ThemeBleed DLL load → shell as `<LAB_USER>` → local enumeration → CLFS driver abuse → `NT AUTHORITY\SYSTEM`**
 

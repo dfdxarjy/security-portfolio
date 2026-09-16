@@ -37,7 +37,7 @@ outcome: "Unauthenticated code execution as the XWiki service user, SSH access a
 
 ## XWiki SolrSearch RCE to PATH hijack
 
-Editor is a Medium-rated Hack The Box Linux lab hosting XWiki behind an nginx virtual host. Enumeration exposes the wiki vhost running XWiki Debian 15.10.8, vulnerable to CVE-2025-24893 — unauthenticated Groovy code execution through the `SolrSearch` endpoint. The foothold exposes XWiki database credentials that a local account reuses for SSH, and privilege escalation abuses a SUID Netdata `ndsudo` helper whose `PATH`-based dependency resolution permits binary hijacking to obtain root. Credential values, host and address identifiers, and callback details are replaced with role-based placeholders; command syntax is preserved.
+Editor is a Medium-rated Hack The Box Linux lab hosting XWiki behind an nginx virtual host. Enumeration exposes the wiki vhost running XWiki Debian 15.10.8, vulnerable to CVE-2025-24893 — unauthenticated Groovy code execution through the `SolrSearch` endpoint. The foothold exposes XWiki database credentials that a local account reuses for SSH, and privilege escalation abuses a SUID Netdata `ndsudo` helper whose `PATH`-based dependency resolution permits binary hijacking to obtain root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **unauthenticated XWiki `SolrSearch` RCE (CVE-2025-24893) → `hibernate.cfg.xml` database credential recovery → SSH access via credential reuse → SUID Netdata `ndsudo` `PATH` hijack → root**
 

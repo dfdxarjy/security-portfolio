@@ -37,7 +37,7 @@ outcome: "SSH user access via a cracked ZoneMinder credential hash, followed by 
 
 ## Blind SQL injection to motionEye root
 
-CCTV is an Easy-rated Hack The Box Linux lab built around IP-camera management software. A blind SQL injection in ZoneMinder's `tid` parameter recovers credential hashes from the `Users` table; one cracks offline to an SSH login. From that context an internal motionEye instance, running as root and bound to the loopback interface, accepts a filename configuration value that is validated only in client-side JavaScript, and processing that value yields root command execution. Target addresses, hostnames, account names, session data, credential hashes, flags, and payload specifics are replaced with role-based placeholders; command syntax is preserved.
+CCTV is an Easy-rated Hack The Box Linux lab built around IP-camera management software. A blind SQL injection in ZoneMinder's `tid` parameter recovers credential hashes from the `Users` table; one cracks offline to an SSH login. From that context an internal motionEye instance, running as root and bound to the loopback interface, accepts a filename configuration value that is validated only in client-side JavaScript, and processing that value yields root command execution. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **ZoneMinder blind SQL injection (`tid`) → credential hash recovery → offline crack → SSH user access → loopback motionEye service → client-side validation bypass → filename command injection → root**
 

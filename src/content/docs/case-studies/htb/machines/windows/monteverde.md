@@ -38,7 +38,7 @@ outcome: "Domain administrator credentials decrypted from the local ADSync datab
 
 Monteverde is a Medium-rated Hack The Box Windows machine whose domain controller accepts guest SMB sessions. Null-session SMB enumeration lists the domain accounts, and spraying each username as its own password recovers a service-account credential. That account can read the `users$` share, where a PowerShell CliXml file stores a domain user's password; the credential is validated over SMB and then opens a WinRM foothold. From that shell, Microsoft Azure AD Sync is found installed on the controller, and the local ADSync SQL database together with the Azure AD Connect cryptography library yields the stored connector-account password — the built-in domain `Administrator` in this deployment — confirmed by a privileged WinRM session.
 
-Target addresses, hostnames, and credential values are replaced with role-based placeholders, and command syntax is preserved. Where a step is described narratively without a captured console excerpt, it is summarized rather than quoted.
+Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/). Where a step is described narratively without a captured console excerpt, it is summarized rather than quoted.
 
 **Attack path:** **Guest SMB null session → domain user enumeration → password spray → `users$` share → CliXml credential for a domain user → WinRM foothold → ADSync database query → Azure AD Connect credential decryption → domain administrator WinRM access**
 

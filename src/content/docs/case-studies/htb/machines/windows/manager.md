@@ -37,7 +37,7 @@ outcome: "Standard-user WinRM foothold and Administrator NT-hash recovery via ES
 
 ## RID spray to AD CS ESC7
 
-Manager is a Medium-rated Hack The Box Active Directory lab. RID brute forcing enumerates domain users and a username-as-password spray recovers one account; MSSQL access as that account exposes an old website backup holding a second credential; and the second account holds `ManageCA` rights over the Enterprise CA, enabling the AD CS ESC7 chain — officer assignment, template enablement, failed-request issuance, certificate retrieval, and NT-hash recovery for domain compromise. Passwords, hashes, addresses, and domain/host/CA identifiers are replaced with role-based placeholders; command and technique syntax is preserved.
+Manager is a Medium-rated Hack The Box Active Directory lab. RID brute forcing enumerates domain users and a username-as-password spray recovers one account; MSSQL access as that account exposes an old website backup holding a second credential; and the second account holds `ManageCA` rights over the Enterprise CA, enabling the AD CS ESC7 chain — officer assignment, template enablement, failed-request issuance, certificate retrieval, and NT-hash recovery for domain compromise. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **RID brute forcing → username-as-password spray → MSSQL backup discovery → WinRM foothold → BloodHound rights collection → AD CS ESC7 (officer assignment → template enablement → failed-request issuance → certificate retrieval) → NT-hash recovery → pass-the-hash Administrator**
 

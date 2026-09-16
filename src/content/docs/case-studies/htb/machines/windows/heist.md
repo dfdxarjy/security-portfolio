@@ -36,7 +36,7 @@ outcome: "WinRM command execution as local Administrator after recovering the pa
 
 ## From a guest portal to browser memory
 
-Heist is a retired Easy Hack The Box Windows machine that reaches administrative control without a privilege-escalation exploit: a guest-accessible support portal leaks a Cisco router configuration, and the recovered credentials carry the chain through SMB, WinRM, and browser process memory. Target addresses, hostnames, accounts, and credential values are replaced with role-based placeholders; command syntax and technique order are preserved.
+Heist is a retired Easy Hack The Box Windows machine that reaches administrative control without a privilege-escalation exploit: a guest-accessible support portal leaks a Cisco router configuration, and the recovered credentials carry the chain through SMB, WinRM, and browser process memory. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Guest support portal → leaked Cisco configuration → decoded type 7 and cracked type 5 credentials → SMB access as `<LOW_PRIVILEGE_USER>` → RID brute force → password spray → WinRM as `<WINRM_USER>` → Firefox process dump → Administrator credential from browser memory → WinRM as Administrator**
 

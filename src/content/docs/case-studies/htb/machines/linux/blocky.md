@@ -34,7 +34,7 @@ outcome: "SSH access as the WordPress service account and root command execution
 
 ## From a browsable plugin to unrestricted sudo
 
-Blocky is an Easy Hack The Box Linux lab themed around a Minecraft server. Web content discovery exposes a non-standard `/plugins` directory holding Java plugin archives; decompiling the custom plugin reveals hardcoded database credentials, and those credentials authenticate to an exposed phpMyAdmin instance, disclosing the WordPress user account. The same password is reused for SSH, and the account holds an unrestricted `sudo` policy. Target addresses, hostnames, and credential values are replaced with role-based placeholders; command syntax is preserved.
+Blocky is an Easy Hack The Box Linux lab themed around a Minecraft server. Web content discovery exposes a non-standard `/plugins` directory holding Java plugin archives; decompiling the custom plugin reveals hardcoded database credentials, and those credentials authenticate to an exposed phpMyAdmin instance, disclosing the WordPress user account. The same password is reused for SSH, and the account holds an unrestricted `sudo` policy. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Exposed `/plugins` directory → decompiled `BlockyCore.jar` → hardcoded database credentials → phpMyAdmin account discovery → SSH through credential reuse → unrestricted `sudo` → root**
 

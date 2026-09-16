@@ -41,7 +41,7 @@ outcome: "Telnet user access and Administrator command execution via cached runa
 
 ## Credential sprawl across legacy services
 
-Access is an Easy-rated Hack The Box Windows lab that reaches full administrative compromise without exploiting a single CVE by chaining misconfigured legacy services and stored credentials. Anonymous FTP exposes a Microsoft Access database and an encrypted ZIP archive; the database holds the archive password, the archive contains a mailbox that discloses Telnet credentials, and a cached `runas /savecred` credential turns a low-privileged shell into Administrator execution. Credential values, target and attacker addresses, and download locations are replaced with role-based placeholders; command syntax is preserved.
+Access is an Easy-rated Hack The Box Windows lab that reaches full administrative compromise without exploiting a single CVE by chaining misconfigured legacy services and stored credentials. Anonymous FTP exposes a Microsoft Access database and an encrypted ZIP archive; the database holds the archive password, the archive contains a mailbox that discloses Telnet credentials, and a cached `runas /savecred` credential turns a low-privileged shell into Administrator execution. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Anonymous FTP → database credential recovery → encrypted archive → mailbox credential disclosure → Telnet access → cached `runas /savecred` abuse → Administrator**
 

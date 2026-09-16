@@ -37,7 +37,7 @@ outcome: "Command execution as `www-data` through upload evasion and a root cont
 
 ## From SQL injection to SUID PATH hijack
 
-Magic is a Medium-rated Hack The Box Linux lab whose PHP portfolio application exposes a SQL injection flaw in its login page, an upload panel that validates files by magic bytes, and a SUID binary that invokes system commands through `PATH`. Chaining these flaws turns unauthenticated web access into a root shell, without any software exploit beyond the injection and the local misconfiguration. Target, attacker, account, and secret values are replaced with role-based placeholders; command syntax is preserved.
+Magic is a Medium-rated Hack The Box Linux lab whose PHP portfolio application exposes a SQL injection flaw in its login page, an upload panel that validates files by magic bytes, and a SUID binary that invokes system commands through `PATH`. Chaining these flaws turns unauthenticated web access into a root shell, without any software exploit beyond the injection and the local misconfiguration. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **SQL injection login bypass → admin upload panel → PNG magic-byte upload evasion → `www-data` reverse shell → plaintext database credentials → Chisel-tunneled MySQL → admin credential recovery → password reuse for `<LAB_USER>` → SUID `/bin/sysinfo` PATH hijack → root**
 

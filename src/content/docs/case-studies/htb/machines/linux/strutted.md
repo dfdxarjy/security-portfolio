@@ -39,7 +39,7 @@ outcome: "Command execution as the Tomcat service account, SSH access for a dist
 
 ## Struts upload traversal to tcpdump root
 
-Strutted is a Medium-rated Hack The Box Linux lab built around a Java Apache Struts application served behind nginx. A downloadable source archive discloses the framework version and a legacy upload interceptor, which points to the file-upload path traversal tracked as CVE-2024-53677; the exploit lands as the Tomcat service account. A credential left in the application server's configuration authenticates over SSH for a distinct user, and an unrestricted `tcpdump` sudo rule reaches root through the binary's post-rotate hook. Target and attacker identifiers, accounts, and credentials are replaced with role-based placeholders; command syntax is preserved.
+Strutted is a Medium-rated Hack The Box Linux lab built around a Java Apache Struts application served behind nginx. A downloadable source archive discloses the framework version and a legacy upload interceptor, which points to the file-upload path traversal tracked as CVE-2024-53677; the exploit lands as the Tomcat service account. A credential left in the application server's configuration authenticates over SSH for a distinct user, and an unrestricted `tcpdump` sudo rule reaches root through the binary's post-rotate hook. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Exposed application archive → legacy `FileUploadInterceptor` upload → CVE-2024-53677 upload path traversal → Tomcat service-account shell → reused application credential over SSH → passwordless `tcpdump` post-rotate hook → root**
 

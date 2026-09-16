@@ -43,7 +43,7 @@ outcome: "Administrator NTLM hash recovery through ESC7 certificate abuse, after
 
 ## From a repository leak to ESC7 abuse
 
-Fries is a Medium-rated Hack The Box Windows Active Directory lab with a dual-OS layout: a Linux host runs SSH, nginx, and containerized services behind the same address that fronts a Windows domain controller. Starting from a provided Gitea login, the path combines a repository credential leak, a container compromise, and an AD CS misconfiguration to reach domain-wide administrative control. All target, operator, domain, account, and secret values are replaced with role-based placeholders; command syntax is preserved.
+Fries is a Medium-rated Hack The Box Windows Active Directory lab with a dual-OS layout: a Linux host runs SSH, nginx, and containerized services behind the same address that fronts a Windows domain controller. Starting from a provided Gitea login, the path combines a repository credential leak, a container compromise, and an AD CS misconfiguration to reach domain-wide administrative control. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** `Provided Gitea credentials → repository-history database credential leak → pgAdmin 4 CVE-2025-2945 container RCE → environment-variable credential reuse over SSH → NFS export via Chisel → Docker TLS certificates → Docker daemon control → PWM LDAPS redirect and credential capture → gMSA hash retrieval → ESC7 certificate abuse → Administrator`
 

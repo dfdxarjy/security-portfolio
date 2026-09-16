@@ -40,7 +40,7 @@ outcome: "Web-service shell via a `proc_open` payload, application-user access v
 
 ## Exposed git to SUID interpreter root
 
-UpDown is a Medium-rated Hack The Box Linux lab built around a website availability checker. The path opens with an exposed Git directory that leaks the development source and its weak header-based access control, continues through a `.phar` upload that bypasses an extension blocklist and races the checker's delayed cleanup, and finishes with a SUID Python 2 `input()` helper and an over-broad `easy_install` sudo rule. Domains, paths, headers, ports, and account names are replaced with role-based placeholders; command syntax and technique are preserved.
+UpDown is a Medium-rated Hack The Box Linux lab built around a website availability checker. The path opens with an exposed Git directory that leaks the development source and its weak header-based access control, continues through a `.phar` upload that bypasses an extension blocklist and races the checker's delayed cleanup, and finishes with a SUID Python 2 `input()` helper and an over-broad `easy_install` sudo rule. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Exposed `.git` metadata → header-gated development vhost → `.phar` upload blocklist bypass → delayed-cleanup race → `proc_open` web-service shell → SUID Python 2 `input()` → application-user access → `NOPASSWD` `easy_install` sudo → root**
 

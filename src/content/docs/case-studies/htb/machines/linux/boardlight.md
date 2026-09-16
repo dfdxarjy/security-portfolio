@@ -33,7 +33,7 @@ outcome: "Code execution as the web service user and root through the Enlightenm
 
 ## Dolibarr default login to SUID root
 
-BoardLight is an Easy-rated Hack The Box Linux machine (Ubuntu 20.04) built around a layered application-and-credential chain. Virtual-host enumeration against an otherwise unremarkable Apache site exposes Dolibarr 17.0.0 behind a default administrative login; an authenticated remote code execution flaw (CVE-2023-30253) yields a web service shell; database credentials read from the application configuration are reused for a local system account over SSH; and a setuid helper shipped with Enlightenment 0.23.1 (CVE-2022-37706) escalates to root. Hostnames, addresses, and credential values are replaced with role-based placeholders; command syntax is preserved.
+BoardLight is an Easy-rated Hack The Box Linux machine (Ubuntu 20.04) built around a layered application-and-credential chain. Virtual-host enumeration against an otherwise unremarkable Apache site exposes Dolibarr 17.0.0 behind a default administrative login; an authenticated remote code execution flaw (CVE-2023-30253) yields a web service shell; database credentials read from the application configuration are reused for a local system account over SSH; and a setuid helper shipped with Enlightenment 0.23.1 (CVE-2022-37706) escalates to root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Unauthenticated enumeration → Dolibarr virtual host → default-credential CRM access → CVE-2023-30253 authenticated RCE → configuration-file database credential → password reuse for SSH → CVE-2022-37706 Enlightenment SUID abuse → root**
 
