@@ -8,7 +8,7 @@ status: published-ready
 addedAt: "2026-09-14"
 tags:
   - linux
-  - web-enumeration
+  - web
   - privilege-escalation
 objective: "Move from an unauthenticated web foothold to root by abusing an exposed development web shell, a permissive sudo delegation, and a script that root executes on a schedule."
 tools:

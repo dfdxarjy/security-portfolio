@@ -12,7 +12,7 @@ tags:
   - cve-2024-53677
   - path-traversal
   - file-upload
-  - sudo-abuse
+  - sudo
   - tcpdump
 objective: "Move from an exposed application archive and a legacy Struts upload flaw to root through a service-account foothold, a stored credential, and an over-broad sudo rule."
 tools:

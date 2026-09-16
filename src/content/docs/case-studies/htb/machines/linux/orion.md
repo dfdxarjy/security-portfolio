@@ -11,7 +11,7 @@ tags:
   - web
   - cms
   - credential-access
-  - privesc
+  - privilege-escalation
 objective: "Escalate from a pre-authentication CMS exploit to root through credential recovery and a legacy local-service authentication bypass."
 tools:
   - rustscan

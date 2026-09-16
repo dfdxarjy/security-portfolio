@@ -10,7 +10,7 @@ tags:
   - linux
   - web
   - default-credentials
-  - privesc
+  - privilege-escalation
   - cve
 objective: "Escalate from an exposed Dolibarr CRM to root by chaining authenticated RCE, a reused database secret, and a vulnerable setuid helper."
 tools:

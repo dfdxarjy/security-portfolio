@@ -8,7 +8,7 @@ status: published-ready
 addedAt: "2026-09-14"
 tags:
   - linux
-  - web-enumeration
+  - web
   - credential-management
   - sudo
 objective: "Move from an exposed Java plugin's hardcoded database credentials to SSH access through credential reuse, then escalate through an unrestricted sudo policy."

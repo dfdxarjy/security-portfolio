@@ -11,7 +11,7 @@ tags:
   - web
   - xwiki
   - cve
-  - path-hijack
+  - path-hijacking
 objective: "Obtain user and root control of an Ubuntu lab host through a vulnerable XWiki instance, cross-service credential reuse, and a SUID monitoring helper that trusts the caller's PATH."
 tools:
   - rustscan

@@ -9,7 +9,7 @@ addedAt: "2026-09-14"
 tags:
   - windows
   - active-directory
-  - web-security
+  - web
 objective: "Escalate from the exposed Gibbon LMS web application to domain-level privileges through application and Active Directory misconfiguration."
 tools:
   - rustscan

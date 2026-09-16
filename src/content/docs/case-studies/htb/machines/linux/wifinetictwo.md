@@ -9,7 +9,7 @@ addedAt: "2026-09-14"
 tags:
   - linux
   - ics
-  - wireless
+  - wifi
   - wps
   - openplc
 objective: "Move from a default-credential OpenPLC runtime to container root, then pivot across the wireless segment with WPS credential recovery to the adjacent router."

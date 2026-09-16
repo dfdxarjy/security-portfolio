@@ -8,7 +8,7 @@ status: published-ready
 addedAt: "2026-09-14"
 tags:
   - linux
-  - web-security
+  - web
   - websocket
   - sql-injection
   - privilege-escalation

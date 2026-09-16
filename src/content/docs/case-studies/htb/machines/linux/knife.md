@@ -9,7 +9,7 @@ addedAt: "2026-09-14"
 tags:
   - linux
   - supply-chain
-  - sudo-abuse
+  - sudo
   - php
 objective: "Gain unauthenticated code execution through a backdoored PHP build and escalate to root through a NOPASSWD sudo rule."
 tools:

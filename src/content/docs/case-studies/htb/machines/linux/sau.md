@@ -12,7 +12,7 @@ tags:
   - command-injection
   - request-baskets
   - maltrail
-  - sudo-abuse
+  - sudo
   - pager-escape
   - cve-2023-27163
   - cve-2023-26604
