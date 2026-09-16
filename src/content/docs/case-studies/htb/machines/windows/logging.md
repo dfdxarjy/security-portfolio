@@ -16,19 +16,19 @@ tags:
 objective: "Chain a leaked service credential, Shadow Credentials, a DLL hijack, AD CS abuse, and a rogue WSUS server into administrative access on the domain controller."
 tools:
   - rustscan
-  - nxc
+  - NetExec
   - rusthound-ce
   - pywhisker
-  - gettgtpkinit.py
-  - getnthash.py
+  - gettgtpkinit
+  - getnthash
   - evil-winrm
   - msfvenom
   - zip
   - rubeus
-  - certipy
+  - Certipy
   - openssl
-  - dnstool.py
-  - nc
+  - dnstool
+  - netcat
 skill: "Active Directory attack-path analysis across credentials, PKI, and update infrastructure"
 outcome: "Administrative WinRM access after the managed service account is added to local Administrators"
 ---

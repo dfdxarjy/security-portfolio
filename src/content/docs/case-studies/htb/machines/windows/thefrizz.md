@@ -18,7 +18,7 @@ tools:
   - python3
   - mysql
   - hashcat
-  - netexec
+  - NetExec
   - 7z
   - ssh
 skill: "Web application RCE and Active Directory credential and privilege-path analysis"

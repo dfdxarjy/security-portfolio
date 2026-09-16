@@ -14,11 +14,11 @@ tags:
 objective: "Escalate from a guest-readable NETLOGON logon script to domain administrator control by abusing an over-permissive ACL and unconstrained delegation."
 tools:
   - rustscan
-  - netexec
+  - NetExec
   - rusthound-ce
-  - bloodyad
+  - bloodyAD
   - hashcat
-  - impacket
+  - Impacket
   - krbrelayx
   - petitpotam
   - evil-winrm

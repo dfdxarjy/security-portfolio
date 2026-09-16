@@ -17,15 +17,15 @@ tags:
 objective: "Chain hardcoded MSSQL credentials, ADIDNS poisoning, and a WCF SOAP injection to SYSTEM-level access"
 tools:
   - rustscan
-  - nxc
+  - NetExec
   - ILSpy
   - impacket-mssqlclient
-  - dnstool.py
+  - dnstool
   - Responder
   - Ligolo-ng
   - evil-winrm
   - curl
-  - nc
+  - netcat
 skill: "ADIDNS poisoning, linked-server credential capture, and SOAP command injection"
 outcome: "SYSTEM-level command execution on the domain controller"
 ---

@@ -1,5 +1,6 @@
 ---
 title: "Networked — Web Shell Upload, Filename Command Injection, and sudo Network-Script Abuse"
+seoTitle: "Networked — Web Shell Upload, Command Injection, and sudo Abuse"
 description: "A leaked backup exposes upload source with weak MIME and extension checks, enabling a double-extension PHP web shell; command injection through filenames in a cron script and input validation gaps in a sudo network script lead to privileged access."
 type: case-study
 platform: Hack The Box

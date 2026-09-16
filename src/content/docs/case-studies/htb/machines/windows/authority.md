@@ -16,13 +16,13 @@ tags:
 objective: "Escalate from guest-accessible SMB and an open PWM portal to Domain Administrator through Ansible-vault credential recovery and AD CS ESC1 abuse"
 tools:
   - rustscan
-  - nxc
+  - NetExec
   - ansible2john
   - hashcat
   - ansible-vault
   - Responder
   - rusthound-ce
-  - certipy
+  - Certipy
   - evil-winrm
 skill: "AD CS ESC1 abuse with rogue-LDAP credential capture"
 outcome: "Certificate-authenticated Domain Administrator access through ESC1 abuse"

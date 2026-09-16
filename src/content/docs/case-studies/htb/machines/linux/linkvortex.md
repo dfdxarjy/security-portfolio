@@ -1,5 +1,6 @@
 ---
 title: "LinkVortex — Exposed Git History to Ghost CMS RCE and a Symlink-Protection Bypass"
+seoTitle: "LinkVortex — Exposed Git History to Ghost CMS RCE and Symlink Bypass"
 description: "An exposed .git directory on a development virtual host reveals a CMS password for authenticated RCE; a sudo cleanup script with a user-controlled glob and a two-hop symlink chain reads a protected file."
 type: case-study
 platform: Hack The Box

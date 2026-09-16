@@ -1,5 +1,6 @@
 ---
 title: "Usage — SQL Injection to Root via Laravel-admin Upload Bypass and 7-Zip Wildcard Abuse"
+seoTitle: "Usage — SQL Injection to Root via Laravel-admin Upload and 7-Zip Abuse"
 description: "SQL injection in a password-reset workflow and a Laravel-admin upload-validation bypass provide a foothold; reused Monit credentials enable SSH, and wildcard and @listfile handling in a sudo 7-Zip backup reach a protected root key."
 type: case-study
 platform: Hack The Box

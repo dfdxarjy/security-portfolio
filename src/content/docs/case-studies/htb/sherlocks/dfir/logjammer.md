@@ -1,5 +1,6 @@
 ---
 title: "LogJammer — Windows Event-Log Reconstruction of Interactive Access, Scheduled-Task Persistence, and Firewall Log Clearing"
+seoTitle: "LogJammer — Windows Event-Log Reconstruction and Persistence"
 description: "HTB Sherlock case study reconstructing a single-host Windows event-log timeline with Chainsaw: interactive logon, discovery-tool detection, audit-policy tampering, scheduled-task persistence, and Firewall log clearing."
 type: case-study
 platform: Hack The Box

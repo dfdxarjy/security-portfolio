@@ -21,7 +21,7 @@ tools:
   - gobuster
   - curl
   - netcat
-  - python
+  - python3
   - ssh
   - easy_install
 skill: "Chaining web-source exposure, an upload race, and unsafe privileged interpreter patterns to root"

@@ -17,7 +17,7 @@ tools:
   - nmap
   - rusthound-ce
   - bloodyAD
-  - netexec
+  - NetExec
   - hashcat
   - ftp
   - pwsafe2john

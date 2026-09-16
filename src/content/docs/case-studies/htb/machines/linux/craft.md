@@ -17,7 +17,7 @@ tools:
   - rustscan
   - gobuster
   - curl
-  - python
+  - python3
   - pymysql
   - ssh
   - vault

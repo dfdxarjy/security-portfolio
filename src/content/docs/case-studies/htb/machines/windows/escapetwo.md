@@ -14,10 +14,10 @@ tags:
   - credential-reuse
 objective: "Escalate from a low-privileged domain account to domain administrative access through credential discovery, MSSQL command execution, and AD CS template-permission abuse."
 tools:
-  - netexec
+  - NetExec
   - smbget
-  - impacket
-  - certipy
+  - Impacket
+  - Certipy
   - evil-winrm
 skill: "Active Directory escalation through credential reuse, MSSQL command execution, and AD CS certificate-template abuse"
 outcome: "Administrative certificate authentication through an ESC4-abused template, reached after shadow-credential recovery of the CA service account hash and configuration-file password reuse."

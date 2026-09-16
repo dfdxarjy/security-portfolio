@@ -14,9 +14,9 @@ tags:
 objective: "Escalate from unauthenticated LDAP enumeration to SYSTEM on a domain controller by abusing exposed credentials and DNSAdmins plugin-DLL loading."
 tools:
   - enum4linux
-  - netexec
+  - NetExec
   - evil-winrm
-  - bloodhound-ce-python
+  - BloodHound
   - msfvenom
   - impacket-smbserver
   - dnscmd

@@ -16,13 +16,13 @@ tags:
 objective: "Progress from provided low-privilege domain credentials to administrative access through credential recovery, Kerberos abuse, and offline backup analysis."
 tools:
   - nmap
-  - netexec
+  - NetExec
   - john
   - hashcat
-  - targetedkerberoast
-  - impacket
+  - targetedKerberoast
+  - Impacket
   - evil-winrm
-  - runascs
+  - RunasCs
   - ssh
 skill: "Active Directory credential recovery and post-exploitation chaining"
 outcome: "Administrative domain access after offline Active Directory backup extraction and pass-the-hash"

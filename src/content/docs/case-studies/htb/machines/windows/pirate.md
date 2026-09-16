@@ -17,12 +17,12 @@ tags:
 objective: "Chain supplied domain credentials through gMSA disclosure, an NTLM-relay pivot, and delegation abuse to administrative control of the domain controller."
 tools:
   - rustscan
-  - netexec
+  - NetExec
   - rusthound-ce
   - rdate
   - evil-winrm
-  - ligolo-ng
-  - impacket
+  - Ligolo-ng
+  - Impacket
   - coercer
   - bloodyAD
 skill: "Active Directory trust-path analysis across gMSA disclosure, NTLM relay, resource-based constrained delegation, and SPN abuse"

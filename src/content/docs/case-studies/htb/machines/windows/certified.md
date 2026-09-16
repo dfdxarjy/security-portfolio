@@ -21,7 +21,7 @@ tools:
   - pywhisker
   - gettgtpkinit
   - getnthash
-  - certipy-ad
+  - Certipy
   - evil-winrm
 skill: "Active Directory ACL abuse and AD CS certificate escalation"
 outcome: "Administrative domain-controller execution via an ESC9-issued Administrator certificate"

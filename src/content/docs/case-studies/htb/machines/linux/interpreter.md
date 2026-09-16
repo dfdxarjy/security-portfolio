@@ -1,5 +1,6 @@
 ---
 title: "Interpreter — Mirth Connect Unauthenticated RCE and Flask eval() Privilege Escalation"
+seoTitle: "Interpreter — Mirth Connect RCE and Flask eval() Privilege Escalation"
 description: "Mirth Connect XStream deserialization (CVE-2023-43208) provides an unauthenticated shell; database credentials and a PBKDF2 hash give SSH access, then a double eval() in a root-owned Flask service yields root."
 type: case-study
 platform: Hack The Box

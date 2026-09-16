@@ -14,8 +14,8 @@ objective: "Escalate from unauthenticated guest SMB access to domain Administrat
 tools:
   - rustscan
   - nmap
-  - netexec
-  - certipy
+  - NetExec
+  - Certipy
   - evil-winrm
 skill: "Active Directory exploitation via credential spray, pre-created computer accounts, and AD CS certificate abuse"
 outcome: "Domain Administrator: certificate-based impersonation of the Administrator account yields its NTLM hash and a WinRM session."

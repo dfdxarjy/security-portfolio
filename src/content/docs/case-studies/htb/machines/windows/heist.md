@@ -16,9 +16,9 @@ tools:
   - curl
   - passlib
   - john
-  - netexec
+  - NetExec
   - procdump
-  - smbserver.py
+  - impacket-smbserver
   - strings
 skill: "Credential recovery and reuse across network, SMB, and WinRM services; browser process memory analysis"
 outcome: "WinRM command execution as local Administrator after recovering the password from Firefox process memory"

@@ -18,7 +18,7 @@ tools:
   - curl
   - hashcat
   - username-anarchy
-  - Burp Intruder
+  - Burp Suite
 skill: "Containerized application exploitation and unauthenticated Docker daemon abuse"
 outcome: "Authenticated Cacti code execution as www-data inside the container and host root via a privileged container created through the unauthenticated Docker API"
 ---

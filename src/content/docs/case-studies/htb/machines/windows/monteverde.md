@@ -14,10 +14,10 @@ tags:
 objective: "Reach domain administrator access from an unauthenticated position on an Active Directory domain controller."
 tools:
   - rustscan
-  - netexec
+  - NetExec
   - evil-winrm
   - rusthound-ce
-  - winpeas
+  - WinPEAS
   - sqlcmd
   - powershell
 skill: "Active Directory enumeration and Azure AD Connect credential recovery"

@@ -14,7 +14,7 @@ objective: "Enumerate anonymously exposed domain data, validate recovered accoun
 tools:
   - nmap
   - ldapsearch
-  - netexec
+  - NetExec
   - smbclient
   - sqlite3
   - openssl

@@ -15,8 +15,8 @@ tags:
 objective: "Escalate from provided MSSQL credentials through impersonation and a misconfigured OU delegation to domain administrative control."
 tools:
   - rustscan
-  - netexec
-  - impacket
+  - NetExec
+  - Impacket
   - hashcat
   - evil-winrm
   - proxychains

@@ -17,7 +17,7 @@ tags:
 objective: "Escalate from an unauthenticated SMB share to directory-level administrative control by cracking a protected certificate archive and abusing delegated LAPS read access."
 tools:
   - nmap
-  - netexec
+  - NetExec
   - smbclient
   - 7z
   - john

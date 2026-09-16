@@ -15,12 +15,12 @@ tags:
 objective: "Escalate from anonymous SMB and MSSQL access to domain administrator by chaining NTLM coercion with AD CS ESC1 certificate abuse."
 tools:
   - nmap
-  - netexec
-  - responder
-  - impacket
+  - NetExec
+  - Responder
+  - Impacket
   - hashcat
-  - bloodhound
-  - certipy
+  - BloodHound
+  - Certipy
   - evil-winrm
 skill: "Active Directory attack-path chaining from anonymous access through AD CS abuse"
 outcome: "WinRM access as <DOMAIN_USER> and Administrator command execution via an ESC1-issued certificate and pass-the-hash"

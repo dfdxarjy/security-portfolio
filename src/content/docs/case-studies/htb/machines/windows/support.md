@@ -13,12 +13,12 @@ tags:
   - access-control
 objective: "Assess how a guest-readable utility, reversible credential obfuscation, exposed directory attributes, and delegated computer-object permissions combine into domain compromise."
 tools:
-  - netexec
+  - NetExec
   - smbclient
   - strings
   - ldapsearch
-  - bloodhound-ce-python
-  - impacket
+  - BloodHound
+  - Impacket
   - evil-winrm
   - python3
 skill: "Active Directory enumeration and Resource-Based Constrained Delegation abuse"

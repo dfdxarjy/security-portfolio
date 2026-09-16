@@ -1,5 +1,6 @@
 ---
 title: "Helix — Unauthenticated NiFi RCE, a Recovered Operator Key, and OPC UA Maintenance-Window Root"
+seoTitle: "Helix — Unauthenticated NiFi RCE and OPC UA Maintenance-Window Root"
 description: "Unauthenticated Apache NiFi command execution through CVE-2023-34468 and an H2 database driver, a recovered operator SSH key, and a cracked operations guide open an OPC UA maintenance window that grants root."
 type: case-study
 platform: Hack The Box

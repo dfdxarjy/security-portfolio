@@ -15,8 +15,8 @@ tags:
 objective: "Escalate from a misconfigured printer admin panel to local Administrator by capturing cleartext LDAP service credentials and abusing Server Operators rights."
 tools:
   - rustscan
-  - responder
-  - netexec
+  - Responder
+  - NetExec
   - evil-winrm
   - sc.exe
 skill: "Credential capture through a misconfigured appliance LDAP configuration and service-based privilege escalation"

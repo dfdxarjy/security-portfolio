@@ -22,9 +22,9 @@ tools:
   - chisel
   - openssl
   - docker
-  - responder
-  - netexec
-  - certipy
+  - Responder
+  - NetExec
+  - Certipy
   - PSPKI
   - certutil
 skill: "Multi-stage Active Directory exploitation from containerized service compromise to certificate-authority abuse"

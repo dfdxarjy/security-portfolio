@@ -13,8 +13,8 @@ tags:
 objective: "Move from guest SMB access through directory and share credential disclosures to domain administrator"
 tools:
   - rustscan
-  - netexec
-  - impacket
+  - NetExec
+  - Impacket
   - evil-winrm
 skill: "Active Directory credential discovery and abuse"
 outcome: "Pass-the-hash authentication as the domain Administrator after Backup Operators hive extraction"

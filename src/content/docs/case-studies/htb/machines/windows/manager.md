@@ -16,11 +16,11 @@ tags:
 objective: "Escalate from unauthenticated enumeration to domain compromise by recovering credentials and abusing AD CS ManageCA rights through ESC7."
 tools:
   - nmap
-  - netexec
+  - NetExec
   - impacket-mssqlclient
-  - bloodhound-ce-python
+  - BloodHound
   - evil-winrm
-  - certipy
+  - Certipy
 skill: "Active Directory enumeration and AD CS (ESC7) certificate-authority abuse"
 outcome: "Standard-user WinRM foothold and Administrator NT-hash recovery via ESC7, shown by a pass-the-hash Administrator session"
 ---

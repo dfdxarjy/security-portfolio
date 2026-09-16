@@ -1,5 +1,6 @@
 ---
 title: "NanoCorp — NTLMv2 Capture, AD Delegation Abuse, and CheckMK MSI Repair Escalation"
+seoTitle: "NanoCorp — NTLMv2 Capture and CheckMK MSI Repair Escalation"
 description: "A zip-upload SSRF captures an NTLMv2 hash, and delegation abuse plus an MSI repair flaw create a domain administrator."
 type: case-study
 platform: Hack The Box
@@ -23,7 +24,7 @@ tools:
   - hashcat
   - rusthound-ce
   - bloodyAD
-  - nxc
+  - NetExec
   - RunasCs
   - evil-winrm
 skill: "Active Directory delegation-chain analysis and MSI repair privilege escalation"

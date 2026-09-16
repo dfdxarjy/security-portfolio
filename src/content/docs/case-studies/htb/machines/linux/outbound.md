@@ -1,5 +1,6 @@
 ---
 title: "Outbound — Roundcube RCE, DES Session Decryption, and below Symlink Privilege Escalation"
+seoTitle: "Outbound — Roundcube RCE and below Symlink Privilege Escalation"
 description: "Authenticated Roundcube RCE (CVE-2025-49113) and session-table password decryption with the application DES key lead to SSH access; a symlink attack on the below utility's error log (CVE-2025-27591) yields root."
 type: case-study
 platform: Hack The Box

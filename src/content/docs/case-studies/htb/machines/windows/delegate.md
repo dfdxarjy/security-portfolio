@@ -13,12 +13,12 @@ tags:
   - delegation
 objective: "Escalate from a guest-readable NETLOGON logon script to domain administrator control by abusing an over-permissive ACL and unconstrained delegation."
 tools:
-  - netexec
+  - NetExec
   - rusthound-ce
-  - bloodhound
-  - bloodyad
+  - BloodHound
+  - bloodyAD
   - hashcat
-  - impacket
+  - Impacket
   - krbrelayx
   - petitpotam
   - evil-winrm

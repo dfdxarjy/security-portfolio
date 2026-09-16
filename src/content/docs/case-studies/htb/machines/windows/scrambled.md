@@ -16,11 +16,11 @@ objective: "Chain a weak password reset, Kerberoasting, and silver-ticket forger
 tools:
   - rustscan
   - feroxbuster
-  - netexec
+  - NetExec
   - rusthound-ce
   - hashcat
-  - impacket
-  - godpotato
+  - Impacket
+  - GodPotato
   - netcat
 skill: "Active Directory credential recovery and Kerberos ticket forgery"
 outcome: "Administrative MSSQL access via a forged silver ticket and SYSTEM-level code execution through SeImpersonate abuse"
