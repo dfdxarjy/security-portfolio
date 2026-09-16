@@ -8,7 +8,7 @@ export default defineConfig({
 	site: 'https://taktak.hu',
 	integrations: [
 		starlight({
-			title: 'Takács Bence',
+			title: 'taktak.hu',
 			customCss: ['./src/styles/portfolio.css'],
 			components: {
 				// Supported Starlight override: swaps only the doc-page footer.
