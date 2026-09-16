@@ -126,20 +126,12 @@ const searchableText = (study: (typeof studies)[number]) =>
             *::after {
                 box-sizing: border-box;
             }
-            /* Shared body colour/type come from portfolio.css. The decorative grid is
-         scoped to this homepage only so docs/article pages stay solid. */
+            /* Shared body colour/type come from portfolio.css; the homepage body is
+         a flat surface with no decorative background. */
             body {
                 margin: 0;
                 font-size: 1rem;
                 line-height: 1.6;
-                background-image:
-                    linear-gradient(var(--portfolio-grid) 1px, transparent 1px),
-                    linear-gradient(
-                        90deg,
-                        var(--portfolio-grid) 1px,
-                        transparent 1px
-                    );
-                background-size: 2.5rem 2.5rem;
             }
             a {
                 color: inherit;
@@ -182,7 +174,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                 align-items: center;
                 gap: 0.4rem;
                 border: 1px solid var(--line);
-                border-radius: 999px;
+                border-radius: var(--portfolio-radius);
                 padding: 0.35rem 0.7rem;
                 background: var(--card);
                 color: var(--ink);
@@ -257,7 +249,7 @@ const searchableText = (study: (typeof studies)[number]) =>
             .portfolio-button {
                 display: inline-block;
                 border: 1px solid var(--accent);
-                border-radius: 999px;
+                border-radius: var(--portfolio-radius);
                 padding: 0.7rem 1.1rem;
                 background: var(--accent);
                 color: white;
@@ -273,25 +265,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                 filter: brightness(1.12);
             }
             .portfolio-proof {
-                display: grid;
-                grid-template-columns: repeat(2, 1fr);
-                gap: 1px;
-                overflow: hidden;
-                border: 1px solid var(--line);
-                border-radius: 1rem;
-                background: var(--line);
-            }
-            .portfolio-proof-item {
-                padding: 1.25rem;
-                background: var(--card);
-            }
-            .portfolio-proof-number {
-                display: block;
-                font-size: 2.1rem;
-                font-weight: 750;
-                line-height: 1;
-            }
-            .portfolio-proof-label {
+                margin: 0;
                 color: var(--muted);
                 font-size: 0.82rem;
             }
@@ -329,7 +303,7 @@ const searchableText = (study: (typeof studies)[number]) =>
             .portfolio-feature,
             .portfolio-study {
                 border: 1px solid var(--line);
-                border-radius: 0.9rem;
+                border-radius: var(--portfolio-radius);
                 background: var(--card);
             }
             .portfolio-category {
@@ -429,7 +403,7 @@ const searchableText = (study: (typeof studies)[number]) =>
             }
             .portfolio-filter {
                 border: 1px solid var(--line);
-                border-radius: 999px;
+                border-radius: var(--portfolio-radius);
                 padding: 0.55rem 0.85rem;
                 background: var(--card);
                 color: var(--ink);
@@ -447,7 +421,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                 min-width: min(100%, 16rem);
                 flex: 1 1 16rem;
                 border: 1px solid var(--line);
-                border-radius: 0.5rem;
+                border-radius: var(--portfolio-radius);
                 padding: 0.65rem 0.8rem;
                 background: var(--card);
                 color: var(--ink);
@@ -460,7 +434,7 @@ const searchableText = (study: (typeof studies)[number]) =>
             }
             .portfolio-sort {
                 border: 1px solid var(--line);
-                border-radius: 0.5rem;
+                border-radius: var(--portfolio-radius);
                 padding: 0.6rem 0.7rem;
                 background: var(--card);
                 color: var(--ink);
@@ -487,7 +461,7 @@ const searchableText = (study: (typeof studies)[number]) =>
             }
             .portfolio-load-more {
                 border: 1px solid var(--accent);
-                border-radius: 999px;
+                border-radius: var(--portfolio-radius);
                 padding: 0.7rem 1.4rem;
                 background: var(--card);
                 color: var(--accent);
@@ -527,7 +501,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                 padding-top: 0.5rem;
             }
             .portfolio-tag {
-                border-radius: 0.25rem;
+                border-radius: var(--portfolio-radius);
                 background: var(--soft);
                 padding: 0.2rem 0.45rem;
                 color: var(--accent);
@@ -536,7 +510,7 @@ const searchableText = (study: (typeof studies)[number]) =>
             .portfolio-empty {
                 display: none;
                 border: 1px dashed var(--line);
-                border-radius: 0.75rem;
+                border-radius: var(--portfolio-radius);
                 padding: 2rem;
                 color: var(--muted);
                 text-align: center;
@@ -577,7 +551,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                 top: -4rem;
                 z-index: 10;
                 border: 1px solid var(--accent);
-                border-radius: 0.5rem;
+                border-radius: var(--portfolio-radius);
                 padding: 0.6rem 1rem;
                 background: var(--card);
                 color: var(--accent);
@@ -668,44 +642,15 @@ const searchableText = (study: (typeof studies)[number]) =>
                             </a>
                         </div>
                     </div>
-                    <div
+                    <p
                         class="portfolio-proof"
                         role="group"
                         aria-label="Portfolio totals"
                     >
-                        <div class="portfolio-proof-item">
-                            <span class="portfolio-proof-number">
-                                {counts.all}
-                            </span>
-                            <span class="portfolio-proof-label">
-                                published studies
-                            </span>
-                        </div>
-                        <div class="portfolio-proof-item">
-                            <span class="portfolio-proof-number">
-                                {counts.linux + counts.windows}
-                            </span>
-                            <span class="portfolio-proof-label">
-                                machine studies
-                            </span>
-                        </div>
-                        <div class="portfolio-proof-item">
-                            <span class="portfolio-proof-number">
-                                {counts.dfir}
-                            </span>
-                            <span class="portfolio-proof-label">
-                                DFIR studies
-                            </span>
-                        </div>
-                        <div class="portfolio-proof-item">
-                            <span class="portfolio-proof-number">
-                                {contentTypeCount}
-                            </span>
-                            <span class="portfolio-proof-label">
-                                content types
-                            </span>
-                        </div>
-                    </div>
+                        {counts.all} case studies ·{" "}
+                        {counts.linux + counts.windows} machines ·{" "}
+                        {counts.dfir} DFIR · {contentTypeCount} content types
+                    </p>
                 </section>
 
                 <section

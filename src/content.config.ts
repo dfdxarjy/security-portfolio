@@ -1,11 +1,27 @@
 import { defineCollection } from 'astro:content';
+import type { LoaderContext } from 'astro/loaders';
 import { docsLoader } from '@astrojs/starlight/loaders';
 import { docsSchema } from '@astrojs/starlight/schema';
 import { z } from 'astro/zod';
 
+const baseDocsLoader = docsLoader();
+
+// Starlight validates frontmatter only, so its schema never sees the source
+// path. Surface the entry path (attached before validation) to the schema below
+// so it can check that a machine's OS directory agrees with its `tags`.
+const docsLoaderWithPath = {
+	...baseDocsLoader,
+	load: (context: LoaderContext) =>
+		baseDocsLoader.load({
+			...context,
+			parseData: ({ id, data, filePath }) =>
+				context.parseData({ id, data: { ...data, _filePath: filePath }, filePath }),
+		}),
+};
+
 export const collections = {
 	docs: defineCollection({
-		loader: docsLoader(),
+		loader: docsLoaderWithPath,
 		schema: docsSchema({
 			extend: z.object({
 				type: z.string().optional(),
@@ -17,6 +33,8 @@ export const collections = {
 				tools: z.array(z.string()).optional(),
 				skill: z.string().optional(),
 				outcome: z.string().optional(),
+				// Injected by `docsLoaderWithPath`; not authored in frontmatter.
+				_filePath: z.string().optional(),
 				// Immutable portfolio-addition date (not completion or last-edit).
 				addedAt: z
 					.string()
@@ -48,6 +66,25 @@ export const collections = {
 				}
 				if (!data.description?.trim()) {
 					ctx.addIssue({ code: 'custom', path: ['description'], message: 'Required' });
+				}
+
+				const filePath = (data._filePath ?? '').split('\\').join('/');
+				const windowsDir = filePath.includes('/machines/windows/');
+				const linuxDir = filePath.includes('/machines/linux/');
+				const relativePath = filePath.includes('/src/') ? filePath.slice(filePath.indexOf('/src/') + 1) : filePath || 'unknown file';
+				if (windowsDir && data.tags?.includes('linux')) {
+					ctx.addIssue({
+						code: 'custom',
+						path: ['tags'],
+						message: `Machine under machines/windows/ cannot be tagged linux: move ${relativePath} to machines/linux/ or fix its tags`,
+					});
+				}
+				if (linuxDir && data.tags?.includes('windows')) {
+					ctx.addIssue({
+						code: 'custom',
+						path: ['tags'],
+						message: `Machine under machines/linux/ cannot be tagged windows: move ${relativePath} to machines/windows/ or fix its tags`,
+					});
 				}
 			}),
 		}),

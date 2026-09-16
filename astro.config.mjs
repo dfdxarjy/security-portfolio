@@ -6,6 +6,10 @@ import sitemap from '@astrojs/sitemap';
 // https://astro.build/config
 export default defineConfig({
 	site: 'https://taktak.hu',
+	redirects: {
+		'/case-studies/htb/machines/windows/monitorsfour/':
+			'/case-studies/htb/machines/linux/monitorsfour/',
+	},
 	integrations: [
 		starlight({
 			title: 'taktak.hu',
