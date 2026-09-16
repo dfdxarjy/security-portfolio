@@ -35,3 +35,6 @@ jobs:
 
       - name: Check metadata
         run: pnpm run check:meta
+
+      - name: Check accessibility
+        run: pnpm run check:a11y
