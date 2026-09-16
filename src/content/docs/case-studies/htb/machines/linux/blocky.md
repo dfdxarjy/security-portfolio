@@ -1,6 +1,6 @@
 ---
-title: "Blocky: Plugin Source Exposure to Privileged Access"
-description: "Web enumeration exposes a custom Java plugin; decompilation reveals hardcoded credentials for SSH access, and an unrestricted sudo policy yields root."
+title: "Blocky — Exposed Plugin Credentials and Unrestricted Sudo"
+description: "Web enumeration exposes a custom Java plugin; decompilation reveals hardcoded database credentials later reused for SSH, and an unrestricted sudo policy yields root."
 type: case-study
 platform: Hack The Box
 content_type: machine
@@ -11,37 +11,75 @@ tags:
   - web-enumeration
   - credential-management
   - sudo
+objective: "Move from an exposed Java plugin's hardcoded database credentials to SSH access through credential reuse, then escalate through an unrestricted sudo policy."
+tools:
+  - rustscan
+  - feroxbuster
+  - jadx
+  - ssh
+  - sudo
+skill: "Credential recovery from exposed application source and Linux privilege escalation through permissive sudo"
+outcome: "SSH access as the WordPress service account and root command execution through an unrestricted sudo policy"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Easy |
+| Target environment | Ubuntu Linux; Apache httpd 2.4.18 serving WordPress 4.8 |
+| Starting position | Unauthenticated network access |
+| Objective | Move from an exposed Java plugin's hardcoded database credentials to SSH access through credential reuse, then escalate through an unrestricted sudo policy |
+| Outcome | SSH access as `<LAB_USER>` and root command execution through the account's unrestricted `sudo` policy |
 
 ## Summary
 
-This Hack The Box lab followed a web-to-host path: web enumeration exposed a custom Java plugin, plugin analysis exposed an application credential, and the notes report that credential enabled SSH access. All target identifiers and credential material are replaced with placeholders. The recorded `sudo` policy then established unrestricted administrative execution.
+Blocky is an Easy Hack The Box Linux lab themed around a Minecraft server. Web content discovery exposes a non-standard `/plugins` directory holding Java plugin archives; decompiling the custom plugin reveals hardcoded database credentials, and those credentials authenticate to an exposed phpMyAdmin instance, disclosing the WordPress user account. The same password is reused for SSH, and the account holds an unrestricted `sudo` policy. Target addresses, hostnames, and credential values are replaced with role-based placeholders; command syntax is preserved.
+
+**Attack path:** **Exposed `/plugins` directory → decompiled `BlockyCore.jar` → hardcoded database credentials → phpMyAdmin account discovery → SSH through credential reuse → unrestricted `sudo` → root**
 
 ## Context and Objective
 
-The Linux lab exposed FTP, SSH, HTTP, and a Minecraft service. Its HTTP response identified a WordPress deployment, while content discovery identified administrative and plugin-related paths. Objective: validate documented attack path and determine privilege boundary after authenticated access.
+- **Target:** Ubuntu Linux host exposing FTP, SSH, HTTP, and a Minecraft service.
+- **Web application:** Apache httpd 2.4.18 serving a WordPress 4.8 site.
+- **Starting position:** unauthenticated network access.
+- **Objective:** turn exposed plugin source into operating-system access, then determine the authenticated account's privilege boundary.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
 ## Approach and Evidence
 
-### Service and content discovery
+### 1. Service Enumeration
 
-Observation: recorded service discovery showed SSH, HTTP, and Minecraft, and web enumeration returned `/wp-admin`, `/phpmyadmin`, and `/plugins`.
+Observation: a full-port scan exposes four services, and the web application is the most useful entry point.
 
 ```bash
-nmap -Pn -sC -sV -oN <SCAN_OUTPUT> <TARGET>
+rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV -oN <SCAN_OUTPUT>
 ```
+
+Truncated scan output:
 
 ```text
-22/tcp    open  ssh
-80/tcp    open  http
-25565/tcp open  minecraft
+21/tcp    open  ftp?
+22/tcp    open  ssh       OpenSSH 7.2p2 Ubuntu 4ubuntu2.2
+80/tcp    open  http      Apache httpd 2.4.18
+|_http-title: BlockyCraft - Under Construction!
+|_http-generator: WordPress 4.8
+25565/tcp open  minecraft Minecraft 1.11.2
 ```
 
-Action: enumerated HTTP content and reviewed exposed plugin artifacts. Technical significance: plugin archives can expose application implementation details not visible in browser-rendered content.
+Significance: the HTTP banner identifies a WordPress deployment, so content discovery is expected to expose application structure that the rendered site does not advertise; the SSH version confirms a Linux host.
+
+Result: SSH, HTTP, and Minecraft are exposed, and the HTTP response identifies a WordPress 4.8 deployment served by Apache 2.4.18.
+
+### 2. Web Content Discovery
+
+Observation: content discovery against the WordPress site returns administrative and plugin paths.
 
 ```bash
-feroxbuster --url http://<TARGET> --wordlist <WORDLIST> -n
+feroxbuster --url http://<DOMAIN> --wordlist <WEB_CONTENT_WORDLIST> -n
 ```
+
+Truncated discovery output:
 
 ```text
 /wp-admin
@@ -49,11 +87,20 @@ feroxbuster --url http://<TARGET> --wordlist <WORDLIST> -n
 /plugins
 ```
 
-Result: `/plugins` contained a custom `BlockyCore.jar` artifact in recorded output.
+The `/plugins` directory contains Java archives:
 
-### Plugin analysis and authenticated access
+```text
+BlockyCore.jar
+griefprevention-1.11.2-3.1.1.298.jar
+```
 
-Observation: decompilation of custom plugin code showed hard-coded database authentication material.
+Significance: `/plugins` is a non-standard, browsable path that exposes custom application artifacts, and Java archives can disclose implementation details not visible in browser-rendered content.
+
+Result: a custom `BlockyCore.jar` plugin archive is reachable without authentication.
+
+### 3. Plugin Decompilation and Credential Recovery
+
+Observation: decompiling the custom plugin exposes hardcoded database credentials in its source.
 
 ```bash
 jadx <PLUGIN_ARCHIVE>
@@ -64,32 +111,58 @@ this.sqlUser = "<DATABASE_USER>";
 this.sqlPass = "<DATABASE_PASSWORD>";
 ```
 
-Action: notes report using this application credential with phpMyAdmin, where a WordPress account name was identified, then using documented credential reuse to authenticate over SSH. Technical significance: embedded credentials can bridge application-layer source exposure and operating-system access when credential separation is absent.
+Significance: Java archives are source-disclosable, so credentials embedded in a reachable plugin become readable with a standard decompiler.
+
+Result: a database credential pair is recovered from the plugin source.
+
+### 4. Database Access and Account Discovery
+
+Observation: the recovered database credential was used against the exposed phpMyAdmin instance; the source records that the login succeeded and exposed the WordPress database, including the `wp_users` table.
+
+```text
+<DATABASE_USER> : <DATABASE_PASSWORD>
+```
+
+```text
+wp_users:
+<LAB_USER>
+$P$<HASH_REDACTED>
+```
+
+Significance: the database discloses the WordPress account name and confirms the database credential. The password hash was not needed because the password is reused by the system account.
+
+Result: the WordPress account `<LAB_USER>` is identified, and its password hash is not required for the next step.
+
+### 5. SSH Access through Credential Reuse
+
+Observation: the database credential is also the system account's password, so the recovered secret crosses from the application to the operating system.
 
 ```bash
-ssh <LAB_USER>@<TARGET>
+ssh <LAB_USER>@<TARGET_IP>
 ```
 
 ```text
 <LAB_USER>@<HOST>:~$
 ```
 
-Result: recorded output shows an authenticated shell; the notes do not include an independent login transcript beyond the prompt.
+Significance: a credential disclosed by application source gives direct host access because the database and operating-system accounts share the same secret.
 
-### Privilege boundary review
+Result: an authenticated SSH shell is obtained as `<LAB_USER>`.
 
-Observation: the authenticated account's sudo policy allowed all commands as all users.
+### 6. Privilege Escalation through Unrestricted Sudo
+
+Observation: the authenticated account may run every command as every user.
 
 ```bash
 sudo -l
 ```
 
 ```text
-User <LAB_USER> may run the following commands:
+User <LAB_USER> may run the following commands on <HOST>:
     (ALL : ALL) ALL
 ```
 
-Action: used the documented unrestricted sudo capability to obtain an administrative shell.
+Action:
 
 ```bash
 sudo su -
@@ -100,19 +173,30 @@ whoami
 root
 ```
 
-Result: recorded output establishes administrative context.
+Significance: `(ALL : ALL) ALL` removes meaningful privilege separation, so the account can assume `root` directly through `sudo`.
+
+Result: an administrative shell is established, and `whoami` returns `root`.
+
+## Challenges and Decisions
+
+No other obstacles or failed attempts affected this path.
 
 ## Outcome
 
-The notes establish a chain from exposed custom plugin code to an authenticated SSH session and unrestricted sudo access. Credential values, target details, database contents, and flag locations are intentionally omitted.
+The evidence establishes an authenticated SSH session as `<LAB_USER>`, reached through a credential recovered from an exposed plugin archive and reused across the database and host, and a root context obtained through the account's unrestricted `sudo` policy. The recovered password hash was not required for the path.
 
 ## Lessons and Recommendations
 
-- Do not publish plugin archives containing embedded credentials; use managed secrets and rotate any exposed values.
-- Segregate application, database, and operating-system credentials to prevent a single disclosure from crossing trust boundaries.
-- Restrict sudo rules to minimum required commands and identities; `(ALL : ALL) ALL` removes meaningful privilege separation.
-- Treat exposed development artifacts as sensitive deployment content and test web roots for unintended archive disclosure.
+Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. These actions are recommendations; none was validated in the lab.
+
+1. **Exposed plugin directory with embedded credentials.** `/plugins` was reachable without authentication, and its Java archives contained hardcoded database credentials that yielded application and host access. *Recommendation:* keep build and development artifacts out of the web root, keep plugin directories non-browsable, and store secrets in a managed secret store instead of in source. *Detection:* alert on requests for archive files under the web root and scan deployed artifacts for credential patterns.
+2. **Credential reuse across trust boundaries.** The same password authenticated to the database and the system account, so one source disclosure crossed from application to operating system. *Recommendation:* issue unique credentials per service and system account, and rotate any value exposed in source. *Detection:* alert on successful SSH authentication that reuses a known service credential or originates from an unexpected source.
+3. **Unrestricted sudo policy.** `(ALL : ALL) ALL` let the account run any command as any user, reducing privilege escalation to a single command. *Recommendation:* scope `sudoers` rules to specific commands and arguments under least privilege. *Validation:* review `sudo -l` output and audit `sudoers` for blanket `ALL` grants.
 
 ## References
 
-- Hack The Box, [Blocky](https://app.hackthebox.com/machines/Blocky) machine.
+- [Hack The Box — Blocky](https://app.hackthebox.com/machines/Blocky) (retired machine)
+- [RustScan](https://github.com/bee-san/RustScan) (fast port scanner)
+- [feroxbuster](https://github.com/epi052/feroxbuster) (content discovery)
+- [jadx](https://github.com/skylot/jadx) (Java and Dalvik decompiler)
+- [sudo](https://www.sudo.ws/) (privilege delegation)

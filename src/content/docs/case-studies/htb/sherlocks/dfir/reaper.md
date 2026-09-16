@@ -1,5 +1,5 @@
 ---
-title: "Reaper: Correlating an NTLM Relay Investigation"
+title: "Reaper — NTLM Relay Correlated from Packet Capture and Security Logs"
 description: "Correlating a packet capture with Windows Security event logs to investigate a suspected NTLM relay and authenticated SMB share activity."
 type: case-study
 platform: Hack The Box
@@ -11,92 +11,191 @@ tags:
   - windows
   - ntlm
   - smb
+objective: "Correlate a packet capture with Windows Security event logs to reconstruct an NTLM relay, the resulting network logon, and the SMB activity that followed it."
+tools:
+  - wireshark
+  - chainsaw
+  - grep
+skill: "Network-capture and Windows Security event-log forensic correlation"
+outcome: "A relayed NTLM authentication produced an authenticated network logon whose claimed workstation conflicts with its source address, followed by SMB share access within one correlated session."
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Target environment | Windows Active Directory domain environment; artifacts collected from a domain-joined workstation and its surrounding Security log |
+| Starting position | Provided evidence — an NTLM relay packet capture (`ntlmrelay.pcapng`) and a Windows Security event log (`Security.evtx`) |
+| Objective | Correlate the capture with the event log to reconstruct an NTLM relay, the resulting network logon, and the SMB activity that followed |
+| Outcome | Confirmed NTLM relay: an authenticated network logon whose claimed workstation conflicts with its source address, followed by SMB share access within one session |
 
 ## Summary
 
-This sanitized Hack The Box Sherlock case study examines a suspected NTLM relay using a packet capture and Windows Security event log. Target names, addresses, account names, share names, session identifiers, and ports are replaced with role-based placeholders. The notes report that correlation of network and host evidence established an NTLM-authenticated network logon followed by SMB share activity.
+Reaper is a Hack The Box DFIR Sherlock built around a single alert: a SIEM detection for a logon whose claimed source workstation does not match its network address. Working from a packet capture and a Windows Security event log, correlating NetBIOS name resolution, an NTLM authentication, a Security 4624 network logon, an SMB tree connect, and a Security 5140 share-access record reconstructs one relay session. Target and account names, addresses, share names, session identifiers, and ports are replaced with role-based placeholders; command syntax is preserved.
+
+**Attack path:** **NBNS name-to-address mapping → NTLM authentication for `<DOMAIN>\<COMPROMISED_ACCOUNT>` captured and relayed → Security 4624 network logon claiming `<WORKSTATION_B>` from `<RELAY_SOURCE_IP>` → SMB tree connect toward a domain-controller share → Security 5140 share access under the same session**
 
 ## Context and Objective
 
-The provided evidence comprised a network capture and a Security event log from the surrounding timeframe. The objective was to investigate an alert for a mismatch between a claimed source workstation and its network address, then determine whether the artifacts supported compromise. The notes report no persistence or privilege-escalation activity within examined scope.
+- **Target environment:** a Windows Active Directory domain (`<DOMAIN>`); the artifacts concern a domain-joined workstation and its domain context.
+- **Provided evidence:** an NTLM relay packet capture (`ntlmrelay.pcapng`) and a Security event log (`Security.evtx`) covering the surrounding timeframe.
+- **Objective:** investigate the alert — a source-workstation name that does not match the network address recorded for the same logon — and determine what the artifacts establish about compromise.
+- **Constraints:** analysis is confined to the two provided artifacts. Capture offsets are relative to the start of the capture; Security events carry absolute UTC timestamps. No persistence or privilege-escalation activity was observed in scope.
 
 ## Approach and Evidence
 
-### Establish workstation-to-address context
+### 1. Workstation-to-Address Mapping
 
-**Observation.** The notes report NetBIOS Name Service refreshes for two workstations in the capture.
+Observation: the capture opens with NetBIOS Name Service (NBNS) refreshes that bind workstation labels to addresses.
 
-**Action.** I reviewed `nbns` traffic to associate the recorded workstation labels with sanitized network addresses.
+Action: apply the `nbns` display filter.
 
 ```text
-Wireshark display filter: nbns
+nbns
+```
 
+```text
 Refresh NB <WORKSTATION_A><00>  <WORKSTATION_A_IP>
 Refresh NB <WORKSTATION_B><20>  <WORKSTATION_B_IP>
 ```
 
-**Significance.** This context made later comparison of the claimed workstation and observed source address possible.
+Significance: the refresh establishes the address of `<WORKSTATION_B>`, providing the baseline needed to compare the workstation later claimed during authentication against the address the authentication actually came from.
 
-**Result.** The notes report that `<WORKSTATION_B>` was associated with `<WORKSTATION_B_IP>`, distinct from `<RELAY_SOURCE_IP>` seen during authentication.
+Result: `<WORKSTATION_B>` is associated with `<WORKSTATION_B_IP>`, distinct from the address observed during the authentication that follows.
 
-### Correlate NTLM authentication with the Windows logon
+### 2. NTLM Authentication Capture
 
-**Observation.** The notes report an SMB session-setup request containing NTLM authentication for `<COMPROMISED_ACCOUNT>`, followed by Security event ID 4624.
+Observation: an SMB session-setup request in the capture carries NTLM authentication for a domain account, addressed to a device that is neither workstation.
 
-**Action.** I reviewed `ntlmssp` traffic and filtered the event log for successful logons associated with the account.
+Action: apply the `ntlmssp` display filter.
 
 ```text
-Wireshark display filter: ntlmssp
-SMB2 Session Setup Request, NTLMSSP_AUTH, User: <COMPROMISED_ACCOUNT>
+ntlmssp
+```
 
+```text
+SMB2 Session Setup Request, NTLMSSP_AUTH, User: <DOMAIN>\<COMPROMISED_ACCOUNT>
+<WORKSTATION_B_IP> → <RELAY_SOURCE_IP>
+```
+
+Significance: authentication material for `<COMPROMISED_ACCOUNT>` travels from `<WORKSTATION_B_IP>` to `<RELAY_SOURCE_IP>`, an address belonging to neither mapped workstation — the credential material that is subsequently relayed.
+
+Result: NTLM authentication for `<DOMAIN>\<COMPROMISED_ACCOUNT>` is captured en route to `<RELAY_SOURCE_IP>`.
+
+### 3. Correlate the Windows Network Logon
+
+Observation: the Security log records a successful network logon for the same account, and its attributes reproduce the alert condition.
+
+Action: search the event log for successful logons (event ID 4624) and inspect the record for the account.
+
+```bash
 chainsaw search -t 'Event.System.EventID: =4624' Security.evtx --skip-errors | grep -i '<COMPROMISED_ACCOUNT>' -A 30 -B 30
+```
+
+```text
 TargetUserName: <COMPROMISED_ACCOUNT>
 LogonType: 3
 AuthenticationPackageName: NTLM
+LogonProcessName: NtLmSsp
 WorkstationName: <WORKSTATION_B>
 IpAddress: <RELAY_SOURCE_IP>
+IpPort: <SOURCE_PORT>
+TargetLogonId: <SESSION_ID>
+SystemTime: 2024-07-31T04:55:16.240589Z
 ```
 
-**Significance.** A network logon that claims `<WORKSTATION_B>` while originating from `<RELAY_SOURCE_IP>` is consistent with the alert condition and provides a cross-artifact pivot.
+Significance: a `LogonType 3` network logon that claims `<WORKSTATION_B>` while originating from `<RELAY_SOURCE_IP>` is exactly the mismatch the alert fired on, and it pivots the capture evidence into a host-side record with an absolute timestamp.
 
-**Result.** The notes report that the authentication and event record identified an NTLM relay scenario involving `<COMPROMISED_ACCOUNT>`; the event-log result is reported rather than independently reproduced here.
+Result: a relayed network logon for `<COMPROMISED_ACCOUNT>` is recorded at `2024-07-31 04:55:16 UTC`, under session `<SESSION_ID>` from source port `<SOURCE_PORT>`.
 
-### Link SMB navigation and share-access evidence
+### 4. SMB Share Navigation in the Capture
 
-**Observation.** The notes report an SMB tree-connect request in the capture and an event ID 5140 network-share access record.
+Observation: later in the capture the session issues an SMB2 tree-connect request toward a domain-controller share.
 
-**Action.** I reviewed `smb2` traffic and filtered the event log for share-access records associated with the account.
+Action: apply the `smb2` display filter.
 
 ```text
-Wireshark display filter: smb2
-Tree Connect Request, Tree: <TARGET_SHARE>
+smb2
+```
 
+```text
+Tree Connect Request, Tree: '<TARGET_SHARE>'
+<WORKSTATION_B_IP> → <DC_IP>
+```
+
+Significance: the session is used to navigate toward a share hosted on the domain controller, moving the activity from authentication into share access.
+
+Result: the capture records a tree connect to `<TARGET_SHARE>` from `<WORKSTATION_B_IP>` to `<DC_IP>`.
+
+### 5. Share-Access Record in the Event Log
+
+Observation: the Security log records network-share access under the same session.
+
+Action: search the event log for share-access events (event ID 5140).
+
+```bash
 chainsaw search -t 'Event.System.EventID: =5140' Security.evtx --skip-errors | grep -i '<COMPROMISED_ACCOUNT>' -A 30 -B 30
+```
+
+```text
 SubjectUserName: <COMPROMISED_ACCOUNT>
+SubjectLogonId: <SESSION_ID>
 IpAddress: <RELAY_SOURCE_IP>
+IpPort: <SOURCE_PORT>
 ShareName: <AUTHENTICATION_SHARE>
 ```
 
-**Significance.** The notes report that shared session attributes connected the suspicious logon to both the authentication-process share access and the captured tree-connect activity.
+Significance: the record carries the same logon ID and source port as the 4624 network logon, binding the two events to one session, and the accessed share is the authentication-process share rather than the user-navigated share seen in the capture.
 
-**Result.** The notes report authenticated SMB share activity after the suspicious NTLM logon. They do not establish file reads, writes, or activity beyond recorded share touches.
+Result: authenticated access to `<AUTHENTICATION_SHARE>` is recorded under the relayed session.
+
+### 6. Incident Timeline Correlation
+
+Observation: the two artifacts place the same session on different clocks — capture offsets are relative to the start of the capture, while Security events carry absolute UTC timestamps — so events are joined by session attributes rather than raw timestamps.
+
+Action: join the Security 4624 logon and 5140 share access on the shared logon ID and source port, and order the capture events by capture offset.
+
+```text
+Correlation key: 4624 TargetLogonId = 5140 SubjectLogonId = <SESSION_ID>; source port = <SOURCE_PORT>
+```
+
+| Time (UTC) | Artifact | Event |
+|---|---|---|
+| capture 4.51 s | capture (`nbns`) | Refresh NB `<WORKSTATION_A>` → `<WORKSTATION_A_IP>` |
+| capture 26.37 s | capture (`nbns`) | Refresh NB `<WORKSTATION_B>` → `<WORKSTATION_B_IP>` |
+| capture 97.97 s | capture (`ntlmssp`) | NTLM authentication for `<COMPROMISED_ACCOUNT>` (`<WORKSTATION_B_IP>` → `<RELAY_SOURCE_IP>`) |
+| capture 112.56 s | capture (`smb2`) | Tree connect to `<TARGET_SHARE>` (`<WORKSTATION_B_IP>` → `<DC_IP>`) |
+| 2024-07-31 04:55:16 | Security 4624 | Relayed network logon (`LogonType 3`, NTLM) under session `<SESSION_ID>`, port `<SOURCE_PORT>` |
+| same session | Security 5140 | Access to `<AUTHENTICATION_SHARE>` under session `<SESSION_ID>`, port `<SOURCE_PORT>` |
+
+Significance: the shared logon ID and source port tie the Security 4624 logon and 5140 share access to one session; the capture's tree-connect activity is consistent with the same incident window, and the absolute Security timestamp anchors the session in UTC.
+
+Result: the artifacts support one ordered relay session on `2024-07-31`, in which an intercepted NTLM authentication becomes a network logon and then share access.
 
 ## Challenges and Decisions
 
-The evidence sources use different scopes: capture offsets are capture-relative, while Security events provide absolute UTC timestamps. The notes report that session attributes, rather than direct timestamp equality, were used to correlate the logon and share-access records. The capture identified navigation toward `<TARGET_SHARE>`; the event log identified `<AUTHENTICATION_SHARE>`, so the two were treated as different observed share contexts rather than interchangeable evidence.
+The two artifacts use different time scopes: capture offsets are relative to the start of the capture, while Security events carry absolute UTC timestamps. Correlation therefore relied on shared session attributes — the logon ID and source port — rather than direct timestamp equality. The capture also identifies navigation toward `<TARGET_SHARE>`, while the event log records access to `<AUTHENTICATION_SHARE>`; the two are distinct observed share contexts and were not treated as interchangeable evidence. The capture ends at the share-identification stage, so the port, logon ID, and share name for the session were recovered from the event log.
 
 ## Outcome
 
-The notes report a confirmed compromise classification based on NTLM relay indicators, a workstation/address mismatch, and authenticated SMB share activity. Evidence supports one observed relay session and recorded share touches. It does not establish broader victim scope, file-level actions on the navigated share, or persistence on the relay system.
+The evidence establishes a confirmed NTLM relay compromise. The source assessment classifies the activity as an NTLM relay and rates it high, on the basis that a domain account was relayed toward a domain-controller-adjacent share. Limitations: the evidence supports one relay session and recorded share touches; it does not establish file reads or writes on the navigated share, interception affecting other victims, or persistence on the relay device.
 
 ## Lessons and Recommendations
 
-- Detection should correlate Security event 4624 network logons using NTLM with claimed-workstation and source-address mismatches.
-- Detection should correlate suspicious 4624 activity with event 5140 share access using available session attributes.
-- **Recommendation:** preserve packet and event-log evidence before containment, review activity in the relevant session window, and reset or revoke access for affected identities according to incident-response procedures.
-- **Recommendation:** reduce NTLM relay exposure by enforcing SMB signing and disabling NBT-NS/LLMNR where operationally feasible.
+The actions below are recommendations; none was validated in the lab.
+
+1. **NTLM relay exposure.** NTLM authentication was relayable, and the relayed credential was accepted as a network logon and then used for SMB share access. *Recommendation:* require SMB signing, and disable NBT-NS/LLMNR where operationally feasible. *Detection:* alert on Security 4624 `LogonType 3` logons authenticated with NTLM where the claimed workstation and source address disagree or the source is not a known workstation. This maps to MITRE ATT&CK T1557.001, Name Resolution Poisoning and SMB Relay.
+2. **Workstation/address mismatch as a host-side signal.** The logon claimed `<WORKSTATION_B>` while originating from `<RELAY_SOURCE_IP>`. *Detection:* hunt Security 4624 `LogonType 3` events with NTLM authentication and the `NtLmSsp` logon process from non-workstation addresses across domain controllers.
+3. **Session correlation for share access.** The share-access record shared a logon ID and source port with the suspicious logon. *Detection:* correlate Security 5140 share access — including the authentication-process share — with the same `SubjectLogonId` and source port as a suspicious 4624 event.
+4. **Response readiness.** *Recommendation:* isolate the relay source, reset the affected account's credentials, revoke its sessions, review the domain-controller share's access and audit logs for the session window, and preserve the capture and event log for further analysis.
 
 ## References
 
-- Hack The Box Sherlock: [Reaper](https://app.hackthebox.com/sherlocks/Reaper)
+- [Hack The Box — Sherlock Reaper](https://app.hackthebox.com/sherlocks/Reaper) (retired Sherlock)
+- [MITRE ATT&CK T1557.001 — Adversary-in-the-Middle: Name Resolution Poisoning and SMB Relay](https://attack.mitre.org/techniques/T1557/001/)
+- [MITRE ATT&CK T1021.002 — Remote Services: SMB/Windows Admin Shares](https://attack.mitre.org/techniques/T1021/002/)
+- [4624(S) — An account was successfully logged on (Microsoft Learn)](https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4624)
+- [Control SMB signing behavior (Microsoft Learn)](https://learn.microsoft.com/en-us/windows-server/storage/file-server/smb-signing)
+- [Wireshark display filter reference](https://www.wireshark.org/docs/dfref/)
+- [Wireshark display filter syntax (`wireshark-filter` manual page)](https://www.wireshark.org/docs/man-pages/wireshark-filter.html)
+- [Chainsaw — Rapidly Search and Hunt through Windows Forensic Artefacts (project repository)](https://github.com/WithSecureLabs/chainsaw)

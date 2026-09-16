@@ -12,33 +12,52 @@ tags:
   - ldap
   - credential-capture
   - server-operators
+objective: "Escalate from a misconfigured printer admin panel to local Administrator by capturing cleartext LDAP service credentials and abusing Server Operators rights."
+tools:
+  - rustscan
+  - responder
+  - netexec
+  - evil-winrm
+  - sc.exe
+skill: "Credential capture through a misconfigured appliance LDAP configuration and service-based privilege escalation"
+outcome: "Cleartext LDAP service-account capture and local Administrator access via a reconfigured service binary path"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Easy |
+| Target environment | Domain-joined Windows Server (Active Directory) |
+| Starting position | Unauthenticated network access |
+| Objective | Escalate from a misconfigured printer admin panel to local Administrator |
+| Outcome | Cleartext LDAP service-account capture; local Administrator via a reconfigured service |
 
 ## Summary
 
-Return is an Easy-rated Hack The Box Windows Active Directory lab that demonstrates how a misconfigured printer administration panel leaks service credentials through cleartext LDAP. The recorded chain redirects the panel's LDAP configuration to an attacker-controlled listener, captures a cleartext bind for a service account, uses WinRM for user access, and escalates through `Server Operators` group membership to full Administrator. Every step abuses legitimate functionality; no CVE is involved. Target addresses, passwords, and specific listener details are redacted below; command patterns are preserved.
+Return is an Easy-rated Hack The Box Windows Active Directory lab in which a misconfigured printer administration panel leaks a service account's credentials through a cleartext LDAP bind, and that account's `Server Operators` membership is then abused for local Administrator access. The chain uses only legitimate functionality and exploits no CVE. Target addresses, the domain, account names, and credential values are replaced with role-based placeholders, and command syntax is preserved. Outcomes the source records without captured output are reported as documented results.
+
+**Attack path:** **Printer admin panel → LDAP server address redirected to a credential listener → cleartext service credential captured → WinRM access → Server Operators service reconfiguration → local Administrator**
 
 ## Context and Objective
 
-- **Target:** Windows Server (domain-joined, hostname `<TARGET_HOSTNAME>`)
-- **Domain:** `<TARGET_DOMAIN>`
-- **Services exposed:** DNS (port 53), HTTP/IIS (port 80), Kerberos (port 88), LDAP (port 389), SMB (port 445), WinRM (port 5985)
-- **Objective:** Achieve full compromise through the attack surface presented by the printer admin panel and AD misconfigurations
-- **Lab context:** Hack The Box lab; all activity described was performed within the platform's isolated lab environment
+- **Target:** domain-joined Windows Server (hostname `<TARGET_HOSTNAME>`) in the `<TARGET_DOMAIN>` domain.
+- **Exposed services:** DNS (53), HTTP/IIS 10.0 (80), Kerberos (88), LDAP (389), SMB (445), and WinRM (5985).
+- **Starting position:** unauthenticated network access, with no provided credentials.
+- **Objective:** obtain user access and escalate to local Administrator through the printer admin panel's attack surface and the domain's group configuration.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
 ## Approach and Evidence
 
-### 1. Port Scanning and Host Discovery
+### 1. Service Enumeration
 
-Observation: six open TCP services indicating a domain-joined Windows host running DNS, Kerberos, LDAP, SMB, HTTP, and WinRM.
-
-Action: full TCP scan with version and default scripts.
+Observation: a full TCP scan with version detection and default scripts exposes six services on a domain-joined host.
 
 ```bash
-rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV -oN nmap/Return-TCP
+rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV -oN <SCAN_OUTPUT>
 ```
 
-Representative excerpt (truncated):
+Truncated scan output:
 
 ```text
 53/tcp   open  domain        Simple DNS Plus
@@ -49,53 +68,41 @@ Representative excerpt (truncated):
 5985/tcp open  http          Microsoft HTTPAPI httpd 2.0
 ```
 
-Technical significance: the combination of DNS, Kerberos, LDAP, and SMB confirms an Active Directory domain controller or member server. WinRM on 5985 is a remote management interface that accepts PowerShell over HTTP — any valid domain credential with remote access permissions provides a shell. The hostname resolves to `<TARGET_HOSTNAME>` in the `<TARGET_DOMAIN>` domain.
+Significance: DNS, Kerberos, LDAP, and SMB together identify an Active Directory host, and WinRM on 5985 accepts PowerShell over HTTP, so any valid domain credential with remote-access rights yields a shell.
 
-Result: the recorded output shows a domain-joined Windows host with LDAP, Kerberos, WinRM, and HTTP exposed.
+Result: the scan identifies a domain-joined Windows Server exposing LDAP, Kerberos, HTTP, and WinRM.
 
-### 2. Printer Admin Panel Discovery
+### 2. LDAP Credential Capture via the Printer Panel
 
-Observation: the HTTP service hosts an "HTB Printer Admin Panel" with a Settings page exposing LDAP configuration fields (server address, port, username, password).
+Observation: the HTTP service hosts an "HTB Printer Admin Panel" whose Settings page exposes LDAP connection fields (server address, port, username, and password) and attempts an LDAP bind whenever the settings are saved. Pointing the server address at an attacker-controlled listener redirects that bind to the attacker.
 
-Action: browse the web interface and identify the LDAP configuration form.
-
-Technical significance: the panel stores LDAP connection settings for the printer service. When settings are saved, the application attempts an LDAP bind using the configured credentials. This is a legitimate feature — the printer needs LDAP for user authentication — but it creates an opportunity: if the LDAP server address is changed to an attacker-controlled listener, the next bind attempt will send credentials to the attacker.
-
-Result: the recorded output shows an admin panel with LDAP configuration that accepts arbitrary server addresses.
-
-### 3. LDAP Credential Capture
-
-Observation: the printer service performs an LDAP bind when settings are saved, sending cleartext credentials to the configured server address.
-
-Action: start a credential listener on the attacker VPN interface, then redirect the panel's LDAP server address to the attacker IP and save.
+Action: start a credential listener on the attacker interface, then set the panel's LDAP server address to the attacker and save.
 
 ```bash
-sudo responder -I tun0
+sudo responder -I <ATTACK_INTERFACE>
 ```
 
-The notes show Responder capturing a cleartext LDAP bind after the settings were changed:
+The listener captures the cleartext bind after the settings are saved:
 
 ```text
 [LDAP] Cleartext Client   : <TARGET_IP>
 [LDAP] Cleartext Username : <TARGET_DOMAIN>\<SERVICE_ACCOUNT>
-[LDAP] Cleartext Password : <LDAP_PASSWORD>
+[LDAP] Cleartext Password : <SERVICE_ACCOUNT_PASSWORD>
 ```
 
-Technical significance: LDAP transmits credentials in cleartext unless LDAPS (port 636) or channel binding/token protection is enforced. The printer service stored these credentials and attempted a bind on the next configuration save, leaking them directly. The service account belongs to the `<TARGET_DOMAIN>` domain.
+Significance: LDAP carries bind credentials in cleartext unless LDAPS or channel binding/token protection is enforced. Because the panel stores and reuses the credential, the next save discloses it directly to the listener.
 
-Result: the recorded output shows a cleartext LDAP bind capturing service-account credentials.
+Result: a cleartext LDAP bind captures the service account's credential.
 
-### 4. Initial Access via WinRM
+### 3. Initial Access via WinRM
 
-Observation: the captured credential is valid for WinRM access.
+Observation: the captured credential authenticates over WinRM.
 
-Action: validate the credential with NetExec, then establish a session.
+Action: validate the credential, then open an interactive session.
 
 ```bash
 nxc winrm <TARGET_DOMAIN> -u '<SERVICE_ACCOUNT>' -p '<SERVICE_ACCOUNT_PASSWORD>'
 ```
-
-Representative output:
 
 ```text
 [+] <TARGET_DOMAIN>\<SERVICE_ACCOUNT>:<SERVICE_ACCOUNT_PASSWORD> (Pwn3d!)
@@ -105,23 +112,19 @@ Representative output:
 evil-winrm -i <TARGET_DOMAIN> -u '<SERVICE_ACCOUNT>' -p '<SERVICE_ACCOUNT_PASSWORD>'
 ```
 
-The user result is available at `<USER_RESULT_FILE>`.
+Significance: the `(Pwn3d!)` marker confirms the account can authenticate and execute over WinRM. The same credential recovered from the LDAP bind opens the interactive session; no other secret is reused.
 
-Technical significance: WinRM (Windows Remote Management) provides a PowerShell session over HTTP. The `(Pwn3d!)` indicator confirms the account has remote execution privileges. The service account has sufficient permissions for interactive login.
+Result: an interactive WinRM session is established as the service account.
 
-Result: the recorded output shows WinRM access established as the service account.
+### 4. Privilege Escalation via Server Operators
 
-### 5. Privilege Escalation via Server Operators
+Observation: the service account is a member of the built-in `Server Operators` group, which can stop, start, and reconfigure services on the host.
 
-Observation: the service account is a member of the built-in `Server Operators` group.
-
-Action: confirm group membership, then reconfigure an existing service to add the account to the local Administrators group.
+Action: confirm group membership, repoint an existing service's binary path to add the account to local Administrators, restart the service, and reconnect to obtain a fresh token.
 
 ```powershell
 whoami /groups
 ```
-
-Representative output:
 
 ```text
 BUILTIN\Server Operators
@@ -133,19 +136,11 @@ sc.exe stop vss
 sc.exe start vss
 ```
 
-After the service restarts, reconnect with WinRM to obtain a token with the updated group membership:
-
-```bash
-evil-winrm -i <TARGET_DOMAIN> -u '<SERVICE_ACCOUNT>' -p '<SERVICE_ACCOUNT_PASSWORD>'
-```
-
-Verify the new privilege:
+After the service runs the new binary path, reconnecting over WinRM shows the updated membership:
 
 ```powershell
 net localgroup Administrators
 ```
-
-Representative output:
 
 ```text
 Members
@@ -156,33 +151,39 @@ Enterprise Admins
 <SERVICE_ACCOUNT>
 ```
 
-The elevated result is available at `<ELEVATED_RESULT_FILE>`.
+Significance: `Server Operators` can rewrite service definitions, so changing the `vss` binary path turns service control into code execution as SYSTEM, adding the account to local Administrators. WinRM tokens capture group membership at session creation, so the reconnection is required to reflect the new rights.
 
-Technical significance: `Server Operators` can stop, start, and reconfigure services on the host. By changing the `vss` (Volume Shadow Copy) service binary path to a command that adds the service account to the local Administrators group, then restarting the service, the account gains SYSTEM-level privileges when the service executes the new binary path. After changing group membership, a reconnection is necessary because WinRM tokens reflect group membership at session creation time.
-
-Result: the recorded output shows the service account added to local Administrators, confirming full host compromise.
+Result: the service account appears in local Administrators, confirming Administrator-level access on the host.
 
 ## Challenges and Decisions
 
-- The LDAP credential capture required no exploitation — simply redirecting the panel's server address to the attacker listener captured cleartext credentials on the next save. The printer service stored and reused the LDAP bind credentials automatically.
-- `Server Operators` abuse is a service-level privilege escalation vector distinct from user-level group abuse (e.g., adding to Administrators directly via `net localgroup`). Services can be reconfigured without requiring direct administrative access.
+| Decision | Rationale |
+|---|---|
+| Repointed the existing `vss` service rather than creating one | `Server Operators` can reconfigure existing service definitions, so no new service was needed. |
+| Reconnected over WinRM after the group change | Existing tokens reflect the group membership captured when the session was created. |
 
 ## Outcome
 
-The recorded evidence establishes full compromise of the Return lab through a two-stage chain:
-
-1. **Credential capture:** LDAP cleartext bind redirected to an attacker listener, leaking service-account credentials
-2. **Privilege escalation:** `Server Operators` group membership used to reconfigure a service binary path, adding the service account to local Administrators
-
-The chain required no CVE exploitation — every step abused legitimate Active Directory and Windows service functionality. The weakness was the combination of cleartext LDAP transport, credential storage in the printer panel, and overprivileged service account membership in `Server Operators`.
+The evidence establishes local Administrator access on the host, reached without exploiting a CVE: every step used legitimate Active Directory and Windows service functionality. The limiting factors were cleartext LDAP transport, reusable credentials stored by the printer panel, and excessive `Server Operators` membership on the service account. HTTP exposure was limited to reaching the administrative panel.
 
 ## Lessons and Recommendations
 
-- **LDAPS should be enforced.** LDAP transmits credentials in cleartext by default. Services that store and reuse LDAP bind credentials amplify the risk of credential capture if the server address can be redirected.
-- **Printer and appliance admin panels store reusable credentials.** These panels often have weaker access controls than enterprise identity systems, making them attractive targets for credential harvesting.
-- **Service accounts should follow least privilege.** The service account had `Server Operators` membership, which is excessive for a printer service. Service accounts should be restricted to the minimum permissions required.
-- **After group membership changes, reconnection is required.** Tokens reflect group membership at session creation; a new session is needed to obtain updated privileges.
+The actions below are recommendations; only the abuse chain itself was exercised in the lab.
+
+1. **Cleartext LDAP transport.** The printer panel stored and reused an LDAP bind credential, and the bind was sent unencrypted to a configurable server address, so redirecting that address disclosed the credential. *Recommendation:* enforce LDAPS and enable LDAP server signing and channel binding, and require authentication on appliance management interfaces. *Detection:* alert on LDAP binds from service hosts to unexpected destinations.
+2. **Excessive service-account privilege.** The service account held `Server Operators` membership, which let it rewrite a service binary path and obtain SYSTEM-level execution to join local Administrators. *Recommendation:* apply least privilege and remove interactive service accounts from privileged built-in groups. *Detection:* audit membership of `Server Operators` and other privileged groups, and alert on service `binPath` changes.
+3. **Credential-bearing appliance panels.** The admin panel was reachable and stored a reusable LDAP credential. *Recommendation:* network-restrict management interfaces, rotate any credential a panel caches, and keep credential material out of web-facing configuration.
 
 ## References
 
-- Hack The Box lab: [Return](https://app.hackthebox.com/machines/Return) (ID 401)
+- [Hack The Box — Return](https://app.hackthebox.com/machines/Return) (retired machine)
+- [Responder](https://github.com/lgandx/Responder) (rogue authentication server, including LDAP capture)
+- [NetExec](https://github.com/Pennyw0rth/NetExec) (WinRM authentication and remote execution checks)
+- [Evil-WinRM](https://github.com/Hackplayers/evil-winrm) (WinRM interactive shell)
+- [RustScan](https://github.com/bee-san/RustScan) (port scanner driving Nmap scripts and version detection)
+- [Active Directory Security Groups (Microsoft Learn)](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/understand-security-groups)
+- [Domain controller: LDAP server signing requirements (Microsoft Learn)](https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/domain-controller-ldap-server-signing-requirements)
+- [Domain controller: LDAP server channel binding token requirements (Microsoft Learn)](https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/domain-controller-ldap-server-channel-binding-token-requirements)
+- [Enable LDAP over SSL (LDAPS) (Microsoft Learn)](https://learn.microsoft.com/en-us/troubleshoot/windows-server/active-directory/enable-ldap-over-ssl-3rd-certification-authority)
+- [sc.exe config (Microsoft Learn)](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/sc-config)
+- [Net localgroup (Microsoft Learn)](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/cc725622(v=ws.11))

