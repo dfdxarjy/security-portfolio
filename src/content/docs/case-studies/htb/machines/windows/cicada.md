@@ -13,8 +13,8 @@ tags:
 objective: "Move from guest SMB access through directory and share credential disclosures to domain administrator"
 tools:
   - rustscan
-  - netexec
-  - impacket
+  - NetExec
+  - Impacket
   - evil-winrm
 skill: "Active Directory credential discovery and abuse"
 outcome: "Pass-the-hash authentication as the domain Administrator after Backup Operators hive extraction"
@@ -32,7 +32,7 @@ outcome: "Pass-the-hash authentication as the domain Administrator after Backup 
 
 ## From guest SMB to pass-the-hash Administrator
 
-Cicada is an Easy-rated Hack The Box Windows machine that shows how several small credential exposures compound into domain administrative control. Guest SMB access exposes an onboarding notice holding a default password; password spraying maps it to a first domain account; user description attributes and a development-share backup script disclose two further credentials; and the last account's `Backup Operators` membership allows SAM and SYSTEM hive extraction from the domain controller and recovery of an administrative NTLM hash. Credential values, hostnames, and addresses are replaced with role-based placeholders; command syntax is preserved.
+Cicada is an Easy-rated Hack The Box Windows machine that shows how several small credential exposures compound into domain administrative control. Guest SMB access exposes an onboarding notice holding a default password; password spraying maps it to a first domain account; user description attributes and a development-share backup script disclose two further credentials; and the last account's `Backup Operators` membership allows SAM and SYSTEM hive extraction from the domain controller and recovery of an administrative NTLM hash. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Guest SMB → onboarding default password → password spray → LDAP description leak → development-share backup script → WinRM → `Backup Operators` hive dump → pass-the-hash Administrator**
 

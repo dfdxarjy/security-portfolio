@@ -19,13 +19,14 @@ const isCaseStudy = (entry.data as { type?: string }).type === 'case-study';
 <Pagination />
 
 <footer class="portfolio-footer">
-  <p>&copy; 2026 taktak.hu</p>
+  <p>&copy; {new Date().getFullYear()} taktak.hu</p>
   <nav class="portfolio-footer-links" aria-label="Footer">
     <a href="/">Home</a>
     <a href="/case-studies/">Case Studies</a>
     <a href="/prolabs/">Pro Labs</a>
     <a href="/profiles/">Profiles</a>
-    <a href="https://github.com/dfdxarjy/security-portfolio">Source</a>
-    <a href="https://github.com/dfdxarjy/security-portfolio/issues/new">Contact</a>
+    <a href="/method/">Method</a>
+    <a href="https://github.com/taktak0x/security-portfolio">Source</a>
+    <a href="https://github.com/taktak0x/security-portfolio/issues/new">Contact</a>
   </nav>
 </footer>

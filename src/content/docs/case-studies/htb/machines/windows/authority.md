@@ -16,13 +16,13 @@ tags:
 objective: "Escalate from guest-accessible SMB and an open PWM portal to Domain Administrator through Ansible-vault credential recovery and AD CS ESC1 abuse"
 tools:
   - rustscan
-  - nxc
+  - NetExec
   - ansible2john
   - hashcat
   - ansible-vault
   - Responder
   - rusthound-ce
-  - certipy
+  - Certipy
   - evil-winrm
 skill: "AD CS ESC1 abuse with rogue-LDAP credential capture"
 outcome: "Certificate-authenticated Domain Administrator access through ESC1 abuse"
@@ -40,7 +40,7 @@ outcome: "Certificate-authenticated Domain Administrator access through ESC1 abu
 
 ## Ansible vault recovery and ESC1 abuse
 
-Authority is a Medium-rated Hack The Box Windows Active Directory lab. An open PWM password self-service portal and guest SMB access expose Ansible vault files holding domain credentials. PWM administrative access then lets the LDAP bind target be redirected to a rogue listener, capturing a service account's cleartext bind credentials. That service account has no direct certificate enrollment rights, but the domain permits non-privileged users to create machine accounts (MAQ=10). A new computer account enrolls the ESC1-vulnerable `<VULN_TEMPLATE>` template with the Administrator UPN, yielding the Administrator NTLM hash, and the service account is added to the built-in Administrators group for WinRM access to the Domain Controller. Credential values, host addresses, account names, the CA name, and the certificate template name are replaced with role-based placeholders; command syntax is preserved.
+Authority is a Medium-rated Hack The Box Windows Active Directory lab. An open PWM password self-service portal and guest SMB access expose Ansible vault files holding domain credentials. PWM administrative access then lets the LDAP bind target be redirected to a rogue listener, capturing a service account's cleartext bind credentials. That service account has no direct certificate enrollment rights, but the domain permits non-privileged users to create machine accounts (MAQ=10). A new computer account enrolls the ESC1-vulnerable `<VULN_TEMPLATE>` template with the Administrator UPN, yielding the Administrator NTLM hash, and the service account is added to the built-in Administrators group for WinRM access to the Domain Controller. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Guest SMB → Ansible vault cracking → PWM admin access → rogue LDAP listener → service-account credential capture → machine-account creation (MAQ) → ESC1 certificate abuse → Administrator NTLM hash → Domain Administrator via WinRM**
 

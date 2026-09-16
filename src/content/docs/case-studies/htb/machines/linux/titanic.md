@@ -39,7 +39,7 @@ outcome: "SSH access as the recovered Gitea user and a root context via an Image
 
 ## Download traversal to ImageMagick library hijack
 
-Titanic is an Easy-rated Hack The Box Linux lab. An unsanitized `ticket` parameter in a download endpoint provides arbitrary file read, exposing Gitea's configuration and SQLite database and yielding password hashes that crack to an SSH login. A cron-driven image-identification script then runs a vulnerable ImageMagick build from a writable directory, where a planted shared library is loaded as root. Target and attacker addresses, hostnames, account names, file paths, credentials, and secrets are replaced with role-based placeholders; command syntax is preserved.
+Titanic is an Easy-rated Hack The Box Linux lab. An unsanitized `ticket` parameter in a download endpoint provides arbitrary file read, exposing Gitea's configuration and SQLite database and yielding password hashes that crack to an SSH login. A cron-driven image-identification script then runs a vulnerable ImageMagick build from a writable directory, where a planted shared library is loaded as root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Path-traversal file read → Gitea configuration and SQLite database exposure → offline hash cracking → SSH access → cron-driven ImageMagick shared-library hijack (CVE-2024-41817) → root**
 

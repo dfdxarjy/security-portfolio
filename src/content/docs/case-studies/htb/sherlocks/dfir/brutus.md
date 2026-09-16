@@ -35,7 +35,7 @@ outcome: "Confirmed compromise with a bounded incident timeline: SSH password br
 
 ## From an authentication burst to a sudo-enabled account
 
-Brutus is a Hack The Box Sherlock that reconstructs a Linux SSH compromise from authentication and session-accounting artifacts. Correlating an authentication burst, successful privileged logins, terminal-session records, and account-management events yields one defensible timeline: a password brute-force against SSH opened interactive root access, the attacker created a local account in the `sudo` group, and that account read the credential store and fetched an enumeration script. Account names, source addresses, ports, and remote script locations are replaced with role-based placeholders; command syntax is preserved.
+Brutus is a Hack The Box Sherlock that reconstructs a Linux SSH compromise from authentication and session-accounting artifacts. Correlating an authentication burst, successful privileged logins, terminal-session records, and account-management events yields one defensible timeline: a password brute-force against SSH opened interactive root access, the attacker created a local account in the `sudo` group, and that account read the credential store and fetched an enumeration script. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** `SSH password brute-force → interactive root session → local account creation + sudo group → privileged /etc/shadow read and enumeration-script retrieval`
 

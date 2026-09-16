@@ -36,7 +36,7 @@ outcome: "Root command execution via GitPython CVE-2022-24439 through a sudo-per
 
 ## SSRF to GitPython ext:: root
 
-Editorial is an Easy-rated Hack The Box Linux lab. A book-cover upload feature on a publishing platform fetches user-supplied URLs server-side, and the resulting SSRF reaches an internal API that returns development-user credentials; SSH access with those credentials then exposes a Git repository whose history leaks production credentials, and a sudo rule lets the production user run a GitPython script as root that is vulnerable to CVE-2022-24439. Credential values, target and attacker addresses, hostnames, and internal paths are replaced with role-based placeholders; command syntax is preserved.
+Editorial is an Easy-rated Hack The Box Linux lab. A book-cover upload feature on a publishing platform fetches user-supplied URLs server-side, and the resulting SSRF reaches an internal API that returns development-user credentials; SSH access with those credentials then exposes a Git repository whose history leaks production credentials, and a sudo rule lets the production user run a GitPython script as root that is vulnerable to CVE-2022-24439. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **SSRF via cover upload → internal API credential leak → SSH as development user → Git history production credential leak → SSH as production user → GitPython `ext::` command injection (CVE-2022-24439) → root**
 

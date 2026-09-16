@@ -9,7 +9,7 @@ addedAt: "2026-09-14"
 tags:
   - linux
   - supply-chain
-  - sudo-abuse
+  - sudo
   - php
 objective: "Gain unauthenticated code execution through a backdoored PHP build and escalate to root through a NOPASSWD sudo rule."
 tools:
@@ -18,7 +18,7 @@ tools:
   - netcat
   - sudo
   - knife
-skill: "Supply-chain backdoor exploitation and NOPASSWD sudo abuse"
+skill: "PHP 8.1.0-dev backdoor exploitation and NOPASSWD sudo abuse"
 outcome: "Unauthenticated remote code execution as the web user, then a root shell via knife exec"
 ---
 
@@ -34,7 +34,7 @@ outcome: "Unauthenticated remote code execution as the web user, then a root she
 
 ## Backdoored PHP build to NOPASSWD root
 
-Knife is an Easy-rated Hack The Box Linux machine built on a supply-chain compromise: a backdoor was inserted into the development build of PHP 8.1.0-dev, and any web server running that build evaluates PHP code taken from a malformed `User-Agentt` HTTP header whose value begins with `zerodium`. That gives unauthenticated remote code execution, and a `NOPASSWD` sudo rule on the Chef `knife` binary then converts the foothold into root. Target and attacker addresses, the web account, and the backdoor payload are replaced with role-based placeholders; command syntax is preserved. The header payload after the `zerodium` prefix is shown as `<PHP_EXPRESSION>`.
+Knife is an Easy-rated Hack The Box Linux machine built on a supply-chain compromise: a backdoor was inserted into the development build of PHP 8.1.0-dev, and any web server running that build evaluates PHP code taken from a malformed `User-Agentt` HTTP header whose value begins with `zerodium`. That gives unauthenticated remote code execution, and a `NOPASSWD` sudo rule on the Chef `knife` binary then converts the foothold into root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/). The header payload after the `zerodium` prefix is shown as `<PHP_EXPRESSION>`.
 
 **Attack path:** **Backdoored PHP 8.1.0-dev (`User-Agentt` header) → unauthenticated RCE as `<LAB_USER>` → reverse shell → `NOPASSWD` `/usr/bin/knife` → `knife exec` → root**
 

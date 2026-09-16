@@ -1,5 +1,6 @@
 ---
 title: "Mailing — Path Traversal, Outlook NTLM Coercion, and LibreOffice Privilege Escalation"
+seoTitle: "Mailing — Path Traversal, NTLM Coercion, and LibreOffice Escalation"
 description: "A mail server path traversal exposes a configuration hash, and a crafted document triggers privileged code execution on a client host."
 type: case-study
 platform: Hack The Box
@@ -19,8 +20,8 @@ tools:
   - curl
   - hashcat
   - swaks
-  - responder
-  - netexec
+  - Responder
+  - NetExec
   - evil-winrm
   - netcat
   - python3
@@ -40,7 +41,7 @@ outcome: "Mail-server credential recovery, a coerced NetNTLMv2 hash validated th
 
 ## Mail traversal, NTLM coercion, document exploit
 
-Mailing is an Easy-rated Hack The Box Windows lab whose mail server and IIS website expose a path traversal, an unpatched mail client, and an unpatched document processor. A download endpoint reads `hMailServer.ini`, disclosing the administrator password hash; recovered offline, it authenticates to SMTP, from which a crafted Moniker-link email coerces a user's NetNTLMv2 authentication to an operator-controlled server. The captured hash recovers a WinRM credential, and a crafted ODT document exploits the document processor to execute code in a privileged local account's context. Target addresses, hostnames, accounts, and secret values are replaced with role-based placeholders; command syntax is preserved. Two hand-offs — the interactive WinRM shell and the document delivery — are described as recorded, without captured output.
+Mailing is an Easy-rated Hack The Box Windows lab whose mail server and IIS website expose a path traversal, an unpatched mail client, and an unpatched document processor. A download endpoint reads `hMailServer.ini`, disclosing the administrator password hash; recovered offline, it authenticates to SMTP, from which a crafted Moniker-link email coerces a user's NetNTLMv2 authentication to an operator-controlled server. The captured hash recovers a WinRM credential, and a crafted ODT document exploits the document processor to execute code in a privileged local account's context. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/). Two hand-offs — the interactive WinRM shell and the document delivery — are described as recorded, without captured output.
 
 **Attack path:** **Download-endpoint path traversal → hMailServer administrator hash recovery → authenticated SMTP → CVE-2024-21413 Moniker-link NTLM coercion → NetNTLMv2 recovery → WinRM user access → CVE-2023-2255 document payload → privileged local account execution**
 

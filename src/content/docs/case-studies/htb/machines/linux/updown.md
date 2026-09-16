@@ -1,6 +1,6 @@
 ---
 title: "UpDown — Exposed Git Metadata, Upload Race, and Privileged Interpreter Abuse"
-description: "Exposed version-control metadata and a custom-header development virtual host lead to an upload blocklist bypass and race condition for a web-service shell; a SUID Python 2 input() helper and a package-installer sudo rule reach root."
+description: "Exposed version-control metadata and a custom-header development virtual host lead to an upload blocklist bypass and a race condition for a web-service shell; a SUID Python 2 input() helper and a package-installer sudo rule reach root."
 type: case-study
 platform: Hack The Box
 content_type: machine
@@ -21,7 +21,7 @@ tools:
   - gobuster
   - curl
   - netcat
-  - python
+  - python3
   - ssh
   - easy_install
 skill: "Chaining web-source exposure, an upload race, and unsafe privileged interpreter patterns to root"
@@ -40,7 +40,7 @@ outcome: "Web-service shell via a `proc_open` payload, application-user access v
 
 ## Exposed git to SUID interpreter root
 
-UpDown is a Medium-rated Hack The Box Linux lab built around a website availability checker. The path opens with an exposed Git directory that leaks the development source and its weak header-based access control, continues through a `.phar` upload that bypasses an extension blocklist and races the checker's delayed cleanup, and finishes with a SUID Python 2 `input()` helper and an over-broad `easy_install` sudo rule. Domains, paths, headers, ports, and account names are replaced with role-based placeholders; command syntax and technique are preserved.
+UpDown is a Medium-rated Hack The Box Linux lab built around a website availability checker. The path opens with an exposed Git directory that leaks the development source and its weak header-based access control, continues through a `.phar` upload that bypasses an extension blocklist and races the checker's delayed cleanup, and finishes with a SUID Python 2 `input()` helper and an over-broad `easy_install` sudo rule. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Exposed `.git` metadata → header-gated development vhost → `.phar` upload blocklist bypass → delayed-cleanup race → `proc_open` web-service shell → SUID Python 2 `input()` → application-user access → `NOPASSWD` `easy_install` sudo → root**
 

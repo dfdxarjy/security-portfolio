@@ -35,7 +35,7 @@ outcome: "Authenticated web session, SSH user access from a recovered private ke
 
 ## From type juggling to ZipCrypto key recovery
 
-Ransom is a medium-difficulty Hack The Box Linux lab whose Laravel login endpoint accepts a PHP loose-comparison quirk: a JSON boolean `true` in the password field authenticates without the real credential. Behind the login sits a home-directory ZIP archive encrypted with ZipCrypto; because it ships a predictable `.bash_logout`, a known-plaintext attack recovers the encryption keys and exposes an SSH private key for initial access. A credential hardcoded in the Laravel authentication controller then provides root. Target addresses, account names, keys, and credentials are replaced with role-based placeholders; command syntax is preserved.
+Ransom is a medium-difficulty Hack The Box Linux lab whose Laravel login endpoint accepts a PHP loose-comparison quirk: a JSON boolean `true` in the password field authenticates without the real credential. Behind the login sits a home-directory ZIP archive encrypted with ZipCrypto; because it ships a predictable `.bash_logout`, a known-plaintext attack recovers the encryption keys and exposes an SSH private key for initial access. A credential hardcoded in the Laravel authentication controller then provides root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **PHP type-juggling login bypass → ZipCrypto known-plaintext key recovery → recovered SSH key → user shell → hardcoded Laravel controller credential → root**
 

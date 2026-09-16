@@ -16,11 +16,11 @@ objective: "Chain a weak password reset, Kerberoasting, and silver-ticket forger
 tools:
   - rustscan
   - feroxbuster
-  - netexec
+  - NetExec
   - rusthound-ce
   - hashcat
-  - impacket
-  - godpotato
+  - Impacket
+  - GodPotato
   - netcat
 skill: "Active Directory credential recovery and Kerberos ticket forgery"
 outcome: "Administrative MSSQL access via a forged silver ticket and SYSTEM-level code execution through SeImpersonate abuse"
@@ -38,7 +38,7 @@ outcome: "Administrative MSSQL access via a forged silver ticket and SYSTEM-leve
 
 ## Weak reset to forged silver ticket
 
-Scrambled is a Medium-rated Hack The Box Windows lab that reaches full compromise by abusing a weak password-reset feature and misconfigured Kerberos trust. An IIS intranet portal resets any user's password to their username, the resulting domain account is used to Kerberoast a service account with a weak password, and the cracked password's NTLM hash forges a silver ticket against the MSSQL service. Administrative database access then delivers a payload through `xp_cmdshell`, and GodPotato turns the service account's `SeImpersonatePrivilege` into `SYSTEM`. Credential values, target addresses and hostnames, and download locations are replaced with role-based placeholders; command syntax is preserved.
+Scrambled is a Medium-rated Hack The Box Windows lab that reaches full compromise by abusing a weak password-reset feature and misconfigured Kerberos trust. An IIS intranet portal resets any user's password to their username, the resulting domain account is used to Kerberoast a service account with a weak password, and the cracked password's NTLM hash forges a silver ticket against the MSSQL service. Administrative database access then delivers a payload through `xp_cmdshell`, and GodPotato turns the service account's `SeImpersonatePrivilege` into `SYSTEM`. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Weak password reset → SMB credential validation → Kerberoasting `<SERVICE_ACCOUNT>` → silver-ticket forgery → MSSQL `xp_cmdshell` → GodPotato `SeImpersonate` abuse → SYSTEM**
 

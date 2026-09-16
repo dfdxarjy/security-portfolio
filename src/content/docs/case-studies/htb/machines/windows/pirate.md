@@ -17,12 +17,12 @@ tags:
 objective: "Chain supplied domain credentials through gMSA disclosure, an NTLM-relay pivot, and delegation abuse to administrative control of the domain controller."
 tools:
   - rustscan
-  - netexec
+  - NetExec
   - rusthound-ce
   - rdate
   - evil-winrm
-  - ligolo-ng
-  - impacket
+  - Ligolo-ng
+  - Impacket
   - coercer
   - bloodyAD
 skill: "Active Directory trust-path analysis across gMSA disclosure, NTLM relay, resource-based constrained delegation, and SPN abuse"
@@ -41,7 +41,7 @@ outcome: "SYSTEM-level execution on the domain controller after RBCD delegation 
 
 ## Clock skew to gMSA to RBCD
 
-Pirate is a Hard-rated Hack The Box Active Directory lab that begins with supplied credentials for a low-privileged domain user. LDAP enumeration is initially blocked by Kerberos clock skew; once the clocks are aligned, `pre2k` and gMSA enumeration expose a managed service account whose NTLM hash yields a WinRM foothold on the domain controller. Local discovery reveals an internal `/24` segment hosting a web host, a Ligolo tunnel reaches it, and an NTLM relay to LDAPS grants the delegation rights needed to impersonate an administrator, recover a local secret, reset a privileged account's password, and pivot a service ticket to the domain controller. Target and attacker addresses, hostnames, account names, credentials, and hashes are replaced with role-based placeholders; command syntax is preserved.
+Pirate is a Hard-rated Hack The Box Active Directory lab that begins with supplied credentials for a low-privileged domain user. LDAP enumeration is initially blocked by Kerberos clock skew; once the clocks are aligned, `pre2k` and gMSA enumeration expose a managed service account whose NTLM hash yields a WinRM foothold on the domain controller. Local discovery reveals an internal `/24` segment hosting a web host, a Ligolo tunnel reaches it, and an NTLM relay to LDAPS grants the delegation rights needed to impersonate an administrator, recover a local secret, reset a privileged account's password, and pivot a service ticket to the domain controller. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Supplied domain credentials → Kerberos clock-skew alignment → `pre2k` and gMSA disclosure → WinRM foothold → internal segment discovery → Ligolo pivot → NTLM-relay RBCD → delegated CIFS ticket → local secret recovery → privileged password reset → SPN abuse → domain controller SYSTEM**
 

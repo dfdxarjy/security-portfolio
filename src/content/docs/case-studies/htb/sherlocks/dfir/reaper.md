@@ -31,7 +31,7 @@ outcome: "A relayed NTLM authentication produced an authenticated network logon 
 
 ## One alert: a workstation name that did not match its address
 
-Reaper is a Hack The Box DFIR Sherlock built around a single alert: a SIEM detection for a logon whose claimed source workstation does not match its network address. Working from a packet capture and a Windows Security event log, correlating NetBIOS name resolution, an NTLM authentication, a Security 4624 network logon, an SMB tree connect, and a Security 5140 share-access record reconstructs one relay session. Target and account names, addresses, share names, session identifiers, and ports are replaced with role-based placeholders; command syntax is preserved.
+Reaper is a Hack The Box DFIR Sherlock built around a single alert: a SIEM detection for a logon whose claimed source workstation does not match its network address. Working from a packet capture and a Windows Security event log, correlating NetBIOS name resolution, an NTLM authentication, a Security 4624 network logon, an SMB tree connect, and a Security 5140 share-access record reconstructs one relay session. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **NBNS name-to-address mapping → NTLM authentication for `<DOMAIN>\<COMPROMISED_ACCOUNT>` captured and relayed → Security 4624 network logon claiming `<WORKSTATION_B>` from `<RELAY_SOURCE_IP>` → SMB tree connect toward a domain-controller share → Security 5140 share access under the same session**
 

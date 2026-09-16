@@ -1,5 +1,6 @@
 ---
 title: "LinkVortex — Exposed Git History to Ghost CMS RCE and a Symlink-Protection Bypass"
+seoTitle: "LinkVortex — Exposed Git History to Ghost CMS RCE and Symlink Bypass"
 description: "An exposed .git directory on a development virtual host reveals a CMS password for authenticated RCE; a sudo cleanup script with a user-controlled glob and a two-hop symlink chain reads a protected file."
 type: case-study
 platform: Hack The Box
@@ -38,7 +39,7 @@ outcome: "Authenticated Ghost CMS remote code execution as the application user,
 
 ## From exposed Git history to CMS RCE
 
-LinkVortex is an Easy-rated Hack The Box Linux lab. Virtual-host enumeration exposes a development subdomain whose web root publishes a `.git` directory; the repository's staged changes reveal a Ghost CMS password that authenticates to the admin panel. That access enables an authenticated remote code execution flaw in Ghost (CVE-2026-29053), yielding a shell as the application user, whose database password is reused for SSH. Privilege escalation abuses a sudo rule that passes a user-controlled `*.png` glob to a cleanup script, and a two-hop symlink chain reads a root-owned file despite `fs.protected_symlinks=1`. Target and operator addresses, credentials, and file paths are replaced with role-based placeholders; command syntax is preserved.
+LinkVortex is an Easy-rated Hack The Box Linux lab. Virtual-host enumeration exposes a development subdomain whose web root publishes a `.git` directory; the repository's staged changes reveal a Ghost CMS password that authenticates to the admin panel. That access enables an authenticated remote code execution flaw in Ghost (CVE-2026-29053), yielding a shell as the application user, whose database password is reused for SSH. Privilege escalation abuses a sudo rule that passes a user-controlled `*.png` glob to a cleanup script, and a two-hop symlink chain reads a root-owned file despite `fs.protected_symlinks=1`. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Exposed `.git` → Git-diff credential disclosure → Ghost CMS admin authentication → CVE-2026-29053 authenticated RCE → database-credential reuse → SSH access → sudo glob + two-hop symlink chain → root-owned file read**
 

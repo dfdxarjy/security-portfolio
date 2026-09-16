@@ -13,12 +13,12 @@ tags:
   - delegation
 objective: "Escalate from a guest-readable NETLOGON logon script to domain administrator control by abusing an over-permissive ACL and unconstrained delegation."
 tools:
-  - netexec
+  - NetExec
   - rusthound-ce
-  - bloodhound
-  - bloodyad
+  - BloodHound
+  - bloodyAD
   - hashcat
-  - impacket
+  - Impacket
   - krbrelayx
   - petitpotam
   - evil-winrm
@@ -38,7 +38,7 @@ outcome: "Domain administrator access via domain controller TGT capture, DCSync,
 
 ## From a logon script to unconstrained delegation
 
-Delegate is a Medium-rated Hack The Box Windows Active Directory lab. A guest-readable NETLOGON logon script exposes a reusable credential, directory analysis shows the recovered user holds `GenericWrite` over a second account, and that account's delegation-group membership supports an unconstrained-delegation attack that coerces the domain controller into revealing its TGT and finishes with DCSync. Credentials, hashes, hostnames, and addresses are replaced with role-based placeholders; command syntax is preserved.
+Delegate is a Medium-rated Hack The Box Windows Active Directory lab. A guest-readable NETLOGON logon script exposes a reusable credential, directory analysis shows the recovered user holds `GenericWrite` over a second account, and that account's delegation-group membership supports an unconstrained-delegation attack that coerces the domain controller into revealing its TGT and finishes with DCSync. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Guest-readable NETLOGON script → cleartext credential → `GenericWrite` → SPN Kerberoasting → delegation-admin machine account with unconstrained delegation → DNS spoof + PetitPotam coercion → DC TGT capture → DCSync → pass-the-hash domain administrator**
 

@@ -12,11 +12,12 @@ tags:
   - keepass
   - cve-2023-32784
   - memory-disclosure
-objective: "Default Request Tracker credentials and KeePass CVE-2023-32784 to a root SSH key"
+objective: "Chain default Request Tracker credentials and KeePass CVE-2023-32784 to a root SSH key"
 tools:
   - nmap
   - curl
   - ssh
+  - unzip
   - scp
   - keepass_dump.py
   - kpcli
@@ -32,12 +33,12 @@ outcome: "Root SSH access"
 | Difficulty | Easy |
 | Target environment | Ubuntu 22.04 Linux host running Request Tracker 4.4.4 behind nginx |
 | Starting position | Unauthenticated network access |
-| Objective | Default Request Tracker credentials and KeePass CVE-2023-32784 to a root SSH key |
+| Objective | Chain default Request Tracker credentials and KeePass CVE-2023-32784 to a root SSH key |
 | Outcome | User-level SSH access, then direct root SSH access |
 
 ## Default credentials to KeePass memory disclosure
 
-Keeper is an Easy-rated Hack The Box Linux lab that chains a default-credential weakness in Request Tracker with the KeePass master-password memory-disclosure flaw (CVE-2023-32784). The helpdesk system is reachable with publicly documented default credentials, an administrative comment field exposes a user password, and a KeePass crash dump in that user's home directory yields the master password. An unencrypted PuTTY-format root SSH key inside the unlocked database then authenticates directly as root. Target, operator, account, and secret values are replaced with role-based placeholders; command syntax is preserved.
+Keeper is an Easy-rated Hack The Box Linux lab that chains a default-credential weakness in Request Tracker with the KeePass master-password memory-disclosure flaw (CVE-2023-32784). The helpdesk system is reachable with publicly documented default credentials, an administrative comment field exposes a user password, and a KeePass crash dump in that user's home directory yields the master password. An unencrypted PuTTY-format root SSH key inside the unlocked database then authenticates directly as root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Default Request Tracker credentials → password in a ticket comment field → SSH as low-privilege user → KeePass crash dump → CVE-2023-32784 master-password recovery → unencrypted root key in the KeePass database → PuTTY-to-OpenSSH conversion → root SSH**
 

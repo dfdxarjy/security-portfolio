@@ -1,5 +1,6 @@
 ---
 title: "LogJammer — Windows Event-Log Reconstruction of Interactive Access, Scheduled-Task Persistence, and Firewall Log Clearing"
+seoTitle: "LogJammer — Windows Event-Log Reconstruction and Persistence"
 description: "HTB Sherlock case study reconstructing a single-host Windows event-log timeline with Chainsaw: interactive logon, discovery-tool detection, audit-policy tampering, scheduled-task persistence, and Firewall log clearing."
 type: case-study
 platform: Hack The Box
@@ -29,7 +30,7 @@ outcome: "Confirmed single-host defense-evasion chain: interactive logon, discov
 
 ## One host, twenty-five minutes, five log sources
 
-LogJammer is a Hack The Box Sherlock that reconstructs a single-host Windows incident from Security, System, Windows Firewall, Windows Defender, and PowerShell event logs analyzed with Chainsaw. Correlating an interactive logon, a Defender detection-and-remediation pair, an outbound firewall rule, an audit-policy change, scheduled-task creation, a PowerShell hash computation, and a channel-clear event yields one bounded timeline. Account names, task arguments, and user-profile paths are replaced with role-based placeholders; command syntax is preserved.
+LogJammer is a Hack The Box Sherlock that reconstructs a single-host Windows incident from Security, System, Windows Firewall, Windows Defender, and PowerShell event logs analyzed with Chainsaw. Correlating an interactive logon, a Defender detection-and-remediation pair, an outbound firewall rule, an audit-policy change, scheduled-task creation, a PowerShell hash computation, and a channel-clear event yields one bounded timeline. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Interactive logon (4624) → discovery-tool detection and quarantine (Defender 1116/1117) → outbound C2 firewall rule (2004) → audit-policy change (4719) → scheduled-task persistence (4698) → PowerShell hash computation (4104) → Firewall log cleared (System 104)**
 

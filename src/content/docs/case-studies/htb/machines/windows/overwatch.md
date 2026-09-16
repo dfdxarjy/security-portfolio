@@ -17,15 +17,15 @@ tags:
 objective: "Chain hardcoded MSSQL credentials, ADIDNS poisoning, and a WCF SOAP injection to SYSTEM-level access"
 tools:
   - rustscan
-  - nxc
+  - NetExec
   - ILSpy
   - impacket-mssqlclient
-  - dnstool.py
+  - dnstool
   - Responder
   - Ligolo-ng
   - evil-winrm
   - curl
-  - nc
+  - netcat
 skill: "ADIDNS poisoning, linked-server credential capture, and SOAP command injection"
 outcome: "SYSTEM-level command execution on the domain controller"
 ---
@@ -42,7 +42,7 @@ outcome: "SYSTEM-level command execution on the domain controller"
 
 ## ADIDNS poisoning to WCF injection
 
-Overwatch is a Medium-rated Hack The Box Windows Active Directory lab. A guest-readable `software$` SMB share exposes a .NET monitoring executable whose decompiled source contains hardcoded MSSQL credentials. The database holds a linked server entry with no DNS record; registering a spoofed ADIDNS A record redirects the name to an attacker host, and triggering the linked server query makes the database transmit credentials that Responder captures in cleartext. Those credentials authenticate over WinRM, and an internal-only WCF service — reachable through a Ligolo-ng tunnel — exposes a `KillProcess` operation whose unsanitised `processName` parameter yields command execution as `NT AUTHORITY\SYSTEM`. Passwords, addresses, and flags are replaced with role-based placeholders, and command syntax is preserved. Where the working session retained no console excerpt, the result is stated as recorded.
+Overwatch is a Medium-rated Hack The Box Windows Active Directory lab. A guest-readable `software$` SMB share exposes a .NET monitoring executable whose decompiled source contains hardcoded MSSQL credentials. The database holds a linked server entry with no DNS record; registering a spoofed ADIDNS A record redirects the name to an attacker host, and triggering the linked server query makes the database transmit credentials that Responder captures in cleartext. Those credentials authenticate over WinRM, and an internal-only WCF service — reachable through a Ligolo-ng tunnel — exposes a `KillProcess` operation whose unsanitised `processName` parameter yields command execution as `NT AUTHORITY\SYSTEM`. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/). Where the working session retained no console excerpt, the result is stated as recorded.
 
 **Attack path:** **Guest-readable `software$` share → hardcoded MSSQL credentials → ADIDNS-poisoned linked server → cleartext credential capture → WinRM access → Ligolo-ng tunnel → WCF SOAP `KillProcess` injection → SYSTEM**
 

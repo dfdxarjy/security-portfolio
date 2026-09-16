@@ -1,5 +1,6 @@
 ---
 title: "Pandora — SNMP Credential Leak to Pandora FMS Session Hijacking and SUID PATH Hijacking"
+seoTitle: "Pandora — SNMP Credential Leak and SUID PATH Hijacking"
 description: "SNMP enumeration leaks credentials for SSH access; an internal Pandora FMS instance reached through SSH dynamic forwarding is SQL-injected for session hijacking, and a SUID backup binary calling tar by relative name enables PATH hijacking to root."
 type: case-study
 platform: Hack The Box
@@ -20,7 +21,7 @@ tools:
   - ssh
   - sqlmap
   - proxychains
-  - burp-suite
+  - Burp Suite
   - strings
   - netcat
 skill: "Internal application exploitation and SUID PATH hijacking"
@@ -39,7 +40,7 @@ outcome: "SSH shell as the initial account, Pandora FMS session hijacking and ap
 
 ## From SNMP leak to SUID tar hijack
 
-Pandora is an Easy-rated Hack The Box Linux lab whose path begins with UDP enumeration: an SNMP walk using the default community string exposes a cleartext host-check credential for `<INITIAL_ACCESS_ACCOUNT>`, which grants SSH access. From that shell, an Apache virtual-host configuration reveals a Pandora FMS instance bound to localhost; an SSH dynamic forward exposes it, and a SQL injection in `chart_generator.php` dumps a live session that authenticates as `<APPLICATION_ACCOUNT>`. An authenticated command-execution flaw in the Events AJAX endpoint yields a shell as that account, and a SUID backup binary that calls `tar` by relative name allows PATH hijacking to root. Target addresses, account names, credentials, and session identifiers are replaced with role-based placeholders; command syntax is preserved. Several transitions — the virtual-host disclosure, the session-table dump, and the confirmed command execution — were documented without retained terminal output and are stated as recorded.
+Pandora is an Easy-rated Hack The Box Linux lab whose path begins with UDP enumeration: an SNMP walk using the default community string exposes a cleartext host-check credential for `<INITIAL_ACCESS_ACCOUNT>`, which grants SSH access. From that shell, an Apache virtual-host configuration reveals a Pandora FMS instance bound to localhost; an SSH dynamic forward exposes it, and a SQL injection in `chart_generator.php` dumps a live session that authenticates as `<APPLICATION_ACCOUNT>`. An authenticated command-execution flaw in the Events AJAX endpoint yields a shell as that account, and a SUID backup binary that calls `tar` by relative name allows PATH hijacking to root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/). Several transitions — the virtual-host disclosure, the session-table dump, and the confirmed command execution — were documented without retained terminal output and are stated as recorded.
 
 **Attack path:** **SNMP community-string enumeration → cleartext SSH credential → internal Pandora FMS discovery → SQL injection session hijacking → authenticated command execution → SUID `tar` PATH hijacking → root**
 

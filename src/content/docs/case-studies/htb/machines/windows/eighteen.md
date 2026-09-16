@@ -15,8 +15,8 @@ tags:
 objective: "Escalate from provided MSSQL credentials through impersonation and a misconfigured OU delegation to domain administrative control."
 tools:
   - rustscan
-  - netexec
-  - impacket
+  - NetExec
+  - Impacket
   - hashcat
   - evil-winrm
   - proxychains
@@ -37,7 +37,7 @@ outcome: "Domain user access over WinRM followed by recovery of the Administrato
 
 ## From MSSQL impersonation to badsuccessor delegation
 
-Eighteen is a Windows Active Directory lab whose domain controller also runs Microsoft SQL Server. A provided `<MSSQL_USER>` login can impersonate the `<DATABASE_USER>` login, exposing an application database whose stored PBKDF2-SHA256 password hash cracks to a weak value; that same value is reused by the domain account `<DOMAIN_USER>`, granting WinRM access. Loopback LDAP enumeration then finds a misconfigured organizational unit, and the badsuccessor technique creates a delegated Managed Service Account whose S4U delegation rights enable DCSync of the `<PRIVILEGED_USER>` NTLM hash. Addresses, hostnames, accounts, secrets, and hashes are replaced with role-based placeholders; results not accompanied by captured command output are presented from the recorded narrative.
+Eighteen is a Windows Active Directory lab whose domain controller also runs Microsoft SQL Server. A provided `<MSSQL_USER>` login can impersonate the `<DATABASE_USER>` login, exposing an application database whose stored PBKDF2-SHA256 password hash cracks to a weak value; that same value is reused by the domain account `<DOMAIN_USER>`, granting WinRM access. Loopback LDAP enumeration then finds a misconfigured organizational unit, and the badsuccessor technique creates a delegated Managed Service Account whose S4U delegation rights enable DCSync of the `<PRIVILEGED_USER>` NTLM hash. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/). Results not accompanied by captured command output are presented from the recorded narrative.
 
 **Attack path:** **Provided MSSQL credentials → `IMPERSONATE` over `<DATABASE_USER>` → application database hash cracking → password reuse on `<DOMAIN_USER>` over WinRM → loopback LDAP discovery → badsuccessor dMSA creation → S4U delegation abuse → DCSync → `<PRIVILEGED_USER>`**
 
@@ -142,7 +142,7 @@ Observation: domain users are enumerated through MSSQL with RID brute-forcing, a
 ```bash
 nxc mssql <TARGET_IP> -u '<MSSQL_USER>' -p '<MSSQL_CREDENTIALS>' --local-auth --rid-brute \
       | awk 'index($0,"<LAB_DOMAIN>\\")' | awk '{print $NF}' | awk -F'\\' '{print $2}' > users.txt
-nxc winrm <TARGET_IP> -u users.txt -p '<CRACKED_PASSWORD>' --continue-on-succes
+nxc winrm <TARGET_IP> -u users.txt -p '<CRACKED_PASSWORD>' --continue-on-success
 ```
 
 ```text

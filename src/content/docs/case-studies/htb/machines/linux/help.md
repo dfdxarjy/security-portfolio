@@ -39,7 +39,7 @@ outcome: "Command execution as the web-service account via a HelpDeskZ attachmen
 
 ## HelpDeskZ upload RCE to kernel eBPF root
 
-Help is an Easy Hack The Box Linux lab running HelpDeskZ 1.0.2 on Ubuntu. The demonstrated route is an unauthenticated attachment-upload weakness that stores a rejected PHP file under a predictable hashed name and reaches command execution as the web-service account; a GraphQL endpoint also returns HelpDeskZ credential data as an alternate disclosure path. After the upload foothold, a kernel eBPF flaw (CVE-2017-16995) escalates to root. Target addresses, the leaked hash and recovered plaintext, the upload payload, and callback ports are replaced with role-based placeholders; command syntax is preserved.
+Help is an Easy Hack The Box Linux lab running HelpDeskZ 1.0.2 on Ubuntu. The demonstrated route is an unauthenticated attachment-upload weakness that stores a rejected PHP file under a predictable hashed name and reaches command execution as the web-service account; a GraphQL endpoint also returns HelpDeskZ credential data as an alternate disclosure path. After the upload foothold, a kernel eBPF flaw (CVE-2017-16995) escalates to root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Unauthenticated HelpDeskZ attachment upload → rejected PHP file stored under a predictable hashname → web-service command execution → kernel eBPF escalation (CVE-2017-16995) → root**
 

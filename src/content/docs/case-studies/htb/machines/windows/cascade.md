@@ -14,7 +14,7 @@ objective: "Enumerate anonymously exposed domain data, validate recovered accoun
 tools:
   - nmap
   - ldapsearch
-  - netexec
+  - NetExec
   - smbclient
   - sqlite3
   - openssl
@@ -35,7 +35,7 @@ outcome: "Administrative domain access via a password recovered from a deleted A
 
 ## Anonymous LDAP to Recycle Bin credential recovery
 
-Cascade is a Medium-rated Hack The Box Active Directory lab built on credential exposure rather than a single exploitable flaw. Anonymous LDAP enumeration discloses a custom credential-like attribute; an SMB-readable share exposes a VNC configuration export and an audit application whose stored credentials can be reversed; and the AD Recycle Bin retains a deleted account whose password equals the domain Administrator's. Target names, credentials, keys, encrypted values, and flags are replaced with role-based placeholders; command syntax is preserved.
+Cascade is a Medium-rated Hack The Box Active Directory lab built on credential exposure rather than a single exploitable flaw. Anonymous LDAP enumeration discloses a custom credential-like attribute; an SMB-readable share exposes a VNC configuration export and an audit application whose stored credentials can be reversed; and the AD Recycle Bin retains a deleted account whose password equals the domain Administrator's. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Anonymous LDAP enumeration → Base64 legacy-attribute decode → SMB access → VNC config DES decryption → `Audit$` share → .NET static analysis and AES key recovery → service-account access → AD Recycle Bin deleted-object query → Administrator**
 

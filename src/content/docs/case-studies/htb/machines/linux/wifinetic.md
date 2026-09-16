@@ -36,7 +36,7 @@ outcome: "User-level SSH access via a leaked Wi-Fi PSK, then root SSH access via
 
 ## Backup key reuse and WPS recovery
 
-Wifinetic is an Easy-rated Hack The Box Linux lab that turns configuration exposure and credential reuse into full compromise. Anonymous FTP serves an OpenWrt configuration backup whose wireless stanza stores the Wi-Fi pre-shared key in plaintext, and that same value is reused as the network-administrator SSH password. On the host, the wireless audit tool `reaver` carries `cap_net_raw+ep`, so an unprivileged user can run a WPS attack against the local access point, recover a second WPA key from a factory-default PIN, and reuse it to log in as root. Target addresses, interface names, the AP BSSID, and both wireless keys are replaced with role-based placeholders; command syntax is preserved.
+Wifinetic is an Easy-rated Hack The Box Linux lab that turns configuration exposure and credential reuse into full compromise. Anonymous FTP serves an OpenWrt configuration backup whose wireless stanza stores the Wi-Fi pre-shared key in plaintext, and that same value is reused as the network-administrator SSH password. On the host, the wireless audit tool `reaver` carries `cap_net_raw+ep`, so an unprivileged user can run a WPS attack against the local access point, recover a second WPA key from a factory-default PIN, and reuse it to log in as root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Anonymous FTP → OpenWrt backup disclosure → Wi-Fi PSK reused for user SSH → raw-packet-capable `reaver` → default-PIN WPS attack → WPA PSK recovered → reused for root SSH**
 

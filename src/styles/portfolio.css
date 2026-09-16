@@ -1,6 +1,8 @@
 /*
  * Self-hosted latin subsets. Licence + sources: public/fonts/README.md
- * Only the four faces the editorial type system uses are declared here.
+ * Four faces the editorial type system uses: Source Serif 4 for display and
+ * headings, IBM Plex Mono for metadata, labels and code. The body face is the
+ * native system sans (see the token below) so it costs no bytes.
  */
 @font-face {
 	font-family: "Source Serif 4";
@@ -30,11 +32,14 @@
 	font-display: swap;
 	src: url("/fonts/ibm-plex-mono-latin-500-normal.woff2") format("woff2");
 }
-
 :root {
 	/* Type system — editorial direction. */
 	--font-display: "Source Serif 4", Georgia, "Times New Roman", serif;
-	--font-body: "Source Serif 4", Georgia, "Times New Roman", serif;
+	/* Headings stay serif for the editorial identity. Body copy uses a system
+	 * sans: case studies are dense with commands, tables and findings, where a
+	 * serif body is harder to scan. Accent faces are self-hosted; the body face
+	 * is intentionally native so it costs no bytes. */
+	--font-body: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 	--font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 
 	/* Type scale and rhythm. */
@@ -59,7 +64,6 @@
 	--portfolio-accent-soft: #f0e4dc;
 	--portfolio-accent-contrast: #ffffff;
 	--portfolio-grid: rgba(122, 62, 42, 0.06);
-	--portfolio-shadow: 0 1rem 3rem rgba(58, 42, 32, 0.1);
 	--portfolio-radius: 0.8rem;
 	--portfolio-copy: 68ch;
 
@@ -78,7 +82,6 @@
 	--portfolio-accent-soft: #3a2a20;
 	--portfolio-accent-contrast: #1a1a17;
 	--portfolio-grid: rgba(201, 138, 99, 0.08);
-	--portfolio-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.32);
 	--control-line: #6f675d;
 }
 
@@ -165,7 +168,10 @@ select {
 
 .sl-markdown-content { line-height: var(--lh-body); }
 .sl-markdown-content :where(h1, h2, h3, h4) { letter-spacing: -0.025em; }
-.sl-markdown-content :where(pre, table, .expressive-code) { box-shadow: var(--portfolio-shadow); }
+/* No drop shadows on code frames, tables or blocks: on the dark surface a soft
+   shadow banded visibly (#12.4 also calls for flat surfaces and hairlines).
+   Expressive Code frames and Starlight pre/table already carry their own
+   hairline borders, so removing the shadow loses no definition. */
 .sl-markdown-content :where(code:not(pre code)) { border: 1px solid var(--portfolio-line); border-radius: 0.3rem; padding: 0.1em 0.3em; }
 .sl-markdown-content :where(th) { color: var(--portfolio-ink); }
 .sl-markdown-content :where(blockquote) { border-inline-start-color: var(--portfolio-accent); }

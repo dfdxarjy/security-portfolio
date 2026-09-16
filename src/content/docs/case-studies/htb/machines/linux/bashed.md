@@ -8,7 +8,7 @@ status: published-ready
 addedAt: "2026-09-14"
 tags:
   - linux
-  - web-enumeration
+  - web
   - privilege-escalation
 objective: "Move from an unauthenticated web foothold to root by abusing an exposed development web shell, a permissive sudo delegation, and a script that root executes on a schedule."
 tools:
@@ -35,7 +35,7 @@ outcome: "www-data command execution, a passwordless sudo transition to scriptma
 
 ## From exposed phpbash to scheduled-script root
 
-Bashed is an Easy Hack The Box Linux lab in which web enumeration exposes `phpbash`, an interactive PHP shell left in the document root, giving command execution as `www-data`. Privilege escalation follows two documented steps: a permit-any passwordless `sudo` rule to the `scriptmanager` account, and a Python script in `/scripts` that `scriptmanager` can overwrite but root runs on a schedule. Target and attacker addresses and callback ports are replaced with role-based placeholders; command syntax is preserved.
+Bashed is an Easy Hack The Box Linux lab in which web enumeration exposes `phpbash`, an interactive PHP shell left in the document root, giving command execution as `www-data`. Privilege escalation follows two documented steps: a permit-any passwordless `sudo` rule to the `scriptmanager` account, and a Python script in `/scripts` that `scriptmanager` can overwrite but root runs on a schedule. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** `Apache enumeration → exposed phpbash web shell → www-data command execution → hosted-script reverse shell → passwordless sudo to scriptmanager → writable root-scheduled script → root`
 

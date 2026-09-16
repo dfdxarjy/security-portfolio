@@ -15,8 +15,8 @@ tags:
 objective: "Escalate from a misconfigured printer admin panel to local Administrator by capturing cleartext LDAP service credentials and abusing Server Operators rights."
 tools:
   - rustscan
-  - responder
-  - netexec
+  - Responder
+  - NetExec
   - evil-winrm
   - sc.exe
 skill: "Credential capture through a misconfigured appliance LDAP configuration and service-based privilege escalation"
@@ -35,7 +35,7 @@ outcome: "Cleartext LDAP service-account capture and local Administrator access 
 
 ## Printer panel LDAP capture to admin
 
-Return is an Easy-rated Hack The Box Windows Active Directory lab in which a misconfigured printer administration panel leaks a service account's credentials through a cleartext LDAP bind, and that account's `Server Operators` membership is then abused for local Administrator access. The chain uses only legitimate functionality and exploits no CVE. Target addresses, the domain, account names, and credential values are replaced with role-based placeholders, and command syntax is preserved. Outcomes the source records without captured output are reported as documented results.
+Return is an Easy-rated Hack The Box Windows Active Directory lab in which a misconfigured printer administration panel leaks a service account's credentials through a cleartext LDAP bind, and that account's `Server Operators` membership is then abused for local Administrator access. The chain uses only legitimate functionality and exploits no CVE. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/). Outcomes the source records without captured output are reported as documented results.
 
 **Attack path:** **Printer admin panel → LDAP server address redirected to a credential listener → cleartext service credential captured → WinRM access → Server Operators service reconfiguration → local Administrator**
 

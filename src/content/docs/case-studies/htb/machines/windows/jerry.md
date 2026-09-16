@@ -36,7 +36,7 @@ outcome: "SYSTEM-level command execution via WAR deployment through the Tomcat M
 
 ## From Tomcat defaults to a SYSTEM shell
 
-Jerry is an Easy-rated Hack The Box Windows lab whose only exposed service is Apache Tomcat 7.0.88, with the Manager application reachable without IP restriction. The Manager authenticates with credentials shown in Tomcat's own sample configuration, and its legitimate WAR deployment feature executes a JSP reverse shell under the `NT AUTHORITY\SYSTEM` account that runs the service. Target addresses, credential values, and the deployed JSP filename are replaced with role-based placeholders; command syntax is preserved.
+Jerry is an Easy-rated Hack The Box Windows lab whose only exposed service is Apache Tomcat 7.0.88, with the Manager application reachable without IP restriction. The Manager authenticates with credentials shown in Tomcat's own sample configuration, and its legitimate WAR deployment feature executes a JSP reverse shell under the `NT AUTHORITY\SYSTEM` account that runs the service. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Exposed Tomcat Manager → default credentials → authenticated WAR deployment → JSP reverse shell → SYSTEM command execution**
 

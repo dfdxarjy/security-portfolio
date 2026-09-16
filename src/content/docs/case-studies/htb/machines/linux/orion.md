@@ -11,7 +11,7 @@ tags:
   - web
   - cms
   - credential-access
-  - privesc
+  - privilege-escalation
 objective: "Escalate from a pre-authentication CMS exploit to root through credential recovery and a legacy local-service authentication bypass."
 tools:
   - rustscan
@@ -36,7 +36,7 @@ outcome: "Root via a loopback GNU inetutils telnet authentication bypass after r
 
 ## From pre-auth CMS RCE to telnet bypass
 
-Orion is a Hack The Box Linux lab that exposes SSH and an nginx-hosted Craft CMS 5.6.16 application. A pre-authentication remote code execution flaw in Craft CMS yields a `www-data` shell; the application environment file then discloses plaintext MySQL credentials, and the user table returns an administrator bcrypt hash. The hash is cracked offline to a password reused for SSH, and a telnet service bound to loopback running GNU inetutils 2.7 is abused through CVE-2026-24061 to reach root. Target and operator addresses, hostnames, wordlist paths, and credential material are replaced with role-based placeholders; command syntax is preserved.
+Orion is a Hack The Box Linux lab that exposes SSH and an nginx-hosted Craft CMS 5.6.16 application. A pre-authentication remote code execution flaw in Craft CMS yields a `www-data` shell; the application environment file then discloses plaintext MySQL credentials, and the user table returns an administrator bcrypt hash. The hash is cracked offline to a password reused for SSH, and a telnet service bound to loopback running GNU inetutils 2.7 is abused through CVE-2026-24061 to reach root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Unauthenticated web enumeration → Craft CMS 5.6.16 pre-auth RCE (CVE-2025-32432) → `www-data` shell → plaintext database credentials in the environment file → MySQL administrator hash → offline crack → SSH as a named user → loopback GNU inetutils telnet authentication bypass (CVE-2026-24061) → root**
 

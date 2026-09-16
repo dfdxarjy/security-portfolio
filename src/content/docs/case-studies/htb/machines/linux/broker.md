@@ -36,7 +36,7 @@ outcome: "Unauthenticated code execution as the ActiveMQ service account, escala
 
 ## OpenWire RCE to nginx sudo root
 
-Broker is an Easy-rated Hack The Box Linux lab built around an Apache ActiveMQ 5.15.15 deployment. The OpenWire transport on 61616 is vulnerable to CVE-2023-46604, an unauthenticated remote code execution flaw in the OpenWire marshaller, while the management console accepted default credentials. Exploiting the marshaller returns code execution as the broker service account, and a passwordless sudo rule for the nginx binary allows a root-owned instance with WebDAV writes to place an SSH key for root. Credential values, target and attacker addresses, and payload specifics are replaced with role-based placeholders; command syntax is preserved.
+Broker is an Easy-rated Hack The Box Linux lab built around an Apache ActiveMQ 5.15.15 deployment. The OpenWire transport on 61616 is vulnerable to CVE-2023-46604, an unauthenticated remote code execution flaw in the OpenWire marshaller, while the management console accepted default credentials. Exploiting the marshaller returns code execution as the broker service account, and a passwordless sudo rule for the nginx binary allows a root-owned instance with WebDAV writes to place an SSH key for root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Unauthenticated OpenWire exploitation (CVE-2023-46604) → ActiveMQ service-account code execution → passwordless `nginx` sudo → root-owned WebDAV file write → root SSH access**
 

@@ -3,9 +3,9 @@ import { getCollection } from "astro:content";
 import "../styles/portfolio.css";
 import BrandLockup from "../components/BrandLockup.astro";
 
-const title = "taktak.hu — Security Portfolio";
+const title = "0xTakTak — Security Portfolio";
 const description =
-    "Security case studies across offensive security and digital forensics.";
+    "Security case studies across red and blue team work, incident investigation, and Windows and Active Directory environments.";
 const studies = (
     await getCollection(
         "docs",
@@ -98,6 +98,10 @@ const searchableText = (study: (typeof studies)[number]) =>
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
         <meta name="twitter:card" content="summary_large_image" />
+        {/* Referrer-Policy is the only security header GitHub Pages honours, via
+            <meta name="referrer">. The Starlight Head override emits it for every
+            Starlight page; this standalone route needs its own copy. */}
+        <meta name="referrer" content="strict-origin-when-cross-origin" />
         <title>{title}</title>
         {/* This page is not a Starlight route, so the Head override cannot reach it;
             the WebSite node is emitted here instead. */}
@@ -105,10 +109,26 @@ const searchableText = (study: (typeof studies)[number]) =>
             type="application/ld+json"
             set:html={JSON.stringify({
                 "@context": "https://schema.org",
-                "@type": "WebSite",
-                name: "taktak.hu",
-                url: "https://taktak.hu/",
-                description,
+                "@graph": [
+                    {
+                        "@type": "WebSite",
+                        name: "taktak.hu",
+                        url: "https://taktak.hu/",
+                        description,
+                        author: { "@id": "https://taktak.hu/#person" },
+                        publisher: { "@id": "https://taktak.hu/#person" },
+                    },
+                    {
+                        "@type": "Person",
+                        "@id": "https://taktak.hu/#person",
+                        name: "0xTakTak",
+                        url: "https://taktak.hu/",
+                        sameAs: [
+                            "https://tryhackme.com/p/0xTakTak",
+                            "https://profile.hackthebox.com/profile/019c9493-c1c4-7212-a144-d2b4755f02eb",
+                        ],
+                    },
+                ],
             })}
         />
         {/* Match Starlight's theme contract: shared `starlight-theme` key, set before paint.
@@ -705,14 +725,13 @@ const searchableText = (study: (typeof studies)[number]) =>
                 >
                     <div>
                         <p class="portfolio-kicker">Security case studies</p>
-                        <h1 id="portfolio-title">taktak.hu</h1>
+                        <h1 id="portfolio-title">0xTakTak</h1>
                         <p class="portfolio-lede">
-                            I document offensive-security and digital-forensics
-                            work: repeatable methods, evidence, and analysis
-                            from Linux and Windows machines and DFIR
-                            investigations. Browse the curated highlights, then
-                            filter the full case-study explorer by focus or
-                            keyword.
+                            I'm interested in cybersecurity, particularly red and blue
+                            team work, incident investigation, and Windows and Active
+                            Directory environments. Most of my time goes into building
+                            labs, working through HTB content, and exploring attacks
+                            from both the offensive and defensive sides.
                         </p>
                         <div class="portfolio-actions">
                             <a class="portfolio-button" href="#explorer">
@@ -959,14 +978,15 @@ const searchableText = (study: (typeof studies)[number]) =>
             </main>
 
             <footer class="portfolio-footer">
-                <p>&copy; 2026 taktak.hu</p>
+                <p>&copy; {new Date().getFullYear()} taktak.hu</p>
                 <nav class="portfolio-footer-links" aria-label="Footer">
                     <a href="/">Home</a>
                     <a href="/case-studies/">Case Studies</a>
                     <a href="/prolabs/">Pro Labs</a>
                     <a href="/profiles/">Profiles</a>
-                    <a href="https://github.com/dfdxarjy/security-portfolio">Source</a>
-                    <a href="https://github.com/dfdxarjy/security-portfolio/issues/new">Contact</a>
+                    <a href="/method/">Method</a>
+                    <a href="https://github.com/taktak0x/security-portfolio">Source</a>
+                    <a href="https://github.com/taktak0x/security-portfolio/issues/new">Contact</a>
                 </nav>
             </footer>
         </div>
@@ -982,8 +1002,27 @@ const searchableText = (study: (typeof studies)[number]) =>
             const empty = document.querySelector("#portfolio-empty");
             const loadMore = document.querySelector("#portfolio-load-more");
             const PAGE_SIZE = 12;
-            let active = "all";
+            // Seed state from the URL so a filtered view can be linked/shared.
+            const urlParams = new URLSearchParams(window.location.search);
+            const focusParam = urlParams.get("focus");
+            let active = buttons.some(
+                (button) => button.dataset.filter === focusParam,
+            )
+                ? focusParam
+                : "all";
             let shown = PAGE_SIZE;
+            const queryParam = urlParams.get("q");
+            if (queryParam) search.value = queryParam;
+            const sortParam = urlParams.get("sort");
+            if ([...sort.options].some((option) => option.value === sortParam)) {
+                sort.value = sortParam;
+            }
+            buttons.forEach((button) =>
+                button.setAttribute(
+                    "aria-pressed",
+                    String(button.dataset.filter === active),
+                ),
+            );
 
             const collator = new Intl.Collator(undefined, {
                 sensitivity: "base",
@@ -1052,6 +1091,24 @@ const searchableText = (study: (typeof studies)[number]) =>
                 loadMore.hidden = hideLoadMore;
             };
 
+            // Mirror explorer state into the address bar so a view is shareable.
+            // Defaults are omitted so the plain homepage URL stays plain.
+            const syncUrl = () => {
+                const params = new URLSearchParams();
+                if (active !== "all") params.set("focus", active);
+                const query = search.value.trim();
+                if (query) params.set("q", query);
+                if (sort.value !== "newest") params.set("sort", sort.value);
+                const searchPart = params.toString();
+                const hash = searchPart ? "#explorer" : window.location.hash;
+                // `replaceState` (never `pushState`): typing must not fill history.
+                history.replaceState(
+                    null,
+                    "",
+                    `${window.location.pathname}${searchPart ? `?${searchPart}` : ""}${hash}`,
+                );
+            };
+
             buttons.forEach((button) =>
                 button.addEventListener("click", () => {
                     active = button.dataset.filter;
@@ -1063,12 +1120,17 @@ const searchableText = (study: (typeof studies)[number]) =>
                         ),
                     );
                     update();
+                    syncUrl();
                 }),
             );
-            search.addEventListener("input", update);
+            search.addEventListener("input", () => {
+                update();
+                syncUrl();
+            });
             sort.addEventListener("change", () => {
                 applySort();
                 update();
+                syncUrl();
             });
             loadMore.addEventListener("click", () => {
                 shown += PAGE_SIZE;
@@ -1077,6 +1139,7 @@ const searchableText = (study: (typeof studies)[number]) =>
 
             applySort();
             update();
+            syncUrl();
         </script>
         <script is:inline>
             (() => {

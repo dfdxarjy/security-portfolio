@@ -1,9 +1,9 @@
 # Self-hosted webfonts
 
 These are the four self-hosted latin-subset faces that make up the site's type
-system — Source Serif 4 for display and body, IBM Plex Mono for metadata,
+system — Source Serif 4 for display and headings, IBM Plex Mono for metadata,
 labels and code — declared in `src/styles/portfolio.css` and shipped with the
-site.
+site. The body face is the native system sans, so it ships no bytes.
 
 ## Licence
 
@@ -24,7 +24,7 @@ mirror). The CSS was requested with a desktop User-Agent, then only the
 CSS request:
 
 ```
-https://fonts.bunny.net/css?family=source-serif-4:400,600|ibm-plex-serif:600|ibm-plex-sans:400,600|ibm-plex-mono:400,500
+https://fonts.bunny.net/css?family=source-serif-4:400,600|ibm-plex-serif:600|ibm-plex-mono:400,500
 ```
 
 Exact woff2 source URLs (all `latin` subset):
@@ -37,5 +37,8 @@ Exact woff2 source URLs (all `latin` subset):
 | `ibm-plex-mono-latin-500-normal.woff2` | `https://fonts.bunny.net/ibm-plex-mono/files/ibm-plex-mono-latin-500-normal.woff2` | 14888 |
 
 Total: **71216 bytes** (4 files).
+
+Retrieved 2026-09-16 from the Bunny Fonts CSS API, keeping only the
+`/* latin */` woff2 URLs above.
 
 The `taktak.hu` brand mark's lowercase `t` is derived from the bundled Source Serif 4 600 face under the same SIL Open Font License 1.1; the outline is generated locally by `scripts/extract-brand-glyph.py` and no font binary is duplicated into the brand assets.

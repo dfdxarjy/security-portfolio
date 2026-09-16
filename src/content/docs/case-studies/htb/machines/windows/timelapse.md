@@ -17,7 +17,7 @@ tags:
 objective: "Escalate from an unauthenticated SMB share to directory-level administrative control by cracking a protected certificate archive and abusing delegated LAPS read access."
 tools:
   - nmap
-  - netexec
+  - NetExec
   - smbclient
   - 7z
   - john
@@ -39,7 +39,7 @@ outcome: "Certificate-based WinRM user access and local Administrator control of
 
 ## Certificate archive cracking to LAPS disclosure
 
-Timelapse is an Easy-rated Hack The Box Windows Active Directory lab in which a world-readable SMB share, an exported WinRM certificate, and a service-account password left in shell history combine to give full control of the domain controller. The share exposes a password-protected ZIP archive containing a PKCS#12 (`.pfx`) certificate; the archive password and the certificate passphrase are both recovered offline with `john`. The certificate authenticates to WinRM as a standard user, whose PowerShell history discloses a service-account password. That account holds read access to the LAPS `ms-Mcs-AdmPwd` attribute, and the local Administrator password it yields completes the compromise. Target, account, and path details are replaced with role-based placeholders; command syntax is preserved.
+Timelapse is an Easy-rated Hack The Box Windows Active Directory lab in which a world-readable SMB share, an exported WinRM certificate, and a service-account password left in shell history combine to give full control of the domain controller. The share exposes a password-protected ZIP archive containing a PKCS#12 (`.pfx`) certificate; the archive password and the certificate passphrase are both recovered offline with `john`. The certificate authenticates to WinRM as a standard user, whose PowerShell history discloses a service-account password. That account holds read access to the LAPS `ms-Mcs-AdmPwd` attribute, and the local Administrator password it yields completes the compromise. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Anonymous-readable SMB share → password-protected ZIP holding a PFX certificate → offline cracking of archive and certificate passphrases → certificate-based WinRM authentication → PowerShell history credential disclosure → LAPS read access → local Administrator password → directory-level control**
 

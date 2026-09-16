@@ -21,7 +21,7 @@ tools:
   - pywhisker
   - gettgtpkinit
   - getnthash
-  - certipy-ad
+  - Certipy
   - evil-winrm
 skill: "Active Directory ACL abuse and AD CS certificate escalation"
 outcome: "Administrative domain-controller execution via an ESC9-issued Administrator certificate"
@@ -39,7 +39,7 @@ outcome: "Administrative domain-controller execution via an ESC9-issued Administ
 
 ## ACL delegation chain and ESC9 escalation
 
-Certified is a Medium Hack The Box Active Directory lab that starts from provided low-privilege domain credentials. Directory relationship data exposes a chain of delegated permissions across a management group, a service account, and a certificate-operator account, which is closed by abusing AD CS ESC9 to obtain an Administrator certificate. Target addresses, hostnames, account names, SIDs, and credential, hash, and certificate values are replaced with role-based placeholders; a small number of transitions are recorded by command only, without captured output.
+Certified is a Medium Hack The Box Active Directory lab that starts from provided low-privilege domain credentials. Directory relationship data exposes a chain of delegated permissions across a management group, a service account, and a certificate-operator account, which is closed by abusing AD CS ESC9 to obtain an Administrator certificate. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/). A small number of transitions are recorded by command only, without captured output.
 
 **Attack path:** **WriteOwner on `Management` → group membership → `GenericWrite` Shadow Credentials on the service account → `GenericAll` over the certificate-operator account → forced password reset → AD CS ESC9 UPN manipulation → Administrator certificate**
 

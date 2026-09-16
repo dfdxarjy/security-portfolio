@@ -16,13 +16,13 @@ tags:
 objective: "Progress from provided low-privilege domain credentials to administrative access through credential recovery, Kerberos abuse, and offline backup analysis."
 tools:
   - nmap
-  - netexec
+  - NetExec
   - john
   - hashcat
-  - targetedkerberoast
-  - impacket
+  - targetedKerberoast
+  - Impacket
   - evil-winrm
-  - runascs
+  - RunasCs
   - ssh
 skill: "Active Directory credential recovery and post-exploitation chaining"
 outcome: "Administrative domain access after offline Active Directory backup extraction and pass-the-hash"
@@ -40,7 +40,7 @@ outcome: "Administrative domain access after offline Active Directory backup ext
 
 ## Provided credentials to offline directory backup
 
-Voleur is a Hard-rated Hack The Box Windows Active Directory lab. Starting from provided low-privilege domain credentials, the chain moves through a share-hosted access-review spreadsheet, Kerberoasting, an AD Recycle Bin recovery, DPAPI-protected material, and a WSL pivot into an offline directory-backup disclosure. Target identifiers, account names, credential values, private keys, and hashes are replaced with role-based placeholders; command syntax is preserved.
+Voleur is a Hard-rated Hack The Box Windows Active Directory lab. Starting from provided low-privilege domain credentials, the chain moves through a share-hosted access-review spreadsheet, Kerberoasting, an AD Recycle Bin recovery, DPAPI-protected material, and a WSL pivot into an offline directory-backup disclosure. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Provided domain credentials → encrypted share document → Kerberoasting → WinRM foothold → LDAP service-account pivot → AD Recycle Bin recovery → DPAPI decryption → WSL SSH access → offline `ntds.dit` extraction → Administrator**
 

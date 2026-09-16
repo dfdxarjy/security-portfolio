@@ -9,7 +9,7 @@ addedAt: "2026-09-14"
 tags:
   - windows
   - active-directory
-  - web-security
+  - web
 objective: "Escalate from the exposed Gibbon LMS web application to domain-level privileges through application and Active Directory misconfiguration."
 tools:
   - rustscan
@@ -18,7 +18,7 @@ tools:
   - python3
   - mysql
   - hashcat
-  - netexec
+  - NetExec
   - 7z
   - ssh
 skill: "Web application RCE and Active Directory credential and privilege-path analysis"
@@ -36,7 +36,7 @@ outcome: "Web shell on the domain controller, application-database credential re
 
 ## Gibbon RCE to Group Policy escalation
 
-TheFrizz is a Hack The Box Windows Active Directory lab in which a domain controller also hosts the Gibbon v25.0.00 learning management system. That release is affected by CVE-2023-45878, which yields a web shell on the host; the application configuration then discloses MySQL credentials, the database exposes a crackable password hash, and a deleted WAPT backup in the Recycle Bin preserves a second account's credential. That account's membership in Group Policy Creator Owners frames an escalation path toward Domain Administrator. Target identifiers, credentials, hashes, and encoded values are represented by role-based placeholders; command syntax is preserved.
+TheFrizz is a Hack The Box Windows Active Directory lab in which a domain controller also hosts the Gibbon v25.0.00 learning management system. That release is affected by CVE-2023-45878, which yields a web shell on the host; the application configuration then discloses MySQL credentials, the database exposes a crackable password hash, and a deleted WAPT backup in the Recycle Bin preserves a second account's credential. That account's membership in Group Policy Creator Owners frames an escalation path toward Domain Administrator. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Gibbon LMS RCE (CVE-2023-45878) web shell → `config.php` database credentials → MySQL user-hash extraction → offline password recovery → Kerberos SSH access → Recycle Bin WAPT backup → decoded credential for `<WAPT_USER>` → Group Policy Creator Owners membership → Domain Administrator path**
 

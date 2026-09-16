@@ -36,7 +36,7 @@ outcome: "Authenticated SSH access as a low-privileged user and root-level acces
 
 ## Grafana traversal to privileged container escape
 
-Data is a retired Hack The Box Linux machine running Grafana 8.0.0. The release is vulnerable to CVE-2021-43798, an unauthenticated path traversal in Grafana plugin asset paths that reads arbitrary files; the most useful target is the Grafana SQLite database holding password hashes and salts. A cracked credential authenticates over SSH, and a permissive sudo rule for `docker exec` lets that user enter the Grafana container as root, mount the host filesystem, and reach root-owned files. Credential values, target addresses, and container identifiers are replaced with role-based placeholders; command syntax is preserved.
+Data is a retired Hack The Box Linux machine running Grafana 8.0.0. The release is vulnerable to CVE-2021-43798, an unauthenticated path traversal in Grafana plugin asset paths that reads arbitrary files; the most useful target is the Grafana SQLite database holding password hashes and salts. A cracked credential authenticates over SSH, and a permissive sudo rule for `docker exec` lets that user enter the Grafana container as root, mount the host filesystem, and reach root-owned files. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Grafana 8.0.0 → CVE-2021-43798 path traversal → `grafana.db` exfiltration → offline hash cracking → SSH as `boris` → sudo `docker exec` into a privileged container → host filesystem mount → root**
 

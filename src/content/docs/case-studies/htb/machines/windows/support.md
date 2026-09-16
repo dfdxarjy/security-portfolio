@@ -13,12 +13,12 @@ tags:
   - access-control
 objective: "Assess how a guest-readable utility, reversible credential obfuscation, exposed directory attributes, and delegated computer-object permissions combine into domain compromise."
 tools:
-  - netexec
+  - NetExec
   - smbclient
   - strings
   - ldapsearch
-  - bloodhound-ce-python
-  - impacket
+  - BloodHound
+  - Impacket
   - evil-winrm
   - python3
 skill: "Active Directory enumeration and Resource-Based Constrained Delegation abuse"
@@ -37,7 +37,7 @@ outcome: "Authenticated WinRM access via a directory-disclosed credential, then 
 
 ## Guest tooling to RBCD impersonation
 
-Support is an Easy-rated Hack The Box Windows Active Directory lab. A guest-readable SMB share exposes a .NET utility whose LDAP service credential is hidden behind a reversible transformation; the recovered credential enables full directory enumeration, which discloses a second plaintext password in a user's `info` attribute. That password yields WinRM access, and a group membership granting `GenericAll` over the domain-controller computer object opens a resource-based constrained delegation (RBCD) path to `Administrator`. Target identifiers, account names, credential values, and artifacts are replaced with role-based placeholders; command syntax is preserved.
+Support is an Easy-rated Hack The Box Windows Active Directory lab. A guest-readable SMB share exposes a .NET utility whose LDAP service credential is hidden behind a reversible transformation; the recovered credential enables full directory enumeration, which discloses a second plaintext password in a user's `info` attribute. That password yields WinRM access, and a group membership granting `GenericAll` over the domain-controller computer object opens a resource-based constrained delegation (RBCD) path to `Administrator`. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Guest SMB share → embedded credential recovery from a .NET binary → LDAP enumeration → plaintext `info` attribute password → WinRM access → `GenericAll` on the domain-controller object → RBCD impersonation of `Administrator` → `nt authority\system`**
 

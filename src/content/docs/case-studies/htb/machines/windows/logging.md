@@ -16,19 +16,19 @@ tags:
 objective: "Chain a leaked service credential, Shadow Credentials, a DLL hijack, AD CS abuse, and a rogue WSUS server into administrative access on the domain controller."
 tools:
   - rustscan
-  - nxc
+  - NetExec
   - rusthound-ce
   - pywhisker
-  - gettgtpkinit.py
-  - getnthash.py
+  - gettgtpkinit
+  - getnthash
   - evil-winrm
   - msfvenom
   - zip
   - rubeus
-  - certipy
+  - Certipy
   - openssl
-  - dnstool.py
-  - nc
+  - dnstool
+  - netcat
 skill: "Active Directory attack-path analysis across credentials, PKI, and update infrastructure"
 outcome: "Administrative WinRM access after the managed service account is added to local Administrators"
 ---
@@ -45,7 +45,7 @@ outcome: "Administrative WinRM access after the managed service account is added
 
 ## Leaked log credential to rogue WSUS
 
-Logging is a Hard-rated Hack The Box Windows Active Directory lab that chains a diagnostic log credential leak, Shadow Credentials abuse against a managed service account, a DLL hijack in an update monitor, AD CS certificate abuse, AD-integrated DNS record manipulation, and a rogue WSUS server that executes a trusted binary as SYSTEM. Credential values, hashes, hostnames, addresses, and certificate identifiers are replaced with role-based placeholders; command syntax is preserved. Where no output was captured, the documented result is given instead.
+Logging is a Hard-rated Hack The Box Windows Active Directory lab that chains a diagnostic log credential leak, Shadow Credentials abuse against a managed service account, a DLL hijack in an update monitor, AD CS certificate abuse, AD-integrated DNS record manipulation, and a rogue WSUS server that executes a trusted binary as SYSTEM. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/). Where no output was captured, the documented result is given instead.
 
 **Attack path:** **Provided domain credential → leaked service credential → year-rotated password → Shadow Credentials → NT hash → DLL hijack → AD CS certificate → AD DNS record → rogue WSUS → local Administrators**
 

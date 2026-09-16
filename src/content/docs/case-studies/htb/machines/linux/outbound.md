@@ -1,5 +1,6 @@
 ---
 title: "Outbound — Roundcube RCE, DES Session Decryption, and below Symlink Privilege Escalation"
+seoTitle: "Outbound — Roundcube RCE and below Symlink Privilege Escalation"
 description: "Authenticated Roundcube RCE (CVE-2025-49113) and session-table password decryption with the application DES key lead to SSH access; a symlink attack on the below utility's error log (CVE-2025-27591) yields root."
 type: case-study
 platform: Hack The Box
@@ -37,7 +38,7 @@ outcome: "Code execution as the Roundcube service account, SSH access as the loc
 
 ## From Roundcube RCE to below symlink root
 
-Outbound is a Hack The Box Linux lab that chains an authenticated Roundcube remote code execution flaw (CVE-2025-49113) into full root access. The webmail configuration exposes the application database and its `des_key`, so a session-stored password can be decrypted; the recovered webmail account discloses a system password that authenticates over SSH, and the `below` logging utility is abused through a symlink attack (CVE-2025-27591) to modify `/etc/passwd` and gain root. Credential values, host and address identifiers, and callback details are replaced with role-based placeholders; command syntax is preserved.
+Outbound is a Hack The Box Linux lab that chains an authenticated Roundcube remote code execution flaw (CVE-2025-49113) into full root access. The webmail configuration exposes the application database and its `des_key`, so a session-stored password can be decrypted; the recovered webmail account discloses a system password that authenticates over SSH, and the `below` logging utility is abused through a symlink attack (CVE-2025-27591) to modify `/etc/passwd` and gain root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **authenticated Roundcube RCE (CVE-2025-49113) → `www-data` shell → `config.inc.php` database credential recovery → DES session password decryption → mailbox credential disclosure → SSH as `<SYSTEM_ACCOUNT>` → `below` symlink attack (CVE-2025-27591) → root**
 
