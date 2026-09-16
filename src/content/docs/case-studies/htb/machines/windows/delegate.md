@@ -36,20 +36,20 @@ outcome: "Domain administrator access via domain controller TGT capture, DCSync,
 | Objective | Escalate from a guest-readable NETLOGON logon script to domain administrator control by abusing an over-permissive ACL and unconstrained delegation |
 | Outcome | Domain administrator access via domain controller TGT capture, DCSync, and pass-the-hash |
 
-## Summary
+## From a logon script to unconstrained delegation
 
 Delegate is a Medium-rated Hack The Box Windows Active Directory lab. A guest-readable NETLOGON logon script exposes a reusable credential, directory analysis shows the recovered user holds `GenericWrite` over a second account, and that account's delegation-group membership supports an unconstrained-delegation attack that coerces the domain controller into revealing its TGT and finishes with DCSync. Credentials, hashes, hostnames, and addresses are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Guest-readable NETLOGON script → cleartext credential → `GenericWrite` → SPN Kerberoasting → delegation-admin machine account with unconstrained delegation → DNS spoof + PetitPotam coercion → DC TGT capture → DCSync → pass-the-hash domain administrator**
 
-## Context and Objective
+## Domain controller, guest SMB, and the escalation objective
 
 - **Target:** a Windows Active Directory domain (`<DOMAIN>`) whose domain controller (`<DOMAIN_CONTROLLER_FQDN>`) hosts the domain services.
 - **Starting position:** unauthenticated network access; guest SMB login is accepted and exposes domain-readable shares.
 - **Objective:** move from a readable logon script to domain administrator control by following the directory's authorization edges and delegation configuration.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: logon script to DCSync
 
 The source captures little raw tool output; apart from the logon-script and recovered-password excerpts, the remaining stages are recorded as narrative results.
 
@@ -174,13 +174,13 @@ Result: an administrative pass-the-hash session establishes domain administrator
 
 No failed attempts, blockers, or mid-chain corrections are documented for this chain; each stage completed and supplied the input for the next.
 
-## Outcome
+## Outcome: domain administrator via DCSync and pass-the-hash
 
 The evidence establishes domain administrator access on the target domain controller.
 
 Limitation: apart from the logon-script and recovered-password excerpts, the source presents each stage as a narrative result rather than captured tool output, so intermediate proof rests on the recorded descriptions rather than raw transcripts.
 
-## Lessons and Recommendations
+## Recommendations: script credentials, GenericWrite, delegation, and coercion
 
 The actions below are recommendations; none was validated in the lab.
 

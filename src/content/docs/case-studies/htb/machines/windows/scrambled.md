@@ -36,13 +36,13 @@ outcome: "Administrative MSSQL access via a forged silver ticket and SYSTEM-leve
 | Objective | Chain a weak password reset, Kerberoasting, and silver-ticket forgery into SYSTEM-level control |
 | Outcome | Domain user access, administrative MSSQL access via a forged silver ticket, and SYSTEM-level code execution |
 
-## Summary
+## Weak reset to forged silver ticket
 
 Scrambled is a Medium-rated Hack The Box Windows lab that reaches full compromise by abusing a weak password-reset feature and misconfigured Kerberos trust. An IIS intranet portal resets any user's password to their username, the resulting domain account is used to Kerberoast a service account with a weak password, and the cracked password's NTLM hash forges a silver ticket against the MSSQL service. Administrative database access then delivers a payload through `xp_cmdshell`, and GodPotato turns the service account's `SeImpersonatePrivilege` into `SYSTEM`. Credential values, target addresses and hostnames, and download locations are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Weak password reset → SMB credential validation → Kerberoasting `<SERVICE_ACCOUNT>` → silver-ticket forgery → MSSQL `xp_cmdshell` → GodPotato `SeImpersonate` abuse → SYSTEM**
 
-## Context and Objective
+## Domain controller and MSSQL from unauthenticated access
 
 - **Target:** Windows Active Directory domain controller (`<DC_FQDN>`), at `<TARGET_IP>` in domain `<DOMAIN>`.
 - **Exposed services:** DNS (53), HTTP/IIS (80), Kerberos (88), LDAP (389/636/3268/3269), SMB (445), MSSQL (1433), a custom API (4411) advertising `SCRAMBLECORP_ORDERS_V1.0.3`, and WinRM (5985).
@@ -50,7 +50,7 @@ Scrambled is a Medium-rated Hack The Box Windows lab that reaches full compromis
 - **Objective:** move from the exposed intranet and directory services to administrative and SYSTEM-level control, and demonstrate the impact of misconfigured password handling.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: reset portal, Kerberoast, silver ticket, GodPotato
 
 ### 1. Service Enumeration
 
@@ -232,11 +232,11 @@ Result: the `whoami /all` output confirms execution as `NT AUTHORITY\SYSTEM`.
 
 The source records no failed attempts or tradeoffs; the chain followed the documented path.
 
-## Outcome
+## Outcome: administrative MSSQL and SYSTEM code execution
 
 The chain ends with administrative MSSQL access through a forged silver ticket and `SYSTEM`-level code execution on the domain controller, confirmed by the `NT AUTHORITY\SYSTEM` identity output. The reset result, the share and directory collection, and the forged-ticket SQL access are recorded in the notes without captured console output.
 
-## Lessons and Recommendations
+## Recommendations: resets, service passwords, Kerberos, and MSSQL
 
 The recommendations below follow the source remediation; none was re-tested in the lab.
 

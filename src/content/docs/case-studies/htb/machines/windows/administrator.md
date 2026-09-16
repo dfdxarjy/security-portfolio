@@ -38,20 +38,20 @@ outcome: "Interactive WinRM session in the built-in Administrator context after 
 | Objective | Progress from a provided domain credential to full domain compromise by following exposed object-permission paths |
 | Outcome | WinRM session in the built-in Administrator context via DCSync replication and pass-the-hash |
 
-## Summary
+## Misconfigured ACLs to Kerberoasting and DCSync
 
 Administrator is a Medium-rated Hack The Box Active Directory lab whose compromise is driven entirely by misconfigured object-level permissions rather than a software vulnerability. Starting from a provided low-privileged domain credential, directory collection exposes ACL edges that chain Kerberoasting, a forced password reset, an FTP-hosted Password Safe vault, a WinRM foothold, a second Kerberoasting hop, and finally DCSync replication with pass-the-hash to administrative control. Credential and hash values, target addresses, and domain identifiers are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **BloodHound ACL mapping → SPN write and Kerberoasting → forced password reset → FTP-hosted Password Safe cracking → WinRM foothold → second Kerberoasting → DCSync replication → pass-the-hash Administrator**
 
-## Context and Objective
+## Directory target, provided credential, and escalation goal
 
 - **Target:** a Windows Active Directory domain with a Domain Controller; standard AD services alongside FTP (21) and WinRM (5985).
 - **Starting position:** a provided low-privileged domain-user credential; no prior domain access.
 - **Objective:** progress from the starting account to full domain compromise by following the exposed object-permission paths.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: ACL mapping to DCSync and pass-the-hash
 
 ### 1. Service Enumeration
 
@@ -236,11 +236,11 @@ Result: a WinRM session in the built-in Administrator context is established.
 
 The source records no failed attempts, dead ends, or explicit tradeoffs. The path follows the ACL edges exposed by directory collection, and each hop uses documented, legitimate AD functionality.
 
-## Outcome
+## Outcome: DCSync replication and domain administrative access
 
 The evidence establishes administrative control of the domain through misconfigured object permissions alone, with no software vulnerability exploited at any hop. Limitations: credential values and the replicated NTLM hash are redacted, so the recovered secrets are not reproducible from this writeup, and the WinRM shell transcript itself is not captured — the foothold and the escalation rest on the recorded command output and the authenticated operations that follow.
 
-## Lessons and Recommendations
+## Recommendations: ACLs, replication rights, the vault, and weak service passwords
 
 The actions below are recommendations; none was validated or re-tested in the lab.
 

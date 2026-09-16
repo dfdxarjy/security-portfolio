@@ -34,17 +34,17 @@ outcome: "WinRM command execution as local Administrator after recovering the pa
 | Objective | Escalate from guest portal access to local Administrator |
 | Outcome | WinRM command execution as local Administrator |
 
-## Summary
+## From a guest portal to browser memory
 
 Heist is a retired Easy Hack The Box Windows machine that reaches administrative control without a privilege-escalation exploit: a guest-accessible support portal leaks a Cisco router configuration, and the recovered credentials carry the chain through SMB, WinRM, and browser process memory. Target addresses, hostnames, accounts, and credential values are replaced with role-based placeholders; command syntax and technique order are preserved.
 
 **Attack path:** **Guest support portal → leaked Cisco configuration → decoded type 7 and cracked type 5 credentials → SMB access as `<LOW_PRIVILEGE_USER>` → RID brute force → password spray → WinRM as `<WINRM_USER>` → Firefox process dump → Administrator credential from browser memory → WinRM as Administrator**
 
-## Context and Objective
+## IIS support portal, SMB, and WinRM surfaces
 
 The machine exposes a Microsoft IIS support portal on port 80, SMB on port 445, and WinRM on port 5985. The portal offers a guest login and an issues tracker, where an attachment links a Cisco router configuration file. The objective is to trace an attack path from guest-level portal access to full administrative control of the host.
 
-## Approach and Evidence
+## Evidence: leaked router config to browser memory
 
 ### 1. Service Enumeration
 
@@ -255,17 +255,17 @@ nxc winrm <TARGET_IP> -u administrator -p '<ADMIN_PASSWORD>'
 WINRM  <TARGET_IP>  5985  <TARGET_HOST>  [+] <TARGET_HOST>\administrator:<ADMIN_PASSWORD> (Pwn3d!)
 ```
 
-## Challenges and Decisions
+## Challenges: rejected creds, sparse usernames, and dump targeting
 
 - The recovered router credentials did not authenticate against the web login form directly, so the path pivoted to SMB and WinRM rather than the portal itself.
 - Only the issue author's username was visible initially, so the RID brute-force result was needed to supply usernames for the password spray; the spray then revealed the reuse on `<WINRM_USER>`.
 - Correlating the todo note with the process listing made the dump targeted: both pointed to active browser use, so dumping a single `firefox.exe` process was the most direct route to a stored credential.
 
-## Outcome
+## Outcome: local Administrator WinRM from browser memory
 
 The evidence establishes unauthenticated-to-Administrator access: secrets leaked from a guest-reachable device configuration were reused across SMB and WinRM, and the final Administrator credential was validated only over WinRM. The final escalation did not require a kernel exploit.
 
-## Lessons and Recommendations
+## Recommendations: device configs, weak secrets, reuse, RID enumeration, and browser memory
 
 The actions below are recommendations; none was tested in the lab.
 

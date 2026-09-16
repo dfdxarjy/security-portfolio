@@ -29,20 +29,20 @@ outcome: "A relayed NTLM authentication produced an authenticated network logon 
 | Objective | Correlate the capture with the event log to reconstruct an NTLM relay, the resulting network logon, and the SMB activity that followed |
 | Outcome | Confirmed NTLM relay: an authenticated network logon whose claimed workstation conflicts with its source address, followed by SMB share access within one session |
 
-## Summary
+## One alert: a workstation name that did not match its address
 
 Reaper is a Hack The Box DFIR Sherlock built around a single alert: a SIEM detection for a logon whose claimed source workstation does not match its network address. Working from a packet capture and a Windows Security event log, correlating NetBIOS name resolution, an NTLM authentication, a Security 4624 network logon, an SMB tree connect, and a Security 5140 share-access record reconstructs one relay session. Target and account names, addresses, share names, session identifiers, and ports are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **NBNS name-to-address mapping → NTLM authentication for `<DOMAIN>\<COMPROMISED_ACCOUNT>` captured and relayed → Security 4624 network logon claiming `<WORKSTATION_B>` from `<RELAY_SOURCE_IP>` → SMB tree connect toward a domain-controller share → Security 5140 share access under the same session**
 
-## Context and Objective
+## Provided artifacts and the alert
 
 - **Target environment:** a Windows Active Directory domain (`<DOMAIN>`); the artifacts concern a domain-joined workstation and its domain context.
 - **Provided evidence:** an NTLM relay packet capture (`ntlmrelay.pcapng`) and a Security event log (`Security.evtx`) covering the surrounding timeframe.
 - **Objective:** investigate the alert — a source-workstation name that does not match the network address recorded for the same logon — and determine what the artifacts establish about compromise.
 - **Constraints:** analysis is confined to the two provided artifacts. Capture offsets are relative to the start of the capture; Security events carry absolute UTC timestamps. No persistence or privilege-escalation activity was observed in scope.
 
-## Approach and Evidence
+## Evidence: capture and log joined by session
 
 ### 1. Workstation-to-Address Mapping
 
@@ -172,15 +172,15 @@ Significance: the shared logon ID and source port tie the Security 4624 logon an
 
 Result: the artifacts support one ordered relay session on `2024-07-31`, in which an intercepted NTLM authentication becomes a network logon and then share access.
 
-## Challenges and Decisions
+## Two clocks and two share contexts
 
 The two artifacts use different time scopes: capture offsets are relative to the start of the capture, while Security events carry absolute UTC timestamps. Correlation therefore relied on shared session attributes — the logon ID and source port — rather than direct timestamp equality. The capture also identifies navigation toward `<TARGET_SHARE>`, while the event log records access to `<AUTHENTICATION_SHARE>`; the two are distinct observed share contexts and were not treated as interchangeable evidence. The capture ends at the share-identification stage, so the port, logon ID, and share name for the session were recovered from the event log.
 
-## Outcome
+## Outcome: a confirmed relay session
 
 The evidence establishes a confirmed NTLM relay compromise. The source assessment classifies the activity as an NTLM relay and rates it high, on the basis that a domain account was relayed toward a domain-controller-adjacent share. Limitations: the evidence supports one relay session and recorded share touches; it does not establish file reads or writes on the navigated share, interception affecting other victims, or persistence on the relay device.
 
-## Lessons and Recommendations
+## Recommendations: SMB signing, mismatch hunting, session correlation, and response
 
 The actions below are recommendations; none was validated in the lab.
 

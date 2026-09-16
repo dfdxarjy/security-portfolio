@@ -35,20 +35,20 @@ outcome: "Command execution as <WEB_SERVICE_ACCOUNT>, a <CRON_OWNER_ACCOUNT> she
 | Objective | Reach privileged access by bypassing the image-upload check, injecting through a cron-managed filename, and abusing a sudo network script |
 | Outcome | `<WEB_SERVICE_ACCOUNT>` command execution, a `<CRON_OWNER_ACCOUNT>` shell, and `<PRIVILEGED_ACCOUNT>` command execution |
 
-## Summary
+## From leaked backup to sudo interface injection
 
 Networked is an Easy-rated Hack The Box Linux (CentOS) lab with a flawed image-upload workflow. A web-application source backup left reachable at `/backup` exposes the upload-handling code, whose extension and MIME checks accept a double-extension file named `shell.php.gif`. The upload is stored with `.php` retained in the name, Apache executes it, and the resulting web shell runs commands as the Apache service account. A cron-executed cleanup script then passes attacker-controlled filenames into a shell command, and a sudo-run network configuration script writes unescaped input into an interface file that `ifup` later sources. Target and attacker addresses, lab account names, and callback ports are replaced with role-based placeholders, and the uploaded payload, reverse-shell requests, and malicious filename are shown only as placeholder patterns; command syntax is preserved.
 
 **Attack path:** **Leaked `/backup` source → double-extension PHP upload → `<WEB_SERVICE_ACCOUNT>` web shell → cron filename command injection → `<CRON_OWNER_ACCOUNT>` shell → sudo `changename.sh` interface-file injection → `<PRIVILEGED_ACCOUNT>`**
 
-## Context and Objective
+## CentOS Apache and PHP host from unauthenticated access
 
 - **Target:** a CentOS host exposing SSH (OpenSSH 7.4) and Apache httpd 2.4.6 running PHP 5.4.16.
 - **Starting position:** unauthenticated network access.
 - **Objective:** exploit the web application's upload handling for code execution, then escalate through a scheduled cleanup script and a sudo-delegated network script.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: leaked backup to sudo interface write
 
 ### 1. Service Enumeration
 
@@ -236,16 +236,16 @@ Significance: allowing spaces in the validated value lets the input be split int
 
 Result: command execution as `<PRIVILEGED_ACCOUNT>` is confirmed by the returned `whoami` output.
 
-## Challenges and Decisions
+## The upload check gap and injection placement
 
 - **Upload check versus execution behavior.** The handler accepted image extensions while Apache executed any `.php`-bearing filename, so the payload combined a `GIF89a` header, an allowed `.gif` extension, and an embedded `.php` token to satisfy the check and still run as PHP.
 - **Injection value placement in `changename.sh`.** The injected value was placed in the `NAME` field, and the remaining prompts were answered with neutral values (`none`, `no`, `dhcp`) so the script continued through to `ifup`.
 
-## Outcome
+## Outcome: privileged account via the sudo network script
 
 The evidence establishes unauthenticated access escalating to privileged `<PRIVILEGED_ACCOUNT>` command execution through the sudo network script. Limitation: the payloads and injected values are summarized as placeholders, so the chain is not reproducible from this writeup.
 
-## Lessons and Recommendations
+## Recommendations: upload checks, exposed source, filenames, and sudo delegation
 
 Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
 

@@ -32,13 +32,13 @@ outcome: "SSH access as the WordPress service account and root command execution
 | Objective | Move from an exposed Java plugin's hardcoded database credentials to SSH access through credential reuse, then escalate through an unrestricted sudo policy |
 | Outcome | SSH access as `<LAB_USER>` and root command execution through the account's unrestricted `sudo` policy |
 
-## Summary
+## From a browsable plugin to unrestricted sudo
 
 Blocky is an Easy Hack The Box Linux lab themed around a Minecraft server. Web content discovery exposes a non-standard `/plugins` directory holding Java plugin archives; decompiling the custom plugin reveals hardcoded database credentials, and those credentials authenticate to an exposed phpMyAdmin instance, disclosing the WordPress user account. The same password is reused for SSH, and the account holds an unrestricted `sudo` policy. Target addresses, hostnames, and credential values are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Exposed `/plugins` directory → decompiled `BlockyCore.jar` → hardcoded database credentials → phpMyAdmin account discovery → SSH through credential reuse → unrestricted `sudo` → root**
 
-## Context and Objective
+## Target, web application, and objective
 
 - **Target:** Ubuntu Linux host exposing FTP, SSH, HTTP, and a Minecraft service.
 - **Web application:** Apache httpd 2.4.18 serving a WordPress 4.8 site.
@@ -46,7 +46,7 @@ Blocky is an Easy Hack The Box Linux lab themed around a Minecraft server. Web c
 - **Objective:** turn exposed plugin source into operating-system access, then determine the authenticated account's privilege boundary.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: plugin archive to root sudo
 
 ### 1. Service Enumeration
 
@@ -181,11 +181,11 @@ Result: an administrative shell is established, and `whoami` returns `root`.
 
 No other obstacles or failed attempts affected this path.
 
-## Outcome
+## Outcome: SSH via a reused credential, root via sudo
 
 The evidence establishes an authenticated SSH session as `<LAB_USER>`, reached through a credential recovered from an exposed plugin archive and reused across the database and host, and a root context obtained through the account's unrestricted `sudo` policy. The recovered password hash was not required for the path.
 
-## Lessons and Recommendations
+## Recommendations: exposed plugin, credential reuse, and unrestricted sudo
 
 Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. These actions are recommendations; none was validated in the lab.
 

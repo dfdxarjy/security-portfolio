@@ -35,13 +35,13 @@ outcome: "Code execution as the Roundcube service account, SSH access as the loc
 | Objective | Reach root through a vulnerable Roundcube instance, recovered application secrets, and a privileged logging utility |
 | Outcome | Code execution as the Roundcube service account, SSH access as a local account, and root via the `below` symlink attack |
 
-## Summary
+## From Roundcube RCE to below symlink root
 
 Outbound is a Hack The Box Linux lab that chains an authenticated Roundcube remote code execution flaw (CVE-2025-49113) into full root access. The webmail configuration exposes the application database and its `des_key`, so a session-stored password can be decrypted; the recovered webmail account discloses a system password that authenticates over SSH, and the `below` logging utility is abused through a symlink attack (CVE-2025-27591) to modify `/etc/passwd` and gain root. Credential values, host and address identifiers, and callback details are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **authenticated Roundcube RCE (CVE-2025-49113) → `www-data` shell → `config.inc.php` database credential recovery → DES session password decryption → mailbox credential disclosure → SSH as `<SYSTEM_ACCOUNT>` → `below` symlink attack (CVE-2025-27591) → root**
 
-## Context and Objective
+## nginx Roundcube host from provided webmail credentials
 
 - **Target:** an Ubuntu Linux host exposing SSH (22) and nginx (80) fronting the `mail.<DOMAIN>` webmail virtual host.
 - **Application:** Roundcube webmail served from `/var/www/html/roundcube` and backed by a local MySQL database.
@@ -49,7 +49,7 @@ Outbound is a Hack The Box Linux lab that chains an authenticated Roundcube remo
 - **Objective:** move from the provided webmail account to root, and demonstrate the impact of an unpatched webmail flaw, application secrets reachable by the web user, and an unsafe privileged utility.
 - **Constraints:** activity was confined to the Hack The Box lab environment, and the `mail.<DOMAIN>` virtual host was resolved locally for the web requests.
 
-## Approach and Evidence
+## Evidence: Roundcube RCE to below symlink attack
 
 ### 1. Service Discovery
 
@@ -211,7 +211,7 @@ Significance: a privileged writer that resolves its log path through user-writab
 
 Result: root command execution is confirmed by the root shell.
 
-## Challenges and Decisions
+## The encrypted session, restricted flags, and missing logs
 
 | Challenge | Decision | Rationale |
 |---|---|---|
@@ -219,11 +219,11 @@ Result: root command execution is confirmed by the root shell.
 | The sudo policy denies `below --config`, `--debug`, and `-d` | Used the default `below` invocation that the policy permits | The symlink attack needs only the root log writer, not the restricted flags |
 | The `below` log directory does not exist until the utility first runs | Ran `below` once to create its world-writable log directory and files, then removed and relinked `error_root.log` | `below` writes as root into a directory the low-privileged user can modify, so the next run follows the symlink and the root-owned writer acts on `/etc/passwd` |
 
-## Outcome
+## Outcome: root via the below log symlink
 
 The evidence establishes root command execution on the host. Access rested on an unpatched Roundcube instance, application secrets readable by the web service user, and a privileged logging utility that resolved its log path through user-writable storage. HTTP and SSH were the only exposed services.
 
-## Lessons and Recommendations
+## Recommendations: Roundcube, plaintext config, session secrets, and below
 
 Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
 

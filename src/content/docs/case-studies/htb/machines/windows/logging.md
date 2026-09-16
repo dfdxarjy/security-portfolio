@@ -43,20 +43,20 @@ outcome: "Administrative WinRM access after the managed service account is added
 | Objective | Chain a leaked service credential, Shadow Credentials, a DLL hijack, AD CS abuse, and a rogue WSUS server into administrative access on the domain controller |
 | Outcome | Managed service account added to local Administrators; privileged WinRM access |
 
-## Summary
+## Leaked log credential to rogue WSUS
 
 Logging is a Hard-rated Hack The Box Windows Active Directory lab that chains a diagnostic log credential leak, Shadow Credentials abuse against a managed service account, a DLL hijack in an update monitor, AD CS certificate abuse, AD-integrated DNS record manipulation, and a rogue WSUS server that executes a trusted binary as SYSTEM. Credential values, hashes, hostnames, addresses, and certificate identifiers are replaced with role-based placeholders; command syntax is preserved. Where no output was captured, the documented result is given instead.
 
 **Attack path:** **Provided domain credential → leaked service credential → year-rotated password → Shadow Credentials → NT hash → DLL hijack → AD CS certificate → AD DNS record → rogue WSUS → local Administrators**
 
-## Context and Objective
+## AD domain with provided low-privilege credentials
 
 - **Target:** a Windows Active Directory domain (`<DOMAIN>`, domain controller `<DC_HOSTNAME>`) exposing DNS (53), IIS (80), Kerberos (88), LDAP/LDAPS (389/636), SMB (445), WinRM (5985), and WSUS (8530/8531).
 - **Starting position:** provided low-privilege domain credentials for `<LAB_USER>`.
 - **Objective:** move from the provided account to administrative access on the domain controller through the observed weaknesses.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: log leak to rogue WSUS SYSTEM
 
 ### 1. Enumeration and Credential Discovery
 
@@ -284,7 +284,7 @@ Significance: the rogue endpoint satisfies the client's trust, and the signed bi
 
 Result: the account is now a local administrator, and its refreshed session yields privileged WinRM access (`evil-winrm -i <TARGET_IP> -u '<MANAGED_SERVICE_ACCOUNT>' -H <MSA_NT_HASH>`).
 
-## Challenges and Decisions
+## Stale year password, 32-bit applier, and WSUS trust
 
 | Challenge | Decision | Rationale |
 |---|---|---|
@@ -292,11 +292,11 @@ Result: the account is now a local administrator, and its refreshed session yiel
 | The UpdateMonitor process is 32-bit | Built and packaged a matching 32-bit DLL | The scheduled workflow requires matching process architecture for the load to succeed |
 | A WSUS endpoint needs a trusted server certificate | Enrolled in the `UpdateSrv` subject-injection template with the Server Authentication EKU | Subject injection lets the requested name match the update-service hostname |
 
-## Outcome
+## Outcome: local Administrators and privileged WinRM
 
 The evidence establishes a path from the provided domain credential to administrative access on the domain controller: recovered credentials and hashes are shown by tool output, the DLL hijack is proven by an authenticated `whoami`, and the privilege change is proven by the local-Administrators listing. The demonstrated privilege is local-Administrator membership on the domain controller, exercised through privileged WinRM.
 
-## Lessons and Recommendations
+## Recommendations: log secrets, MSA ACLs, AD CS templates, DNS records, DLL loading, and WSUS trust
 
 The actions below are recommendations; no remediation was tested in the lab.
 

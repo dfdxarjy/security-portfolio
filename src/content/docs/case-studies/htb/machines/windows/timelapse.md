@@ -37,13 +37,13 @@ outcome: "Certificate-based WinRM user access and local Administrator control of
 | Objective | Escalate from an unauthenticated SMB share to directory-level administrative control |
 | Outcome | Certificate-based WinRM user shell and local Administrator control via a disclosed LAPS password |
 
-## Summary
+## Certificate archive cracking to LAPS disclosure
 
 Timelapse is an Easy-rated Hack The Box Windows Active Directory lab in which a world-readable SMB share, an exported WinRM certificate, and a service-account password left in shell history combine to give full control of the domain controller. The share exposes a password-protected ZIP archive containing a PKCS#12 (`.pfx`) certificate; the archive password and the certificate passphrase are both recovered offline with `john`. The certificate authenticates to WinRM as a standard user, whose PowerShell history discloses a service-account password. That account holds read access to the LAPS `ms-Mcs-AdmPwd` attribute, and the local Administrator password it yields completes the compromise. Target, account, and path details are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Anonymous-readable SMB share → password-protected ZIP holding a PFX certificate → offline cracking of archive and certificate passphrases → certificate-based WinRM authentication → PowerShell history credential disclosure → LAPS read access → local Administrator password → directory-level control**
 
-## Context and Objective
+## Domain controller, anonymous share to directory control
 
 - **Target:** Windows Active Directory domain controller.
 - **Environment:** domain `<DIRECTORY_DOMAIN>`, directory server `<DIRECTORY_SERVER>`.
@@ -54,7 +54,7 @@ Timelapse is an Easy-rated Hack The Box Windows Active Directory lab in which a 
 
 WinRM is exposed over HTTPS on 5986 rather than the default HTTP port 5985; HTTPS encrypts the transport, and this endpoint also accepts client-certificate authentication, which the path later uses.
 
-## Approach and Evidence
+## Evidence: archive cracking, certificate WinRM, history, LAPS
 
 ### 1. Service Enumeration
 
@@ -231,7 +231,7 @@ Significance: LAPS stores per-machine local Administrator passwords in a confide
 
 Result: the local Administrator password is recovered, and the `whoami` output confirms administrative execution on the domain controller.
 
-## Challenges and Decisions
+## Three obstacles: the HTTPS endpoint, the two passphrases, and the history file
 
 | Challenge | Decision | Rationale |
 |---|---|---|
@@ -239,11 +239,11 @@ Result: the local Administrator password is recovered, and the `whoami` output c
 | The extracted certificate carries a passphrase separate from the archive password | Crack both with `john` before attempting authentication | Both are passphrase-protected and reachable from the unauthenticated share |
 | Interactive shell history is easy to overlook | Inspect the PSReadLine history file after initial access | PSReadLine logs command text by default, including passwords passed as arguments |
 
-## Outcome
+## Outcome: certificate WinRM user and local Administrator
 
 The evidence establishes certificate-based WinRM authentication as the standard user `<INITIAL_USER>` and full administrative control of the domain controller as `<LOCAL_ADMINISTRATOR>`, the latter proven by the `whoami` result `<DIRECTORY_DOMAIN>\<LOCAL_ADMINISTRATOR>`. Three exposures carry the path: a world-readable SMB share, an exported PKCS#12 certificate whose passphrase is crackable offline, and a service-account password left in PowerShell history. The service account's LAPS read delegation is what turns user access into domain-controller administration.
 
-## Lessons and Recommendations
+## Recommendations: share archives, shell history, and LAPS delegation
 
 The actions below are recommendations; none was validated in the lab.
 

@@ -38,13 +38,13 @@ outcome: "Certificate-authenticated Domain Administrator access through ESC1 abu
 | Objective | Escalate from guest-accessible SMB and an open PWM portal to Domain Administrator through Ansible-vault credential recovery and AD CS ESC1 abuse |
 | Outcome | Certificate-authenticated Domain Administrator access through ESC1 abuse |
 
-## Summary
+## Ansible vault recovery and ESC1 abuse
 
 Authority is a Medium-rated Hack The Box Windows Active Directory lab. An open PWM password self-service portal and guest SMB access expose Ansible vault files holding domain credentials. PWM administrative access then lets the LDAP bind target be redirected to a rogue listener, capturing a service account's cleartext bind credentials. That service account has no direct certificate enrollment rights, but the domain permits non-privileged users to create machine accounts (MAQ=10). A new computer account enrolls the ESC1-vulnerable `<VULN_TEMPLATE>` template with the Administrator UPN, yielding the Administrator NTLM hash, and the service account is added to the built-in Administrators group for WinRM access to the Domain Controller. Credential values, host addresses, account names, the CA name, and the certificate template name are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Guest SMB → Ansible vault cracking → PWM admin access → rogue LDAP listener → service-account credential capture → machine-account creation (MAQ) → ESC1 certificate abuse → Administrator NTLM hash → Domain Administrator via WinRM**
 
-## Context and Objective
+## Domain controller, PWM portal, and unauthenticated start
 
 - **Target:** Windows Active Directory Domain Controller (Medium difficulty).
 - **Exposed services:** DNS (53), HTTP/IIS (80), Kerberos (88), RPC (135), NetBIOS (139), LDAP (389/636), SMB (445), WinRM (5985), Tomcat/PWM (8443), and .NET Message Framing (9389).
@@ -52,7 +52,7 @@ Authority is a Medium-rated Hack The Box Windows Active Directory lab. An open P
 - **Objective:** reach Domain Administrator through the exposed services.
 - **Constraints:** all activity stayed inside the isolated Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: guest SMB to rogue LDAP and ESC1
 
 ### 1. Service Enumeration
 
@@ -350,17 +350,17 @@ Significance: adding the service account to Administrators grants Domain Adminis
 
 Result: the service account holds Domain Administrator access on the Domain Controller.
 
-## Challenges and Decisions
+## The failed enrollment and the Machine Account Quota
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | `<SERVICE_ACCOUNT>` lacks enrollment rights on the `<VULN_TEMPLATE>` template | Created a machine account under the domain's Machine Account Quota | The new computer account inherits template enrollment rights the service account lacks |
 
-## Outcome
+## Outcome: certificate-authenticated Domain Admin access
 
 The supported outcome is certificate-authenticated Domain Administrator access via AD CS ESC1. The certificate issuance, NTLM hash extraction, and WinRM logon are reported by the source without preserved command output, so those final transitions rest on the record's narrative. HTTP/IIS on port 80 was enumeration-only.
 
-## Lessons and Recommendations
+## Recommendations: PWM config, guest SMB, the vault, LDAP binds, and ESC1
 
 Each item pairs an observed root cause with its demonstrated impact and a prioritized action. Recommendations build on the source remediation; remaining items are general hardening; none was tested.
 

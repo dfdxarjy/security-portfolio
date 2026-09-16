@@ -35,13 +35,13 @@ outcome: "Unauthenticated code execution as the XWiki service user, SSH access a
 | Objective | Reach user and root control through a vulnerable XWiki instance, credential reuse, and a SUID monitoring helper |
 | Outcome | Unauthenticated code execution as the XWiki service user, SSH access as a local account, and root command execution via the SUID Netdata `ndsudo` helper |
 
-## Summary
+## XWiki SolrSearch RCE to PATH hijack
 
 Editor is a Medium-rated Hack The Box Linux lab hosting XWiki behind an nginx virtual host. Enumeration exposes the wiki vhost running XWiki Debian 15.10.8, vulnerable to CVE-2025-24893 — unauthenticated Groovy code execution through the `SolrSearch` endpoint. The foothold exposes XWiki database credentials that a local account reuses for SSH, and privilege escalation abuses a SUID Netdata `ndsudo` helper whose `PATH`-based dependency resolution permits binary hijacking to obtain root. Credential values, host and address identifiers, and callback details are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **unauthenticated XWiki `SolrSearch` RCE (CVE-2025-24893) → `hibernate.cfg.xml` database credential recovery → SSH access via credential reuse → SUID Netdata `ndsudo` `PATH` hijack → root**
 
-## Context and Objective
+## Ubuntu host, XWiki behind nginx, unauthenticated, root
 
 - **Target:** an Ubuntu Linux host exposing SSH (22), nginx (80), and Jetty/XWiki (8080).
 - **Application:** nginx routes `<WIKI_HOST>` to an XWiki Debian 15.10.8 instance served by Jetty 10.0.20.
@@ -49,7 +49,7 @@ Editor is a Medium-rated Hack The Box Linux lab hosting XWiki behind an nginx vi
 - **Objective:** move from the exposed web application to user and root control, and demonstrate the impact of an unpatched macro-injection flaw, credential reuse, and an unsafe privileged helper.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: SolrSearch RCE to SUID PATH hijack
 
 ### 1. Service Discovery and Virtual Host Enumeration
 
@@ -187,18 +187,18 @@ Significance: the helper runs as root and trusts `PATH`, so the caller-controlle
 
 Result: root command execution is confirmed by the root `id` output.
 
-## Challenges and Decisions
+## Obstacles: wiki syntax parsing and PATH resolution
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | The `SolrSearch` parameter is parsed as wiki syntax | Closed the syntax context, then nested async and Groovy macros around the command wrapper | The Groovy step only runs once the parameter is parsed as nested macros |
 | The SUID helper resolves `nvme` through the caller's `PATH` | Prepended a controlled directory containing a malicious `nvme` to `PATH` before running `nvme-list` | The helper trusted `PATH`, so the first matching binary was executed as root |
 
-## Outcome
+## Outcome: root execution from XWiki service foothold
 
 The evidence establishes root-level command execution on the host, reached through unauthenticated code execution in the XWiki service context and a database password that also authenticated SSH for the local account. The escalation rests on an unpatched macro-injection flaw, credential reuse across services, and a SUID helper that resolved a dependency through the caller's `PATH`.
 
-## Lessons and Recommendations
+## Recommendations: XWiki patch, credential reuse, SUID PATH, group scope
 
 Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
 

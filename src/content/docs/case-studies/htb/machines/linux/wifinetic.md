@@ -34,13 +34,13 @@ outcome: "User-level SSH access via a leaked Wi-Fi PSK, then root SSH access via
 | Objective | Chain an exposed OpenWrt backup and an over-privileged wireless tool to move from anonymous FTP access to user- and root-level SSH access |
 | Outcome | User-level SSH access via a leaked Wi-Fi PSK, then root SSH access via a WPS-recovered WPA PSK |
 
-## Summary
+## Backup key reuse and WPS recovery
 
 Wifinetic is an Easy-rated Hack The Box Linux lab that turns configuration exposure and credential reuse into full compromise. Anonymous FTP serves an OpenWrt configuration backup whose wireless stanza stores the Wi-Fi pre-shared key in plaintext, and that same value is reused as the network-administrator SSH password. On the host, the wireless audit tool `reaver` carries `cap_net_raw+ep`, so an unprivileged user can run a WPS attack against the local access point, recover a second WPA key from a factory-default PIN, and reuse it to log in as root. Target addresses, interface names, the AP BSSID, and both wireless keys are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Anonymous FTP → OpenWrt backup disclosure → Wi-Fi PSK reused for user SSH → raw-packet-capable `reaver` → default-PIN WPS attack → WPA PSK recovered → reused for root SSH**
 
-## Context and Objective
+## Linux host with an emulated wireless stack, anonymous FTP start
 
 - **Target:** an Easy-rated Linux lab host exposing FTP (21), SSH (22), and DNS (53).
 - **Environment:** the host runs an emulated wireless stack (`mac80211_hwsim`) presenting an access-point interface, a managed client, and a monitor interface.
@@ -48,7 +48,7 @@ Wifinetic is an Easy-rated Hack The Box Linux lab that turns configuration expos
 - **Objective:** follow the exposed backup and wireless path from anonymous access to user- and root-level SSH access.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: anonymous FTP backup, reused PSK, and WPS
 
 ### 1. Service Enumeration
 
@@ -162,11 +162,11 @@ Result: authenticated root-level SSH access.
 
 No failed attempts, obstacles, or tradeoffs are documented for this path.
 
-## Outcome
+## Outcome: user SSH from leaked key and WPS root
 
 The evidence establishes user-level SSH access from the Wi-Fi key leaked by the anonymous OpenWrt backup, and root-level SSH access from the WPA key recovered through the WPS attack. Both access levels are supported by recorded session identity output. DNS was enumeration-only.
 
-## Lessons and Recommendations
+## Recommendations: anonymous backups, credential reuse, raw-packet capability, and default WPS
 
 The actions below are recommendations; none was validated in the lab.
 

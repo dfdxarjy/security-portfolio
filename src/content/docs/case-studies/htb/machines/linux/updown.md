@@ -38,13 +38,13 @@ outcome: "Web-service shell via a `proc_open` payload, application-user access v
 | Objective | Escalate from exposed version-control metadata and an upload race to web-service code execution, then to application-user and root access |
 | Outcome | Web-service shell, application-user access via the SUID Python 2 helper, and root via the `easy_install` sudo rule |
 
-## Summary
+## Exposed git to SUID interpreter root
 
 UpDown is a Medium-rated Hack The Box Linux lab built around a website availability checker. The path opens with an exposed Git directory that leaks the development source and its weak header-based access control, continues through a `.phar` upload that bypasses an extension blocklist and races the checker's delayed cleanup, and finishes with a SUID Python 2 `input()` helper and an over-broad `easy_install` sudo rule. Domains, paths, headers, ports, and account names are replaced with role-based placeholders; command syntax and technique are preserved.
 
 **Attack path:** **Exposed `.git` metadata → header-gated development vhost → `.phar` upload blocklist bypass → delayed-cleanup race → `proc_open` web-service shell → SUID Python 2 `input()` → application-user access → `NOPASSWD` `easy_install` sudo → root**
 
-## Context and Objective
+## Ubuntu Apache availability checker, web access to root
 
 - **Target:** an Ubuntu host exposing an Apache web server (port 80) and OpenSSH (port 22).
 - **Application:** a PHP website availability checker that accepts a list of URLs and reports whether each is reachable.
@@ -52,7 +52,7 @@ UpDown is a Medium-rated Hack The Box Linux lab built around a website availabil
 - **Objective:** move from web enumeration to code execution, then to a user-level shell and root by abusing the application's upload handling and privileged local components.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: git metadata, upload race, and easy_install
 
 ### 1. Enumeration and Exposed Version-Control Metadata
 
@@ -266,15 +266,15 @@ Significance: allowing a build/install utility that executes project-controlled 
 
 Result: a root shell is obtained and confirmed.
 
-## Challenges and Decisions
+## The delayed-cleanup race window
 
 - **Race-condition timing:** the uploaded file was deleted only after the URL check completed, so the outbound check was deliberately stalled against a controlled listener to hold the upload reachable long enough to be used.
 
-## Outcome
+## Outcome: web shell, SUID interpreter, and easy_install root
 
 The evidence establishes a web-service shell through the `.phar` upload and delayed-cleanup race, application-user access through the SUID Python 2 `input()` helper, and root through the `NOPASSWD` `easy_install` rule. The helper's resulting shell ran in an awkward, non-interactive context, so its success is corroborated by the subsequent SSH session rather than by captured output.
 
-## Lessons and Recommendations
+## Recommendations: git metadata, upload blocklist, race window, SUID, and easy_install
 
 1. **Served version-control metadata and static header gates.** Serving `.git` disclosed full source and the header value that protected the development area. *Recommendation:* never serve version-control directories, keep development virtual hosts off the public surface, and replace static-header gating with real authentication and authorization.
 2. **Blocklist-based upload validation with predictable storage.** The handler blocked known-dangerous extensions but missed `.phar`, and stored uploads under guessable `md5(time())` directories. *Recommendation:* validate uploads against an explicit allowlist of extensions and MIME types, store files outside the web root under cryptographically random names, and serve them through a download handler rather than executing them.

@@ -35,13 +35,13 @@ outcome: "Command execution as `www-data` through upload evasion and a root cont
 | Objective | Move from unauthenticated web access through a SQL injection login bypass and a magic-byte upload evasion to root via a SUID binary PATH hijack |
 | Outcome | `www-data` command execution; root context via the SUID `/bin/sysinfo` PATH hijack |
 
-## Summary
+## From SQL injection to SUID PATH hijack
 
 Magic is a Medium-rated Hack The Box Linux lab whose PHP portfolio application exposes a SQL injection flaw in its login page, an upload panel that validates files by magic bytes, and a SUID binary that invokes system commands through `PATH`. Chaining these flaws turns unauthenticated web access into a root shell, without any software exploit beyond the injection and the local misconfiguration. Target, attacker, account, and secret values are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **SQL injection login bypass → admin upload panel → PNG magic-byte upload evasion → `www-data` reverse shell → plaintext database credentials → Chisel-tunneled MySQL → admin credential recovery → password reuse for `<LAB_USER>` → SUID `/bin/sysinfo` PATH hijack → root**
 
-## Context and Objective
+## Ubuntu Apache and PHP host from unauthenticated access
 
 - **Target:** Linux (Ubuntu 18.04) running Apache httpd 2.4.29 with a PHP web application.
 - **Exposed services:** SSH (22) and HTTP (80).
@@ -49,7 +49,7 @@ Magic is a Medium-rated Hack The Box Linux lab whose PHP portfolio application e
 - **Objective:** convert a web application foothold into a stable shell, then follow exposed credentials and a privileged local binary to root.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: SQL bypass to SUID PATH hijack
 
 ### 1. Service Enumeration
 
@@ -297,7 +297,7 @@ Significance: a setuid program that resolves commands through the inherited `PAT
 
 Result: the callback returns a root shell, confirmed by the root prompt.
 
-## Challenges and Decisions
+## Loopback MySQL, magic-byte checks, and the SUID binary
 
 | Challenge | Decision | Rationale |
 |---|---|---|
@@ -305,11 +305,11 @@ Result: the callback returns a root shell, confirmed by the root prompt.
 | Upload validation compared magic bytes, not extensions | Wrapped the PHP payload with a PNG signature | An extension rename alone would not satisfy the content check |
 | `/bin/sysinfo` invoked `cat` without an absolute path | Prepended `/tmp` to `PATH` and supplied a `cat` replacement | The binary resolves commands through the inherited `PATH` |
 
-## Outcome
+## Outcome: root from unauthenticated web access
 
 The evidence establishes a root context on the target, reached from unauthenticated web access.
 
-## Lessons and Recommendations
+## Recommendations: injection, upload validation, secrets, reuse, and SUID PATH
 
 Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. These actions are recommendations; none was validated in the lab.
 

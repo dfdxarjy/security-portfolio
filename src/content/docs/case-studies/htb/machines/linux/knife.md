@@ -32,13 +32,13 @@ outcome: "Unauthenticated remote code execution as the web user, then a root she
 | Objective | Gain unauthenticated code execution through a backdoored PHP build and escalate to root through a NOPASSWD sudo rule |
 | Outcome | Code execution as the web user, then a root shell through `knife exec` |
 
-## Summary
+## Backdoored PHP build to NOPASSWD root
 
 Knife is an Easy-rated Hack The Box Linux machine built on a supply-chain compromise: a backdoor was inserted into the development build of PHP 8.1.0-dev, and any web server running that build evaluates PHP code taken from a malformed `User-Agentt` HTTP header whose value begins with `zerodium`. That gives unauthenticated remote code execution, and a `NOPASSWD` sudo rule on the Chef `knife` binary then converts the foothold into root. Target and attacker addresses, the web account, and the backdoor payload are replaced with role-based placeholders; command syntax is preserved. The header payload after the `zerodium` prefix is shown as `<PHP_EXPRESSION>`.
 
 **Attack path:** **Backdoored PHP 8.1.0-dev (`User-Agentt` header) → unauthenticated RCE as `<LAB_USER>` → reverse shell → `NOPASSWD` `/usr/bin/knife` → `knife exec` → root**
 
-## Context and Objective
+## Ubuntu Apache host, unauthenticated, backdoored PHP to root
 
 - **Target:** Linux host (Ubuntu 20.04) exposing SSH (22/tcp) and HTTP (80/tcp). The web tier runs Apache 2.4.41 and serves a sparse medical-company landing page with no interactive features.
 - **Starting position:** unauthenticated network access, with no provided credentials.
@@ -57,7 +57,7 @@ if (strstr(Z_STRVAL_P(enc), "zerodium")) {
 
 The backdoor was detected within hours and never entered an official release, but builds compiled from the compromised snapshot — as this lab simulates — remained exploitable. The malformed header is `User-Agentt` (note the doubled `t`), which PHP still processes.
 
-## Approach and Evidence
+## Evidence: User-Agentt backdoor to NOPASSWD escalation
 
 ### 1. Service Enumeration
 
@@ -178,11 +178,11 @@ The source does not document failed attempts or obstacles for this machine; the 
 
 An alternative escalation was available: `sudo /usr/bin/knife data bag create <NAME> <ITEM> -e vim` opens a data bag in the configured editor, from which a shell escape spawns a root shell. The `knife exec` route was used as the canonical GTFOBins technique.
 
-## Outcome
+## Outcome: web user code execution and root shell
 
 The evidence establishes unauthenticated code execution as the web user through the backdoored PHP 8.1.0-dev build, and root command execution through the `NOPASSWD` sudo rule on `/usr/bin/knife`. The supply-chain compromise affected only the development snapshot; official PHP releases were never affected.
 
-## Lessons and Recommendations
+## Recommendations: dev build, NOPASSWD rules, version disclosure
 
 Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions below are recommendations; none was tested in the lab.
 

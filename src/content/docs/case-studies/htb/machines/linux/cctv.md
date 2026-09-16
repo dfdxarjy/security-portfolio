@@ -34,13 +34,13 @@ outcome: "SSH user access via a cracked ZoneMinder credential hash, followed by 
 | Objective | Recover ZoneMinder credentials through a blind SQL injection, reach SSH access, then turn a client-side-only filename validation flaw in a root-run motionEye service into privileged command execution |
 | Outcome | SSH user access via a cracked credential hash; root command execution through motionEye filename handling |
 
-## Summary
+## Blind SQL injection to motionEye root
 
 CCTV is an Easy-rated Hack The Box Linux lab built around IP-camera management software. A blind SQL injection in ZoneMinder's `tid` parameter recovers credential hashes from the `Users` table; one cracks offline to an SSH login. From that context an internal motionEye instance, running as root and bound to the loopback interface, accepts a filename configuration value that is validated only in client-side JavaScript, and processing that value yields root command execution. Target addresses, hostnames, account names, session data, credential hashes, flags, and payload specifics are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **ZoneMinder blind SQL injection (`tid`) → credential hash recovery → offline crack → SSH user access → loopback motionEye service → client-side validation bypass → filename command injection → root**
 
-## Context and Objective
+## Target, camera application, and objective
 
 - **Target:** a Linux host exposing SSH and an HTTP service that redirects into a ZoneMinder 1.37.63 installation under `/zm/`.
 - **Exposed services:** SSH (22) and HTTP (80).
@@ -48,7 +48,7 @@ CCTV is an Easy-rated Hack The Box Linux lab built around IP-camera management s
 - **Objective:** establish user access through the camera-management web application, then assess the internal motionEye service for a privilege-escalation path.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: SQL injection to filename command injection
 
 ### 1. Service and Application Discovery
 
@@ -200,18 +200,18 @@ Significance: browser-side validation cannot protect a value that is ultimately 
 
 Result: root-level command execution is obtained through the unvalidated filename configuration.
 
-## Challenges and Decisions
+## Two decisions: loopback forwarding and bypassed validation
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | The motionEye interface is bound to loopback and is not externally reachable | Forwarded the port through the existing SSH session | The service is only reachable from the target host itself |
 | The Image File Name field is validated only in client-side JavaScript | Overrode the validation function in the browser console before submitting the value | The server accepted the value even though the normal form blocks it |
 
-## Outcome
+## Outcome: SSH user and root via a filename field
 
 The evidence establishes root-level command execution on the target through a configuration field that is validated only in the browser. Limitation: the injected payload is shown as a placeholder pattern rather than a literal.
 
-## Lessons and Recommendations
+## Recommendations: blind SQLi, client-side validation, and a root daemon
 
 Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
 

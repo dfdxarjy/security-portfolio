@@ -33,20 +33,20 @@ outcome: "www-data command execution, a passwordless sudo transition to scriptma
 | Objective | Unauthenticated web foothold to root via an exposed web shell, permissive sudo, and a root-run scheduled script |
 | Outcome | Command execution as `www-data`; root context via a writable, root-executed script |
 
-## Summary
+## From exposed phpbash to scheduled-script root
 
 Bashed is an Easy Hack The Box Linux lab in which web enumeration exposes `phpbash`, an interactive PHP shell left in the document root, giving command execution as `www-data`. Privilege escalation follows two documented steps: a permit-any passwordless `sudo` rule to the `scriptmanager` account, and a Python script in `/scripts` that `scriptmanager` can overwrite but root runs on a schedule. Target and attacker addresses and callback ports are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** `Apache enumeration → exposed phpbash web shell → www-data command execution → hosted-script reverse shell → passwordless sudo to scriptmanager → writable root-scheduled script → root`
 
-## Context and Objective
+## Target, development host, and objective
 
 - **Target:** an Ubuntu Linux host exposing a single web service — Apache httpd 2.4.18.
 - **Starting position:** unauthenticated network access.
 - **Objective:** turn an exposed web development artifact into a stable shell, then follow local authorization and scheduled-execution clues to root.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: web shell to writable scheduled script
 
 ### 1. Service Enumeration
 
@@ -211,17 +211,17 @@ Significance: root executes a script that a lower-privileged account can overwri
 
 Result: the callback returns as root, confirmed by `whoami`.
 
-## Challenges and Decisions
+## One decision: stage a script over direct one-liners
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | Direct reverse-shell one-liners from the browser web shell were unreliable | Hosted a small shell script and executed it from a temporary location | A staged scripted payload was the recorded, more reliable path |
 
-## Outcome
+## Outcome: www-data to root via a scheduled script
 
 The evidence establishes a root context after overwriting a script that root executes on a schedule. One limit remains: the scheduler configuration itself is not captured, so root execution is inferred from the script/output ownership mismatch and the repeatedly rewritten root-owned output.
 
-## Lessons and Recommendations
+## Recommendations: web shell, sudo delegation, and writable script
 
 Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. These actions are recommendations; none was validated in the lab.
 

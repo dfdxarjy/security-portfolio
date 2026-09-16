@@ -27,13 +27,13 @@ outcome: "Confirmed single-host defense-evasion chain: interactive logon, discov
 | Objective | Reconstruct a defensible single-host incident timeline from Windows event-log artifacts and identify initial access, persistence, command-and-control, and defense-evasion activity |
 | Outcome | Confirmed single-host chain from interactive logon to Firewall log clearing |
 
-## Summary
+## One host, twenty-five minutes, five log sources
 
 LogJammer is a Hack The Box Sherlock that reconstructs a single-host Windows incident from Security, System, Windows Firewall, Windows Defender, and PowerShell event logs analyzed with Chainsaw. Correlating an interactive logon, a Defender detection-and-remediation pair, an outbound firewall rule, an audit-policy change, scheduled-task creation, a PowerShell hash computation, and a channel-clear event yields one bounded timeline. Account names, task arguments, and user-profile paths are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Interactive logon (4624) → discovery-tool detection and quarantine (Defender 1116/1117) → outbound C2 firewall rule (2004) → audit-policy change (4719) → scheduled-task persistence (4698) → PowerShell hash computation (4104) → Firewall log cleared (System 104)**
 
-## Context and Objective
+## Provided logs and the incident question
 
 - **Target environment:** a single Windows endpoint; the supplied evidence is limited to Windows event logs.
 - **Provided evidence:** Security, System, Windows Firewall, Windows Defender-Operational, and PowerShell-Operational `.evtx` logs.
@@ -41,7 +41,7 @@ LogJammer is a Hack The Box Sherlock that reconstructs a single-host Windows inc
 - **Objective:** reconstruct a defensible incident timeline and identify initial access, persistence, command-and-control, and defense-evasion activity.
 - **Constraints:** analysis is confined to the supplied artifacts. All timestamps are recorded as they appear in the logs, in UTC (`Z` suffix).
 
-## Approach and Evidence
+## Evidence: one timeline from five event logs
 
 ### 1. Interactive Logon Anchor
 
@@ -228,17 +228,17 @@ Significance: the events chain within roughly 25 minutes on a single host, spann
 
 Result: the supplied artifacts support a single ordered incident sequence on `2023-03-27`.
 
-## Challenges and Decisions
+## Noise, detection versus remediation, and a pre-logon clear
 
 - Module-generated PowerShell script blocks produced substantial noise, so known module noise was excluded before reviewing the incident window.
 - Defender event ID 1116 was treated as detection only; the separate 1117 event supplied the recorded quarantine action, avoiding a false remediation claim.
 - A Security log-clear event (ID 1102) at `14:36` preceded the first logon and was excluded from the incident chain as pre-logon noise.
 
-## Outcome
+## Outcome: a confirmed defense-evasion chain
 
 The evidence establishes a confirmed single-host defense-evasion sequence on `2023-03-27`. Limitations: the artifacts do not establish the SharpHound output or any exfiltration, the effects of the scheduled-task script, or whether other channels were cleared.
 
-## Lessons and Recommendations
+## Recommendations: user-path tooling, firewall changes, audit tampering, persistence, and response
 
 Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated.
 

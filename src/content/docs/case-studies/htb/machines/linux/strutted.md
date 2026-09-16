@@ -37,13 +37,13 @@ outcome: "Command execution as the Tomcat service account, SSH access for a dist
 | Objective | Move from an exposed application archive and a legacy Struts upload flaw to root through a service-account foothold, a stored credential, and an over-broad sudo rule |
 | Outcome | Command execution as the Tomcat service account, SSH access for a distinct user via a reused credential, and root through a tcpdump post-rotate hook |
 
-## Summary
+## Struts upload traversal to tcpdump root
 
 Strutted is a Medium-rated Hack The Box Linux lab built around a Java Apache Struts application served behind nginx. A downloadable source archive discloses the framework version and a legacy upload interceptor, which points to the file-upload path traversal tracked as CVE-2024-53677; the exploit lands as the Tomcat service account. A credential left in the application server's configuration authenticates over SSH for a distinct user, and an unrestricted `tcpdump` sudo rule reaches root through the binary's post-rotate hook. Target and attacker identifiers, accounts, and credentials are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Exposed application archive → legacy `FileUploadInterceptor` upload → CVE-2024-53677 upload path traversal → Tomcat service-account shell → reused application credential over SSH → passwordless `tcpdump` post-rotate hook → root**
 
-## Context and Objective
+## Ubuntu nginx host fronting Struts, source archive to root
 
 - **Target:** an Ubuntu Linux host exposing SSH (22) and HTTP (80); HTTP is served by nginx through a virtual host, so the application is reachable only with the correct `Host` context.
 - **Application:** a downloadable source archive identifies Apache Struts 6.3.0.1 and an upload action using the legacy `FileUploadInterceptor` with an image-extension allow-list and magic-byte checks.
@@ -51,7 +51,7 @@ Strutted is a Medium-rated Hack The Box Linux lab built around a Java Apache Str
 - **Objective:** follow the upload path from the exposed archive to code execution, then escalate locally by abusing stored credentials and delegated sudo.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: source archive, upload traversal, and tcpdump hook
 
 ### 1. Service Enumeration
 
@@ -218,7 +218,7 @@ Significance: `-G 1` forces packet-file rotation, `-z` runs a post-rotate comman
 
 Result: the post-rotate hook returns a root shell, confirmed by `whoami`.
 
-## Challenges and Decisions
+## Image validation, archive review, and the sudo boundary
 
 | Challenge | Decision | Supported rationale |
 |---|---|---|
@@ -226,11 +226,11 @@ Result: the post-rotate hook returns a root shell, confirmed by `whoami`.
 | Identifying the upload weakness | Review the exposed archive before assessing the upload action | The archive identified the framework version and legacy interceptor |
 | Privilege boundary | Inspect sudo permissions before selecting an escalation path | The recorded `sudo -l` output allowed `tcpdump` |
 
-## Outcome
+## Outcome: Tomcat shell, reused credential SSH, and tcpdump root
 
 The evidence establishes command execution as the application service account, authenticated SSH access as a separate user from a credential stored in application configuration, and a root context obtained through the delegated `tcpdump` rule.
 
-## Lessons and Recommendations
+## Recommendations: exposed archive, legacy upload, credential reuse, and tcpdump sudo
 
 Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
 

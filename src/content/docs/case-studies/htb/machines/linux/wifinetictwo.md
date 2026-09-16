@@ -36,20 +36,20 @@ outcome: "Root code execution in the PLC container, WPA2 credential recovery via
 | Objective | Move from a default-credential OpenPLC runtime to container root, then pivot across the wireless segment with WPS credential recovery to the adjacent router |
 | Outcome | Root execution in the PLC container; WPA2 credential recovery and association with the wireless AP; passwordless root SSH on the router |
 
-## Summary
+## OpenPLC extension to PixieDust router root
 
 WifineticTwo is a Medium Linux Hack The Box lab that combines industrial-control application abuse with a wireless pivot. An OpenPLC runtime reachable with its default credentials accepts an uploaded Structured Text program whose C extension is compiled and executed by the PLC runtime, yielding a root shell inside a container that carries a wireless interface. A WPS PixieDust attack against a nearby access point recovers the WPA2 passphrase, and association with that network exposes a router whose SSH service accepts a passwordless root login. Target identifiers, credentials, and secret values are replaced with role-based placeholders; the reverse-shell payload is shown as a placeholder pattern only.
 
 **Attack path:** **Default-credential OpenPLC runtime → Structured Text C-extension execution → container root → wireless AP discovery → WPS PixieDust credential recovery → WPA2 association → passwordless root SSH on the router**
 
-## Context and Objective
+## OpenPLC container with wireless, ICS interface to router
 
 - **Target:** Linux host exposing SSH (22) and a web-facing OpenPLC runtime (8080).
 - **Starting position:** unauthenticated network access, no provided credentials.
 - **Objective:** assess the path from the exposed industrial-control interface to the adjacent wireless segment and the router.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: OpenPLC extension, PixieDust, and router SSH
 
 ### Service enumeration
 
@@ -180,11 +180,11 @@ Result: an unauthenticated root shell is obtained on the router.
 - The source documents no failed attempts or alternative paths.
 - **WPS PixieDust.** Predictable WPS E-S1/E-S2 nonces allow near-instant recovery of the WPA2 passphrase, in contrast to online WPS PIN brute force.
 
-## Outcome
+## Outcome: container root, WPA2 recovery, and router root SSH
 
 The evidence establishes root code execution inside the OpenPLC container, recovery of the WPA2 wireless credential through a WPS PixieDust attack, and a passwordless root SSH session on the adjacent router. No step beyond the lab was validated.
 
-## Lessons and Recommendations
+## Recommendations: default ICS credentials, WPS, and passwordless root SSH
 
 The actions below are recommendations; none was validated in the lab.
 

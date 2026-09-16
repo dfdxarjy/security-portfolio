@@ -35,13 +35,13 @@ outcome: "Root SSH access"
 | Objective | Default Request Tracker credentials and KeePass CVE-2023-32784 to a root SSH key |
 | Outcome | User-level SSH access, then direct root SSH access |
 
-## Summary
+## Default credentials to KeePass memory disclosure
 
 Keeper is an Easy-rated Hack The Box Linux lab that chains a default-credential weakness in Request Tracker with the KeePass master-password memory-disclosure flaw (CVE-2023-32784). The helpdesk system is reachable with publicly documented default credentials, an administrative comment field exposes a user password, and a KeePass crash dump in that user's home directory yields the master password. An unencrypted PuTTY-format root SSH key inside the unlocked database then authenticates directly as root. Target, operator, account, and secret values are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Default Request Tracker credentials → password in a ticket comment field → SSH as low-privilege user → KeePass crash dump → CVE-2023-32784 master-password recovery → unencrypted root key in the KeePass database → PuTTY-to-OpenSSH conversion → root SSH**
 
-## Context and Objective
+## Ubuntu Request Tracker vhost, unauthenticated, full compromise objective
 
 - **Target:** Ubuntu 22.04 Linux host running Request Tracker 4.4.4 and served by nginx.
 - **Exposed services:** SSH (22) and HTTP (80).
@@ -49,7 +49,7 @@ Keeper is an Easy-rated Hack The Box Linux lab that chains a default-credential 
 - **Objective:** reach full compromise by following the exposed services and the credential exposure they present.
 - **Constraints:** activity was confined to the Hack The Box lab environment; the ticketing application is served on a virtual host.
 
-## Approach and Evidence
+## Evidence: default login to KeePass dump to root key
 
 ### 1. Service Enumeration
 
@@ -227,18 +227,18 @@ Significance: the converted key authenticates straight to root over SSH with no 
 
 Result: a root SSH session is obtained.
 
-## Challenges and Decisions
+## Obstacles: missing first password character and PuTTY v3 format
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | KeePass master password recovered with an unknown first character | Resolved the remaining phrase from the user context in the ticket | CVE-2023-32784 cannot recover the first character; the rest of the phrase plus documented user context identifies the full passphrase |
 | PuTTY v3 key not convertible with `ssh-keygen` | Converted the key with `puttygen` | `ssh-keygen` handles only PuTTY v2; the v3 key produced `do_convert_from_ssh2: parse key: invalid format`, while `puttygen` emits a standard OpenSSH private key |
 
-## Outcome
+## Outcome: low-privilege SSH then direct root SSH
 
 The evidence establishes user-level SSH access obtained from a password stored in a ticket comment, then direct root SSH access using an unencrypted PuTTY key recovered from the KeePass database. The static nginx page was enumeration-only, and no vulnerability in the operating system itself was exploited; every escalation followed exposed or recoverable credentials.
 
-## Lessons and Recommendations
+## Recommendations: default logins, ticket secrets, KeePass dumps, key encryption
 
 None of the remediations below was validated in the lab; they are recommendations.
 

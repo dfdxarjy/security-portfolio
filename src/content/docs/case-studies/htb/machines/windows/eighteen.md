@@ -35,20 +35,20 @@ outcome: "Domain user access over WinRM followed by recovery of the Administrato
 | Objective | Reach domain administrative control from the provided MSSQL credentials |
 | Outcome | Domain user access over WinRM; `<PRIVILEGED_USER>` NTLM hash recovered via a badsuccessor dMSA and DCSync |
 
-## Summary
+## From MSSQL impersonation to badsuccessor delegation
 
 Eighteen is a Windows Active Directory lab whose domain controller also runs Microsoft SQL Server. A provided `<MSSQL_USER>` login can impersonate the `<DATABASE_USER>` login, exposing an application database whose stored PBKDF2-SHA256 password hash cracks to a weak value; that same value is reused by the domain account `<DOMAIN_USER>`, granting WinRM access. Loopback LDAP enumeration then finds a misconfigured organizational unit, and the badsuccessor technique creates a delegated Managed Service Account whose S4U delegation rights enable DCSync of the `<PRIVILEGED_USER>` NTLM hash. Addresses, hostnames, accounts, secrets, and hashes are replaced with role-based placeholders; results not accompanied by captured command output are presented from the recorded narrative.
 
 **Attack path:** **Provided MSSQL credentials → `IMPERSONATE` over `<DATABASE_USER>` → application database hash cracking → password reuse on `<DOMAIN_USER>` over WinRM → loopback LDAP discovery → badsuccessor dMSA creation → S4U delegation abuse → DCSync → `<PRIVILEGED_USER>`**
 
-## Context and Objective
+## MSSQL starting credentials on a 2025 domain controller
 
 - **Target:** a Windows Server 2025 domain controller (`<DOMAIN_CONTROLLER>`) in the `<LAB_DOMAIN>` Active Directory domain, exposing IIS, Microsoft SQL Server 2022, and WinRM.
 - **Starting position:** unauthenticated network access plus a provided credential pair for the `<MSSQL_USER>` domain account.
 - **Objective:** reach domain administrative control from the provided MSSQL credentials.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: MSSQL impersonation to DCSync
 
 ### 1. Service Enumeration
 
@@ -252,7 +252,7 @@ Significance: the delegated ticket carried sufficient replication rights to read
 
 Result: the `<PRIVILEGED_USER>` NTLM hash is recovered, and a WinRM session in the Administrator context is obtained.
 
-## Challenges and Decisions
+## Challenges: hash format, clock skew, and loopback routing
 
 | Challenge | Decision | Rationale |
 |---|---|---|
@@ -260,11 +260,11 @@ Result: the `<PRIVILEGED_USER>` NTLM hash is recovered, and a WinRM session in t
 | Kerberos ticket operations need the attacker clock aligned with the domain | Read the DC time over LDAP and set the local clock from it | Kerberos rejects requests outside its clock-skew window |
 | Directory services are reachable from the compromised host via its loopback address | Routed LDAP and SMB tooling through proxychains from the compromised host | Reached directory services over the loopback address without lateral movement |
 
-## Outcome
+## Outcome: WinRM domain user and privileged NTLM hash
 
 The evidence establishes authenticated `<DOMAIN_USER>` access over WinRM and recovery of the `<PRIVILEGED_USER>` NTLM hash from the directory through the dMSA delegation path; the `--ntds` export line is the proving artifact for the privilege transition. HTTP/IIS on port 80 was enumerated but not used against the target.
 
-## Lessons and Recommendations
+## Recommendations: impersonation, weak hashing, reuse, dMSA, and DCSync
 
 None of the recommendations below was validated in the lab; each pairs an observed root cause with its demonstrated impact and an action.
 

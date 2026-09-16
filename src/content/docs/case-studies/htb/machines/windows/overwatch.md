@@ -40,20 +40,20 @@ outcome: "SYSTEM-level command execution on the domain controller"
 | Objective | Chain hardcoded MSSQL credentials, ADIDNS poisoning, and a WCF SOAP injection to SYSTEM-level access |
 | Outcome | SYSTEM-level command execution on the domain controller |
 
-## Summary
+## ADIDNS poisoning to WCF injection
 
 Overwatch is a Medium-rated Hack The Box Windows Active Directory lab. A guest-readable `software$` SMB share exposes a .NET monitoring executable whose decompiled source contains hardcoded MSSQL credentials. The database holds a linked server entry with no DNS record; registering a spoofed ADIDNS A record redirects the name to an attacker host, and triggering the linked server query makes the database transmit credentials that Responder captures in cleartext. Those credentials authenticate over WinRM, and an internal-only WCF service — reachable through a Ligolo-ng tunnel — exposes a `KillProcess` operation whose unsanitised `processName` parameter yields command execution as `NT AUTHORITY\SYSTEM`. Passwords, addresses, and flags are replaced with role-based placeholders, and command syntax is preserved. Where the working session retained no console excerpt, the result is stated as recorded.
 
 **Attack path:** **Guest-readable `software$` share → hardcoded MSSQL credentials → ADIDNS-poisoned linked server → cleartext credential capture → WinRM access → Ligolo-ng tunnel → WCF SOAP `KillProcess` injection → SYSTEM**
 
-## Context and Objective
+## Server 2022 controller with MSSQL and a guest share
 
 - **Target:** Windows Server 2022 domain controller on `<TARGET_DOMAIN>`, exposing DNS (53), Kerberos (88), LDAP (389/3268), RDP (3389), SMB (445), MSSQL on non-standard port 6520, and .NET Message Framing (9389).
 - **Starting position:** unauthenticated network access; no credentials provided.
 - **Objective:** enumerate the exposed services, obtain an initial foothold, pivot to the internal WCF service, and escalate to SYSTEM.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: guest share to ADIDNS to SOAP injection
 
 ### 1. Service Enumeration
 
@@ -309,18 +309,18 @@ Significance: the chain from a guest-readable share to SYSTEM required no CVE; e
 
 Result: a SYSTEM-level shell is obtained on the domain controller.
 
-## Challenges and Decisions
+## Unreachable WCF and a missing DNS record
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | The internal WCF service on port 8000 was not reachable from the attack machine | Reached the internal-only service through a Ligolo-ng transparent tunnel | The endpoint was not reachable externally |
 | The linked server query timed out because `<LINKED_SERVER_NAME>` had no DNS record | Registered a spoofed ADIDNS A record pointing the name at the attack host | Forces the database to authenticate to an attacker-controlled endpoint |
 
-## Outcome
+## Outcome: SYSTEM command execution without a CVE
 
 The evidence establishes SYSTEM-level command execution on the domain controller and, with it, effective domain compromise, reached without exploiting a single CVE. LDAP, Kerberos, and RDP were exposed but not used in the path; every step rested on misconfiguration or missing input validation.
 
-## Lessons and Recommendations
+## Recommendations: hardcoded secrets, ADIDNS writes, linked servers, and SOAP input
 
 Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. These actions are recommendations; none was validated in the lab.
 

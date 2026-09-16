@@ -33,13 +33,13 @@ outcome: "Authenticated web session, SSH user access from a recovered private ke
 | Objective | Bypass web authentication, recover credentials from an exposed archive, and escalate to root |
 | Outcome | Authenticated web session, user-level SSH access via a recovered private key, and root execution |
 
-## Summary
+## From type juggling to ZipCrypto key recovery
 
 Ransom is a medium-difficulty Hack The Box Linux lab whose Laravel login endpoint accepts a PHP loose-comparison quirk: a JSON boolean `true` in the password field authenticates without the real credential. Behind the login sits a home-directory ZIP archive encrypted with ZipCrypto; because it ships a predictable `.bash_logout`, a known-plaintext attack recovers the encryption keys and exposes an SSH private key for initial access. A credential hardcoded in the Laravel authentication controller then provides root. Target addresses, account names, keys, and credentials are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **PHP type-juggling login bypass → ZipCrypto known-plaintext key recovery → recovered SSH key → user shell → hardcoded Laravel controller credential → root**
 
-## Context and Objective
+## Ubuntu Laravel host from unauthenticated access
 
 - **Target:** Linux (Ubuntu 20.04) running a Laravel application.
 - **Exposed services:** SSH (22, OpenSSH 8.2p1) and HTTP (80, Apache 2.4.41).
@@ -47,7 +47,7 @@ Ransom is a medium-difficulty Hack The Box Linux lab whose Laravel login endpoin
 - **Objective:** bypass authentication on the web application, recover credentials from the exposed archive, obtain a shell, and escalate to root.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: type-juggling bypass to ZipCrypto recovery
 
 ### 1. Service enumeration
 
@@ -176,17 +176,17 @@ id
 
 Result: the `id` output confirms execution in the root context.
 
-## Challenges and Decisions
+## The known-plaintext requirement in ZipCrypto
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | ZipCrypto needs at least 12 bytes of known plaintext | Used the predictable `.bash_logout` shipped inside the archive | Ubuntu 20.04 `.bash_logout` content is fixed and known |
 
-## Outcome
+## Outcome: authenticated session, SSH key access, and root
 
 The evidence establishes authenticated web access through the PHP type-juggling bypass, recovery of the SSH private key from the ZipCrypto-protected archive, and root execution confirmed by the `id` output after authenticating with the credential read from the controller source. The initial SSH login is the only transition recorded without captured session output.
 
-## Lessons and Recommendations
+## Recommendations: loose comparison, hardcoded credentials, and ZipCrypto
 
 The actions below are recommendations; none was validated in the lab.
 

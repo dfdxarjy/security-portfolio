@@ -41,13 +41,13 @@ outcome: "Administrator NTLM hash recovery through ESC7 certificate abuse, after
 | Objective | Chain a leaked repository credential, container compromise, and an AD CS misconfiguration into domain-wide administrative access |
 | Outcome | Administrator NTLM hash recovery through ESC7 certificate abuse |
 
-## Summary
+## From a repository leak to ESC7 abuse
 
 Fries is a Medium-rated Hack The Box Windows Active Directory lab with a dual-OS layout: a Linux host runs SSH, nginx, and containerized services behind the same address that fronts a Windows domain controller. Starting from a provided Gitea login, the path combines a repository credential leak, a container compromise, and an AD CS misconfiguration to reach domain-wide administrative control. All target, operator, domain, account, and secret values are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** `Provided Gitea credentials → repository-history database credential leak → pgAdmin 4 CVE-2025-2945 container RCE → environment-variable credential reuse over SSH → NFS export via Chisel → Docker TLS certificates → Docker daemon control → PWM LDAPS redirect and credential capture → gMSA hash retrieval → ESC7 certificate abuse → Administrator`
 
-## Context and Objective
+## A dual-OS lab, container tier, and a web credential
 
 - **Target:** a Windows Active Directory domain controller (Kerberos, LDAP, DNS, SMB, WinRM) and a Linux host (SSH, nginx) sharing one address — an intentionally dual-OS lab.
 - **Container services:** five Docker containers form the application tier — Gitea, PostgreSQL, pgAdmin 4, PWM, and a web front end.
@@ -55,7 +55,7 @@ Fries is a Medium-rated Hack The Box Windows Active Directory lab with a dual-OS
 - **Objective:** move from the provided web credential to domain-wide administrative control by abusing credential reuse, container orchestration, and a certificate-authority misconfiguration.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: Gitea leak to container and CA control
 
 ### 1. Service and Virtual Host Enumeration
 
@@ -297,7 +297,7 @@ Significance: ESC7 grants effective control over the CA's security descriptors, 
 
 Result: certificate authentication for the Administrator identity succeeds and returns the Administrator NTLM hash.
 
-## Challenges and Decisions
+## Challenges: internal ports, NFS GID, config revert, and SAN
 
 | Challenge | Decision | Rationale |
 |---|---|---|
@@ -306,13 +306,13 @@ Result: certificate authentication for the Administrator identity succeeds and r
 | PWM configurable by design, so the LDAPS edit could revert | Disabled the configuration editor alongside the URL change | Prevents the modification from being restored before the service reloads |
 | ESC7 alone does not permit SAN control | Edited `EditFlags` to expose ESC6-style behavior | Needed to place an arbitrary SAN on the requested certificate |
 
-## Outcome
+## Outcome: Administrator hash through ESC7 certificate abuse
 
 The evidence establishes an end-to-end path from a provided web application credential to Administrator-equivalent control of the domain, resting on widespread credential reuse and layered misconfiguration rather than a single critical exploit; CVE-2025-2945 is the only software vulnerability in the path.
 
 Limitations: the recovered secret values, the domain SID, and the hash outputs are redacted here, so the credential values themselves are not reproducible from this writeup. The exploit payload is summarized rather than reproduced.
 
-## Lessons and Recommendations
+## Recommendations: repo secrets, reuse, Docker keys, gMSA, and ESC7
 
 Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
 

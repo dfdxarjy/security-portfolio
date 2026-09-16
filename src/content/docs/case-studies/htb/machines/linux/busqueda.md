@@ -32,13 +32,13 @@ outcome: "Command execution as the application service account, recovered Git cr
 | Objective | Assess unsafe evaluation in a Flask/Searchor search request, credentials exposed in a deployment repository, and a root-run maintenance script that resolves a helper by relative path |
 | Outcome | Command execution as the application service account; root command execution via a relative-path script invoked by a root-run maintenance command |
 
-## Summary
+## Searchor eval() injection to relative-path root
 
 Busqueda is an Easy Hack The Box Linux lab whose web front end runs a Flask search application built on Searchor. The `query` parameter reaches a Python `eval()` call, so a crafted search request runs operating-system commands as the application service account. Post-exploitation follows credentials left in the application's Git configuration into an internal Gitea instance, inspects container environment variables through a delegated sudo maintenance script, and escalates to root by planting the helper that the script's `full-checkup` action resolves by relative path. Target identifiers, account names, credential values, callback payloads, and private paths are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Searchor `eval()` injection → service-account shell → Git remote credential exposure → container environment secret disclosure via sudo `docker-inspect` → relative-path `full-checkup` helper → root**
 
-## Context and Objective
+## Target, search application, and objective
 
 - **Target:** an Ubuntu Linux host exposing SSH and an Apache-fronted HTTP application.
 - **Application:** a Flask search service whose footer identifies the Searchor library, presented as a search-engine selector and a `query` field; the site requires a virtual host mapping to reach.
@@ -46,7 +46,7 @@ Busqueda is an Easy Hack The Box Linux lab whose web front end runs a Flask sear
 - **Objective:** assess unsafe expression evaluation in the search request, credential exposure in the deployment repository, and the privilege boundary created by the allowed maintenance script.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: query injection to relative-path helper
 
 ### 1. Service Discovery
 
@@ -188,17 +188,17 @@ Significance: because root runs `./full-checkup.sh` from a caller-controlled wor
 
 Result: root command execution is confirmed by the privileged `whoami` output.
 
-## Challenges and Decisions
+## One decision: base64-encode the injected shell
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | Special characters in the injected command risked breaking the evaluated expression | Base64-encoded the reverse shell before sending it through the `query` parameter | Avoids quoting and bad-character issues in the injected command |
 
-## Outcome
+## Outcome: service shell and root via a relative path
 
 The lab ends with root command execution, established by the privileged `whoami` output. Two transitions are recorded without retained command output: the leaked Git password also authenticated the service account locally, and the disclosed database password granted Administrator access to the internal Gitea instance that held the maintenance script source.
 
-## Lessons and Recommendations
+## Recommendations: eval(), Git credentials, container env, and relative paths
 
 1. **User input evaluated as code.** The search `query` reached `eval()`, turning search input into command execution as the application account. *Recommendation:* remove dynamic evaluation of request data and use an allowlisted lookup, as Searchor 2.4.2 did. *Detection:* review application code for `eval()`/`exec()` on user input and monitor web processes for unexpected child processes.
 2. **Credentials in Git remote configuration.** A deployment `.git/config` embedded a credential pair for an internal repository host. *Recommendation:* use deploy keys or a credential helper instead of embedding secrets in remote URLs, and rotate any credential that has been exposed. *Detection:* scan working directories and repository configuration for credentials in remote URLs.

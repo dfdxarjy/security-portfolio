@@ -35,13 +35,13 @@ outcome: "Authenticated admin access, a command-injection foothold as the applic
 | Objective | Escalate from an exposed Spring Boot Actuator endpoint to root through command injection and a sudo ssh rule |
 | Outcome | Admin-panel access via a leaked session, command-injection shell as the application service user, SSH access through a reused credential, and root via `ssh` ProxyCommand |
 
-## Summary
+## Actuator session leak to ProxyCommand root
 
 CozyHosting is an Easy Hack The Box Linux machine running a Spring Boot web application behind nginx. Enumeration exposed Spring Boot Actuator endpoints, including `/actuator/sessions`, which leaked an authenticated session for `<APPLICATION_USER>`. The admin panel's SSH connection feature passed the `username` parameter into a shell command, giving command injection; a whitespace filter was bypassed with bash brace expansion to land a foothold as the application service user. The deployed Spring Boot JAR contained cleartext PostgreSQL credentials, whose `users` table held bcrypt hashes; cracking the administrative hash recovered a password reused for the local `<LOCAL_USER>` account. Privilege escalation abused a sudo rule allowing `<LOCAL_USER>` to run `/usr/bin/ssh` as root and used `ProxyCommand` to spawn a root shell. Target-specific values, credentials, and hashes are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Spring Boot Actuator session leak → admin panel access → command injection in the SSH feature → application-service-user shell → JAR and PostgreSQL credential recovery → bcrypt hash crack → password reuse for SSH access as `<LOCAL_USER>` → sudo `/usr/bin/ssh` `ProxyCommand` → root**
 
-## Context and Objective
+## Target, Spring Boot stack, and objective
 
 - **Target:** Linux (Ubuntu) host running nginx as a reverse proxy to a Spring Boot application.
 - **Exposed services:** SSH (22) and HTTP (80).
@@ -49,7 +49,7 @@ CozyHosting is an Easy Hack The Box Linux machine running a Spring Boot web appl
 - **Objective:** move from the exposed web application to user- and root-level access, and demonstrate the impact of the exposure chain.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: Actuator sessions to sudo ssh helper
 
 ### 1. Service Enumeration
 
@@ -221,16 +221,16 @@ sudo /usr/bin/ssh -o ProxyCommand=';/bin/sh 0<&2 1>&2' x
 root
 ```
 
-## Challenges and Decisions
+## One obstacle: a whitespace filter, bypassed by braces
 
 - The `username` parameter rejected whitespace. Bash brace expansion (`{cmd,arg1,arg2}`) supplied separated arguments without literal spaces, bypassing the filter.
 - The admin panel trusted user-controlled input inside a shell command; the whitespace filter alone was insufficient to prevent injection.
 
-## Outcome
+## Outcome: admin, service shell, and root via ProxyCommand
 
 The evidence establishes full compromise from unauthenticated web access to root command execution. Two transitions are documented results rather than captured command output: admin-panel access using the leaked session, and SSH access as `<LOCAL_USER>` using the recovered password.
 
-## Lessons and Recommendations
+## Recommendations: Actuator, injection, artifact secrets, reuse, and sudo ssh
 
 The actions below are recommendations; none was validated in the lab.
 

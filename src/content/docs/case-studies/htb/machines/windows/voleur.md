@@ -38,20 +38,20 @@ outcome: "Administrative domain access after offline Active Directory backup ext
 | Objective | Progress from those credentials to administrative access through credential recovery, Kerberos abuse, and offline backup analysis |
 | Outcome | Administrative domain access via offline `ntds.dit` and SYSTEM hive extraction |
 
-## Summary
+## Provided credentials to offline directory backup
 
 Voleur is a Hard-rated Hack The Box Windows Active Directory lab. Starting from provided low-privilege domain credentials, the chain moves through a share-hosted access-review spreadsheet, Kerberoasting, an AD Recycle Bin recovery, DPAPI-protected material, and a WSL pivot into an offline directory-backup disclosure. Target identifiers, account names, credential values, private keys, and hashes are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Provided domain credentials → encrypted share document → Kerberoasting → WinRM foothold → LDAP service-account pivot → AD Recycle Bin recovery → DPAPI decryption → WSL SSH access → offline `ntds.dit` extraction → Administrator**
 
-## Context and Objective
+## Provided domain credentials and a co-hosted WSL pivot
 
 - **Target:** A Windows Active Directory domain controller exposing Kerberos, LDAP, SMB, and WinRM, plus an SSH service provided by a co-hosted WSL instance on a non-default port.
 - **Starting position:** Provided low-privilege domain credentials for `<INITIAL_DOMAIN_USER>`.
 - **Objective:** Escalate from those credentials to administrative access and demonstrate what the recovered material exposes.
 - **Constraints:** Activity was confined to the Hack The Box lab environment. Kerberos service-ticket requests require the client and domain-controller clocks to agree, so time is synchronized against the domain controller and a Kerberos client configuration is in place before any ticket is requested.
 
-## Approach and Evidence
+## Evidence: share spreadsheet, Kerberoast, DPAPI, WSL backup extraction
 
 ### 1. Service Enumeration and Directory Reconnaissance
 
@@ -214,11 +214,11 @@ Result: the built-in Administrator NTLM hash is recovered, and pass-the-hash yie
 
 The source records no failed attempts, dead ends, or reversed decisions; the chain uses documented directory, DPAPI, and backup functionality at every hop.
 
-## Outcome
+## Outcome: Administrator hash via offline ntds.dit and SYSTEM hive
 
 The evidence establishes administrative control of the domain: the offline directory database and its paired SYSTEM hive yielded the built-in Administrator NTLM hash, which authenticated over WinRM in the Administrator context. The chain is not reproducible from this writeup.
 
-## Lessons and Recommendations
+## Recommendations: service passwords, shared documents, recycled objects, DPAPI, and backups
 
 The actions below are recommendations; none was validated or re-tested in the lab. Each finding pairs an observed root cause with its demonstrated impact and a prioritized action.
 

@@ -39,13 +39,13 @@ outcome: "SYSTEM-level execution on the domain controller after RBCD delegation 
 | Objective | Chain supplied credentials, a gMSA disclosure, an NTLM-relay pivot, and delegation abuse to administrative control of the domain controller |
 | Outcome | SYSTEM-level execution on the domain controller |
 
-## Summary
+## Clock skew to gMSA to RBCD
 
 Pirate is a Hard-rated Hack The Box Active Directory lab that begins with supplied credentials for a low-privileged domain user. LDAP enumeration is initially blocked by Kerberos clock skew; once the clocks are aligned, `pre2k` and gMSA enumeration expose a managed service account whose NTLM hash yields a WinRM foothold on the domain controller. Local discovery reveals an internal `/24` segment hosting a web host, a Ligolo tunnel reaches it, and an NTLM relay to LDAPS grants the delegation rights needed to impersonate an administrator, recover a local secret, reset a privileged account's password, and pivot a service ticket to the domain controller. Target and attacker addresses, hostnames, account names, credentials, and hashes are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Supplied domain credentials → Kerberos clock-skew alignment → `pre2k` and gMSA disclosure → WinRM foothold → internal segment discovery → Ligolo pivot → NTLM-relay RBCD → delegated CIFS ticket → local secret recovery → privileged password reset → SPN abuse → domain controller SYSTEM**
 
-## Context and Objective
+## Controller with supplied credentials and an internal segment
 
 - **Target:** a Windows Active Directory domain controller exposing DNS, Kerberos, LDAP, SMB, IIS (HTTP), and WinRM.
 - **Starting position:** supplied credentials for `<INITIAL_USER>`, a low-privileged domain account.
@@ -53,7 +53,7 @@ Pirate is a Hard-rated Hack The Box Active Directory lab that begins with suppli
 - **Objective:** chain trust relationships across the domain and the internal segment to reach domain administrative control.
 - **Constraints:** activity was confined to the Hack The Box lab environment; the lab hostname was mapped locally for name resolution.
 
-## Approach and Evidence
+## Evidence: gMSA hash to relay RBCD to SPN abuse
 
 ### 1. Service Enumeration
 
@@ -366,18 +366,18 @@ impacket-psexec -k -no-pass <DOMAIN_CONTROLLER_HOSTNAME>
 
 Result: the session lands in the `<SYSTEM_ACCOUNT>` context on the domain controller.
 
-## Challenges and Decisions
+## Kerberos clock skew and an unroutable segment
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | Kerberos clock skew blocked `pre2k` enumeration | Synchronized the local clock with `rdate` before retrying | Kerberos rejects tickets when the client is outside the realm's skew tolerance |
 | The internal `/24` segment was not directly routable | Reached it through a Ligolo tunnel via the domain controller | The web host is reachable only from the domain controller's internal adapter |
 
-## Outcome
+## Outcome: SYSTEM on the controller via a CIFS ticket
 
 The evidence establishes administrative compromise of the domain: an administrator-impersonating CIFS ticket was issued by the domain controller and used to execute in its `<SYSTEM_ACCOUNT>` context. Limitations: the final session's command output was not retained, so the landing context rests on the source's record, and the recovered secret values and the flag are omitted.
 
-## Lessons and Recommendations
+## Recommendations: time sync, gMSA reads, LDAP signing, LSA secrets, and SPNs
 
 Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. These actions are recommendations; none was validated in the lab.
 

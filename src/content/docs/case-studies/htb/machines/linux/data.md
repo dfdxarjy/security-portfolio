@@ -34,13 +34,13 @@ outcome: "Authenticated SSH access as a low-privileged user and root-level acces
 | Objective | Escalate from an unauthenticated Grafana file read to root on the host |
 | Outcome | User SSH access and root-level host filesystem access via a privileged `docker exec` |
 
-## Summary
+## Grafana traversal to privileged container escape
 
 Data is a retired Hack The Box Linux machine running Grafana 8.0.0. The release is vulnerable to CVE-2021-43798, an unauthenticated path traversal in Grafana plugin asset paths that reads arbitrary files; the most useful target is the Grafana SQLite database holding password hashes and salts. A cracked credential authenticates over SSH, and a permissive sudo rule for `docker exec` lets that user enter the Grafana container as root, mount the host filesystem, and reach root-owned files. Credential values, target addresses, and container identifiers are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Grafana 8.0.0 → CVE-2021-43798 path traversal → `grafana.db` exfiltration → offline hash cracking → SSH as `boris` → sudo `docker exec` into a privileged container → host filesystem mount → root**
 
-## Context and Objective
+## Containerized Grafana 8.0.0, no credentials, host root
 
 - **Target:** a Linux host running Grafana 8.0.0 inside a container, with no patch applied.
 - **Exposed services:** SSH (22) and Grafana HTTP (3000).
@@ -48,7 +48,7 @@ Data is a retired Hack The Box Linux machine running Grafana 8.0.0. The release 
 - **Objective:** move from an unauthenticated application file read to user access and root, and demonstrate the impact of an over-permissive container privilege rule.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: traversal to hash crack to privileged mount
 
 ### 1. Service Enumeration
 
@@ -193,18 +193,18 @@ Significance: a `docker exec` granted `--privileged`, reachable through the pass
 
 Result: root-equivalent access to the host filesystem is obtained through the container.
 
-## Challenges and Decisions
+## Obstacles: no host shell, only delegated docker exec
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | No host shell, but a sudo rule for `docker exec` | Reused the path-traversal file read to obtain the container hostname, then targeted that container | The sudo rule applies to `docker exec`, so the running container identity had to be established first |
 | Identifying the vulnerable Grafana release | Read the version banner from the login page | Grafana 8.0.0 is directly in the CVE-2021-43798 affected range, so no deeper fingerprinting was needed |
 
-## Outcome
+## Outcome: unauthenticated file read and host root access
 
 The evidence establishes unauthenticated arbitrary file read through CVE-2021-43798, offline recovery of a Grafana credential that authenticates over SSH, and root-level access to the host filesystem through a privileged `docker exec` into the Grafana container. No further host privilege-escalation technique was required once the container was reachable under the delegated `docker exec` rule.
 
-## Lessons and Recommendations
+## Recommendations: unpatched Grafana, exposed database, docker exec grant
 
 The actions below are recommendations; none was validated in the lab. Each finding pairs the observed root cause with its demonstrated impact and a prioritized action.
 

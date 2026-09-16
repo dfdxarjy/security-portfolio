@@ -41,13 +41,13 @@ outcome: "Domain Administrator command execution as `nt authority\\system` on th
 | Objective | Escalate from unauthenticated web content enumeration to Domain Administrator through DNS injection and GMSA constrained-delegation abuse |
 | Outcome | Domain Administrator command execution as `nt authority\system` on the domain controller |
 
-## Summary
+## From PDF metadata to GMSA delegation abuse
 
 Intelligence is a Medium-rated Hack The Box Windows Active Directory lab whose path begins with information disclosure rather than a software flaw: PDF documents on an IIS web server expose author metadata that enumerates valid domain users, and one document discloses a default onboarding password. An SMB share reachable with those credentials holds a PowerShell script that authenticates to any internal hostname beginning with `web`, which is abused by registering a spoofed DNS record and capturing a NetNTLMv2 authentication with Responder. Cracking that hash yields a higher-privileged user with `ReadGMSAPassword` rights over a Group Managed Service Account; the GMSA's NTLM hash, combined with its constrained delegation rights, allows a service ticket to be requested that impersonates the Administrator. Target and attacker addresses, accounts, and credential values are replaced with role-based placeholders throughout; command patterns are preserved.
 
 **Attack path:** **PDF metadata enumeration → default onboarding password → authenticated SMB access → `downdetector.ps1` analysis → spoofed DNS record → NetNTLMv2 capture and crack → BloodHound enumeration → GMSA password read → service ticket via S4U2Proxy → Domain Administrator**
 
-## Context and Objective
+## An IIS domain controller and no starting credentials
 
 - **Target:** Windows Active Directory domain controller hosting an IIS web application, DNS, Kerberos, LDAP, and SMB.
 - **Services exposed:** DNS (53), HTTP/IIS (80), Kerberos (88), RPC (135), NetBIOS (139), LDAP (389/636), SMB (445).
@@ -55,7 +55,7 @@ Intelligence is a Medium-rated Hack The Box Windows Active Directory lab whose p
 - **Objective:** move from unauthenticated enumeration of web content to domain administrative control, demonstrating how information disclosure and a legitimate automation script combine into a full compromise.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: metadata enumeration to GMSA ticket abuse
 
 ### 1. Service Enumeration
 
@@ -262,17 +262,17 @@ Significance: constrained delegation with protocol transition (S4U2Proxy) lets a
 
 Result: the impersonated ticket returns a shell executing as `nt authority\system`, establishing Domain Administrator control.
 
-## Challenges and Decisions
+## Challenges: hidden naming pattern, DNS rights, and task timing
 
 - **Unknown document naming pattern.** Manual inspection established the `YYYY-MM-DD-upload.pdf` convention, so a date-range sweep was chosen over wordlist guessing; it systematically recovered the accessible documents. *Documented rationale: the naming pattern made exhaustive date enumeration reliable.*
 - **DNS injection needs authenticated writes.** The spoofed record was created with the already-recovered domain credentials; Secure Dynamic Updates alone do not block this because the attack performs an authenticated LDAP write rather than an unauthenticated dynamic update. *Documented rationale: legitimate credentials satisfy DNS update permissions.*
 - **Unknown Scheduled Task timing.** The script's periodicity was unknown, so a wait of roughly five minutes was used before expecting the DNS-triggered request to fire. *Documented rationale: patience lets the legitimate trigger fire on its own schedule.*
 
-## Outcome
+## Outcome: nt authority system on the domain controller
 
 The evidence establishes a complete path from unauthenticated enumeration to domain administrative execution, ending in a shell as `nt authority\system` on the domain controller. The pivot points were document content and a legitimate maintenance script rather than an exposed software vulnerability, and the static HTTP application was enumeration-only. No software exploit was required at any stage.
 
-## Lessons and Recommendations
+## Recommendations: metadata, default credentials, DNS trust, update rights, and GMSA exposure
 
 Each finding below pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
 

@@ -31,20 +31,20 @@ outcome: "Code execution as the web service user and root through the Enlightenm
 | Objective | Escalate from an exposed Dolibarr CRM to root through authenticated RCE, credential reuse, and a vulnerable setuid helper |
 | Outcome | Code execution as the web service user; root via the Enlightenment setuid helper (CVE-2022-37706) |
 
-## Summary
+## Dolibarr default login to SUID root
 
 BoardLight is an Easy-rated Hack The Box Linux machine (Ubuntu 20.04) built around a layered application-and-credential chain. Virtual-host enumeration against an otherwise unremarkable Apache site exposes Dolibarr 17.0.0 behind a default administrative login; an authenticated remote code execution flaw (CVE-2023-30253) yields a web service shell; database credentials read from the application configuration are reused for a local system account over SSH; and a setuid helper shipped with Enlightenment 0.23.1 (CVE-2022-37706) escalates to root. Hostnames, addresses, and credential values are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Unauthenticated enumeration → Dolibarr virtual host → default-credential CRM access → CVE-2023-30253 authenticated RCE → configuration-file database credential → password reuse for SSH → CVE-2022-37706 Enlightenment SUID abuse → root**
 
-## Context and Objective
+## Target, virtual host, and objective
 
 - **Target:** Ubuntu 20.04 host running Apache 2.4.41 (80) and OpenSSH 8.2p1 (22).
 - **Starting position:** unauthenticated network access, with no provided credentials.
 - **Objective:** move from external enumeration to user and root control by chaining the exposed application, a reused secret, and a local privilege-escalation flaw.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: virtual host to Enlightenment SUID
 
 ### 1. Service Enumeration
 
@@ -194,18 +194,18 @@ root
 
 Result: command execution as root is obtained through the Enlightenment setuid helper.
 
-## Challenges and Decisions
+## Two obstacles: a bare site and no credentials
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | The primary site exposed no exploitable surface | Enumerated virtual hosts against the disclosed domain | The application virtual host was the recorded entry point |
 | No credentials were provided | Used the application's default administrative login | The Dolibarr instance accepted its shipped defaults |
 
-## Outcome
+## Outcome: web service user and root via SUID
 
 The evidence establishes code execution as the web service user and root through the Enlightenment setuid helper (CVE-2022-37706). No remediation was tested in the lab; the recommendations below are proposed measures.
 
-## Lessons and Recommendations
+## Recommendations: defaults, reused database secret, and SUID helper
 
 1. **Default application credentials.** The Dolibarr instance accepted its shipped administrative login, exposing the CRM and the website-builder feature used for code execution. *Recommendation:* change default credentials before deployment, enforce strong authentication, and restrict management interfaces to trusted networks. *Detection:* alert on successful logins to default or privileged accounts and on first-use default-credential patterns.
 2. **Plaintext and reused database credentials.** The application configuration stored the database password in cleartext, and the same value authenticated the local `<LOCAL_USER>` account, converting an application compromise into a system login. *Recommendation:* keep secrets out of readable configuration files (use environment variables or a secrets manager) and eliminate password reuse between service and human accounts. *Detection:* monitor for successful SSH logins originating from application contexts and for configuration-file reads by web service users.

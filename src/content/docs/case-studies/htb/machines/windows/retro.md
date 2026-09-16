@@ -31,13 +31,13 @@ outcome: "Domain Administrator: certificate-based impersonation of the Administr
 | Objective | Escalate from unauthenticated guest SMB access to domain Administrator by chaining a disclosed shared credential, a pre-created computer account, and an AD CS ESC1 template |
 | Outcome | Domain Administrator via AD CS ESC1 certificate impersonation |
 
-## Summary
+## Guest SMB notes to ESC1 impersonation
 
 Retro is an Easy-rated Hack The Box Windows Active Directory lab. Guest-accessible SMB shares expose a trainee note describing a shared weak-credential policy; RID brute forcing and username-as-password spraying yield a working domain credential, which unlocks a second share. That note points to a legacy pre-created computer account whose password is reset, producing an authenticated principal with certificate-services enrollment rights. Certificate-services enumeration finds an ESC1 template that accepts enrollee-supplied subject values, and a certificate for the Administrator identity yields its NTLM hash and an administrative WinRM session. Target addresses, domain and account names, and secret values are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Guest SMB disclosure → RID brute force and username-as-password spray → pre-created computer account reset → AD CS ESC1 certificate request → Administrator NTLM hash via certificate authentication → WinRM administrative session**
 
-## Context and Objective
+## Guest SMB on a domain controller, escalate to admin
 
 - **Target:** a single Windows Active Directory domain controller.
 - **Exposed services:** DNS (53), Kerberos (88), SMB (445), LDAPS (636), RDP (3389), and WinRM (5985).
@@ -45,7 +45,7 @@ Retro is an Easy-rated Hack The Box Windows Active Directory lab. Guest-accessib
 - **Objective:** move from unauthenticated guest file access to domain administrative control by abusing shared credentials, a stale pre-created computer account, and a certificate-services misconfiguration.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: guest shares, RID spray, computer account, ESC1
 
 ### 1. Service Enumeration
 
@@ -266,18 +266,18 @@ Significance: WinRM accepts the hash directly, so the recovered credential mater
 
 Result: an administrative shell on the domain controller is obtained.
 
-## Challenges and Decisions
+## Two obstacles: the logon rejection and the SID prompt
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | The pre-created computer account rejected normal authentication with `STATUS_NOLOGON_WORKSTATION_TRUST_ACCOUNT` | Reset the account password with NetExec's `change-password` module | The account had to change its password before it would authenticate, and the existing default password was sufficient to perform the reset |
 | The certificate request required the Administrator SID and a 4096-bit key | Supplied both explicitly in the request | The source records that this environment required the Administrator SID and a 4096-bit key |
 
-## Outcome
+## Outcome: certificate impersonation and domain administrator
 
 The evidence establishes administrative control of the domain through a certificate that impersonates the Administrator identity, yielding that account's NTLM hash and an interactive WinRM session. No software vulnerability was exploited: the path rests on misconfigured authentication and credential governance rather than a patchable defect.
 
-## Lessons and Recommendations
+## Recommendations: guest shares, stale machine account, and ESC1
 
 Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
 

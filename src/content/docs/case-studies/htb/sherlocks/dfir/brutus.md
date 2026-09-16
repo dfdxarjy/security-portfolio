@@ -33,20 +33,20 @@ outcome: "Confirmed compromise with a bounded incident timeline: SSH password br
 | Objective | Reconstruct a defensible incident timeline from SSH authentication and session-accounting artifacts and identify persistence and post-compromise activity |
 | Outcome | Interactive root access followed by a sudo-enabled local account; confirmed compromise |
 
-## Summary
+## From an authentication burst to a sudo-enabled account
 
 Brutus is a Hack The Box Sherlock that reconstructs a Linux SSH compromise from authentication and session-accounting artifacts. Correlating an authentication burst, successful privileged logins, terminal-session records, and account-management events yields one defensible timeline: a password brute-force against SSH opened interactive root access, the attacker created a local account in the `sudo` group, and that account read the credential store and fetched an enumeration script. Account names, source addresses, ports, and remote script locations are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** `SSH password brute-force → interactive root session → local account creation + sudo group → privileged /etc/shadow read and enumeration-script retrieval`
 
-## Context and Objective
+## Provided artifacts and the question
 
 - **Provided evidence:** the Sherlock supplies `auth.log` and a legacy `wtmp` session-accounting file (`wtmp.legacy`).
 - **Environment:** a Linux host reachable over SSH; the artifacts are authentication and session records only.
 - **Objective:** build a defensible incident timeline and determine what the evidence does and does not establish about compromise, persistence, and follow-on activity.
 - **Constraints:** analysis is confined to the supplied artifacts. Timestamps are recorded as they appear in each artifact; the session-accounting query was run with `TZ=UTC`.
 
-## Approach and Evidence
+## Evidence: auth.log and wtmp on one timeline
 
 ### 1. Authentication Volume Triage
 
@@ -198,15 +198,15 @@ Significance: the authenticated login, terminal start, and session identifier al
 
 Result: the evidence supports a single, ordered compromise sequence on `2024-03-06`; the ordering of the post-session account and command events follows the full log sort.
 
-## Challenges and Decisions
+## A legacy session file and no evasion stage
 
 The legacy session file was not directly readable: `last -f ./wtmp.legacy` returned `file is not a database`, because the artifact is a legacy binary `wtmp` while the `wtmpdb` reader expects SQLite. Converting it once with `wtmpdb import` produced a queryable database while the original artifact was preserved. No audit-policy change or log-clearing activity was observed in the supplied artifacts, so no defense-evasion stage is included.
 
-## Outcome
+## Outcome: a confirmed compromise on 2024-03-06
 
 The evidence establishes a confirmed compromise on the target host. Limitations: the artifacts do not show the enumeration script's execution or output, additional persistence mechanisms, credential reuse, or activity on other hosts.
 
-## Lessons and Recommendations
+## Recommendations: SSH password auth, local accounts, /etc/shadow reads, and response
 
 Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated.
 

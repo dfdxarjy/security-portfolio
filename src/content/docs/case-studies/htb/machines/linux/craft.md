@@ -35,13 +35,13 @@ outcome: "Root in the application container via eval() RCE, host access via a re
 | Objective | Reach container root through the Flask API, then escalate to host root |
 | Outcome | Container root via `eval()` RCE; host root via a reused Gogs credential, an SSH key, and Vault SSH OTP |
 
-## Summary
+## From a Gogs source leak to host root
 
 Craft is a Medium Linux lab on Hack The Box. A Gogs instance publishes the application source, and two commit diffs expose hardcoded API credentials and a Python `eval()` call in the Flask brew API. The `eval()` injection yields root inside the application's Docker container, where the Flask configuration and the MySQL `user` table expose plaintext credentials. One recovered password is reused on Gogs, whose private `craft-infra` repository holds an SSH private key that grants host access, and HashiCorp Vault's SSH one-time password engine then provides root on the host. Target IPs, hostnames, accounts, credentials, tokens, key filenames, and container identifiers are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Gogs source leak → hardcoded API credentials → JWT → `eval()` injection RCE → container root → MySQL plaintext credentials → reused Gogs password → repository SSH key → host shell → HashiCorp Vault SSH OTP → host root**
 
-## Context and Objective
+## Target, exposed services, and virtual hosts
 
 - **Target:** Linux host running a Dockerized Flask API behind nginx.
 - **Exposed services:** SSH (22), HTTPS nginx (443), and a Golang `x/crypto/ssh` server (6022).
@@ -50,7 +50,7 @@ Craft is a Medium Linux lab on Hack The Box. A Gogs instance publishes the appli
 - **Objective:** obtain code execution in the web application and escalate to root on the host.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: source review to Vault OTP
 
 ### 1. Port and Service Enumeration
 
@@ -236,7 +236,7 @@ Significance: Vault mints a single-use password bound to the target and supplies
 
 Result: the OTP is accepted and a root shell is obtained on the host.
 
-## Challenges and Decisions
+## Three decisions: commit diffs, container root, and Vault authorisation
 
 | Challenge | Decision | Rationale |
 |---|---|---|
@@ -244,11 +244,11 @@ Result: the OTP is accepted and a root shell is obtained on the host.
 | The first shell was root but confined to the application container | Enumerated the container's own configuration and database to pivot | Container root does not grant host access on its own |
 | Host elevation beyond `<USER_3>` was still required | Requested an SSH OTP through existing HashiCorp Vault authorization | The user's Vault policy permitted root OTP issuance, so no separate exploit was needed |
 
-## Outcome
+## Outcome: container root and host root
 
 The evidence establishes root code execution in the application container through the Flask `eval()` injection and root on the host through HashiCorp Vault's SSH OTP engine. The initial root shell was scoped to the application container, so host access depended on the credentials and SSH key recovered from the database and Gogs.
 
-## Lessons and Recommendations
+## Recommendations: committed secrets, eval(), reuse, and Vault scope
 
 The following are recommendations; none was tested in the lab.
 

@@ -31,13 +31,13 @@ outcome: "Root SSH access using a private key decrypted from the Jenkins credent
 | Objective | Escalate from unauthenticated Jenkins CLI file disclosure to root access through a recovered password hash and stored deployment credentials |
 | Outcome | Code execution as the `jenkins` service account and root SSH access via a credential-store private key |
 
-## Summary
+## CLI file read to credential-store root
 
 Builder is a Medium-rated Hack The Box Linux lab centred on a Jenkins CI/CD server affected by CVE-2024-23897. An unauthenticated file read in the Jenkins CLI exposes the user index and a per-user configuration file, yielding a bcrypt password hash; offline recovery enables authentication, the Groovy Script Console then provides operating-system command execution as the Jenkins service account, and a root SSH private key held in the Jenkins credential store is decrypted through Jenkins' own secret API. Target addresses, the account identity, hash and credential values, the private key, and payload specifics are replaced with role-based placeholders or omitted; command syntax is preserved.
 
 **Attack path:** **Unauthenticated Jenkins CLI `@` file read (CVE-2024-23897) → users index → per-user `config.xml` → bcrypt password hash → offline recovery → Jenkins authentication → Script Console execution as `jenkins` → `credentials.xml` root SSH key → `hudson.util.Secret` decryption → root SSH access**
 
-## Context and Objective
+## Target, CI/CD server, and objective
 
 - **Target:** an Ubuntu Linux host exposing SSH and a Jenkins CI/CD server over HTTP.
 - **Recorded services:** OpenSSH 8.9p1 on port 22 and Jetty 10.0.18 serving the Jenkins dashboard on port 8080.
@@ -46,7 +46,7 @@ Builder is a Medium-rated Hack The Box Linux lab centred on a Jenkins CI/CD serv
 - **Objective:** assess the impact of unauthenticated Jenkins CLI file disclosure, the administrative Script Console, and the credentials held in the Jenkins store.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: file read to credential-store decryption
 
 ### 1. Service Enumeration
 
@@ -174,20 +174,20 @@ Significance: the entry is scoped to the root account, so decrypting it converts
 
 Result: a root SSH private key is decrypted and used to obtain a root shell on the host.
 
-## Challenges and Decisions
+## Two decisions: users index, then secret decryption
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | The per-user configuration path is not known up front | Read `/var/jenkins_home/users/users.xml` first, then request that directory's `config.xml` | The `@` argument reads a fixed path, so the users index supplies the per-user directory component |
 | The stored SSH key is encrypted by Jenkins' own mechanism | Decrypt with `hudson.util.Secret` from the Script Console | The value is protected by the application's credential encryption, so its API unwraps it directly |
 
-## Outcome
+## Outcome: service shell and root from stored key
 
 The evidence establishes unauthenticated file read through the Jenkins CLI, authenticated code execution as the `jenkins` service account, and root access obtained with a private key decrypted from the Jenkins credential store. The material weakness is the combination of an unauthenticated disclosure primitive, an administrative console, and a credential store holding a root key; CVE-2024-23897 is the only software vulnerability in the path.
 
 Limitations: the credential material is not reproducible from this writeup.
 
-## Lessons and Recommendations
+## Recommendations: CLI read, Script Console, and stored key
 
 Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
 

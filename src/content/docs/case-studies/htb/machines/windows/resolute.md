@@ -36,20 +36,20 @@ outcome: "Authenticated WinRM access as a domain user and SYSTEM-level command e
 | Objective | Escalate from unauthenticated LDAP enumeration to SYSTEM on a domain controller by abusing exposed credentials and DNSAdmins plugin-DLL loading |
 | Outcome | Authenticated WinRM access as a domain user; SYSTEM-level command execution on the domain controller |
 
-## Summary
+## LDAP leak to DNS plugin DLL
 
 Resolute is a Medium-rated Hack The Box Windows Active Directory lab on a Server 2019 domain controller. The path reaches SYSTEM through two credential-exposure classes and an over-privileged group, without exploiting a software CVE. Anonymous SMB/LDAP enumeration exposes an onboarding password in a user's `description` attribute; spraying that default against all domain accounts yields an authenticated WinRM foothold. A PowerShell transcript left on disk then discloses an administrative account's password, whose group path through `CONTRACTORS` into `DNSADMINS` allows a server-level plugin DLL to be loaded by the SYSTEM-run DNS service. Target, operator, account, host, and secret values are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Unauthenticated SMB/LDAP enumeration → description-field password exposure → password spraying → WinRM foothold → PowerShell transcript credential recovery → BloodHound group mapping → DNSAdmins plugin DLL → SYSTEM**
 
-## Context and Objective
+## Server 2019 controller with anonymous LDAP, no credentials
 
 - **Target:** a Windows Server 2019 domain controller hosting Active Directory for the `<DOMAIN>` domain; standard AD services plus WinRM (5985) and DNS (53).
 - **Starting position:** unauthenticated network access, with no provided credentials.
 - **Objective:** move from anonymous SMB/LDAP enumeration to SYSTEM on the domain controller by combining exposed credentials, a stored session artifact, and an over-privileged group.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: LDAP leak to transcript to DNS plugin
 
 ### 1. LDAP Enumeration and Credential Discovery
 
@@ -213,17 +213,17 @@ Significance: `dnscmd` lets a `DNSAdmins` member register a plugin DLL that a SY
 
 Result: the callback returns and `whoami` confirms `nt authority\system`, establishing SYSTEM-level command execution on the domain controller.
 
-## Challenges and Decisions
+## The rotated provisioning default
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | Direct authentication with the leaked default for `<PROVISION_ACCOUNT>` failed because that account's password had been rotated | Sprayed the default across all enumerated accounts instead | The provisioning pattern indicated other accounts might still hold the initial password |
 
-## Outcome
+## Outcome: WinRM user and SYSTEM via DNS plugin
 
 The evidence establishes authenticated WinRM access as `<USER_2>`, an administrative credential for `<USER_3>` recovered from a PowerShell transcript and then validated through SMB, and SYSTEM-level command execution on the domain controller via a DNS service plugin DLL. Limitation: credential, host, and transfer values are redacted, so the recovered secrets are not reproducible from this writeup.
 
-## Lessons and Recommendations
+## Recommendations: LDAP attributes, default rotation, transcripts, and DNSAdmins
 
 The actions below are recommendations; none was validated in the lab.
 

@@ -35,20 +35,20 @@ outcome: "Standard-user WinRM foothold and Administrator NT-hash recovery via ES
 | Objective | Escalate from unauthenticated enumeration to domain compromise by recovering credentials and abusing AD CS ManageCA rights through ESC7 |
 | Outcome | Standard-user WinRM foothold and Administrator NT-hash recovery through ESC7, shown by a pass-the-hash Administrator session |
 
-## Summary
+## RID spray to AD CS ESC7
 
 Manager is a Medium-rated Hack The Box Active Directory lab. RID brute forcing enumerates domain users and a username-as-password spray recovers one account; MSSQL access as that account exposes an old website backup holding a second credential; and the second account holds `ManageCA` rights over the Enterprise CA, enabling the AD CS ESC7 chain — officer assignment, template enablement, failed-request issuance, certificate retrieval, and NT-hash recovery for domain compromise. Passwords, hashes, addresses, and domain/host/CA identifiers are replaced with role-based placeholders; command and technique syntax is preserved.
 
 **Attack path:** **RID brute forcing → username-as-password spray → MSSQL backup discovery → WinRM foothold → BloodHound rights collection → AD CS ESC7 (officer assignment → template enablement → failed-request issuance → certificate retrieval) → NT-hash recovery → pass-the-hash Administrator**
 
-## Context and Objective
+## AD controller with AD CS and MSSQL, no credentials
 
 - **Target:** a Windows Active Directory domain whose Domain Controller also hosts an Enterprise CA (AD CS), alongside MSSQL (1433), SMB (445), and WinRM (5985).
 - **Starting position:** unauthenticated network access, with no credentials provided.
 - **Objective:** enumerate domain users, recover initial credentials, and escalate to domain compromise through AD CS abuse rather than a software memory-corruption or remote-code-execution flaw.
 - **Environment:** Hack The Box lab; all activity was confined to the platform's isolated lab environment.
 
-## Approach and Evidence
+## Evidence: RID spray, MSSQL backup, and ESC7 to DA
 
 ### 1. Service Enumeration
 
@@ -266,18 +266,18 @@ Significance: pass-the-hash grants administrative code execution and completes t
 
 Result: an interactive Administrator session was established.
 
-## Challenges and Decisions
+## Limited anonymous SMB and a failed certificate request
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | Null or guest SMB access yielded limited results | Switched to RID brute forcing to enumerate usernames | RID enumeration exposed domain users that anonymous access did not |
 | The Administrator certificate request failed | Issued the failed request afterward as a CA officer, then retrieved it | A CA officer can authorize a pending request, so a failed request is not a dead end |
 
-## Outcome
+## Outcome: WinRM foothold and Administrator NT hash
 
 Authenticated user access is established by validated SMB and WinRM sessions, and administrative control is established by a pass-the-hash Administrator session against the recovered NT hash. The escalation relies on a weak credential policy, a legacy backup exposed through MSSQL filesystem access, and an over-privileged `ManageCA` right. Passwords, hashes, addresses, and domain/host/CA identifiers are omitted, and the ESC7 sub-steps for which the source captured no tool output are reported as source-recorded rather than output-verified.
 
-## Lessons and Recommendations
+## Recommendations: user enumeration, backup secrets, and ManageCA rights
 
 Every action below is a recommendation; none was validated in the lab.
 

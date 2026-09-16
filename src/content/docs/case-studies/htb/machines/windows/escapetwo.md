@@ -33,13 +33,13 @@ outcome: "Administrative certificate authentication through an ESC4-abused templ
 | Objective | Escalate from a low-privileged domain account to domain administrative access through credential discovery, MSSQL command execution, and AD CS template-permission abuse |
 | Outcome | Administrative certificate authentication through an ESC4-abused template |
 
-## Summary
+## From a readable share to a domain certificate
 
 EscapeTwo is a Medium-rated Hack The Box Windows Active Directory lab. Starting from a low-privileged domain account, a spreadsheet on an Accounting share exposes a live MSSQL `sa` credential; that credential enables `xp_cmdshell` command execution, the SQL Server installation configuration file discloses the service-account password, and the same secret authenticates a second domain account. From there, ownership of the certificate-authority service account enables a shadow-credentials attack, and write access to a certificate template (ESC4) produces a certificate for the administrative identity. Credential values, target and operator addresses, account names, and the CA name are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Low-privileged share access → `accounts.xlsx` MSSQL `sa` credential → `xp_cmdshell` command execution as `<SQL_SVC>` → SQL configuration-file password → domain user credential reuse → `WriteOwner` and shadow credentials over `<CA_SVC>` → AD CS ESC4 template abuse → administrative certificate authentication**
 
-## Context and Objective
+## Target surfaces and starting account
 
 - **Target:** a Windows Server Active Directory domain controller for `<DOMAIN>`, hosting an MSSQL instance and serving file shares.
 - **Exposed surfaces used:** an SMB file share, the MSSQL service, WinRM for remote management, and an Active Directory Certificate Services enterprise CA.
@@ -47,7 +47,7 @@ EscapeTwo is a Medium-rated Hack The Box Windows Active Directory lab. Starting 
 - **Objective:** move from that account to domain administrative access by chaining credential discovery, database command execution, credential reuse, and certificate-template abuse.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: share access to template abuse
 
 ### 1. SMB Share Enumeration and Spreadsheet Credential Discovery
 
@@ -160,13 +160,13 @@ Result: certificate authentication yields administrative access to the domain.
 
 The source documents no failed attempts, dead ends, or explicit tradeoffs for this path; each step advanced with a recovered credential or a configuration finding.
 
-## Outcome
+## Outcome: administrative certificate authentication
 
 The evidence establishes a path from a low-privileged domain account to administrative certificate authentication. The escalation abused legitimate AD CS permissions rather than a software vulnerability.
 
 Terminal output was not retained for the MSSQL command-execution shell, the template-owner and shadow-credential acquisition, or the certificate-based authentication, so those transitions are reported as recorded rather than reproduced from evidence.
 
-## Lessons and Recommendations
+## Recommendations: share hygiene, xp_cmdshell, config files, reuse, and ESC4
 
 Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions below are recommendations; none was validated in the lab.
 

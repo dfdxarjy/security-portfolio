@@ -37,13 +37,13 @@ outcome: "SSH access as the recovered Gitea user and a root context via an Image
 | Objective | Turn an unsanitized download parameter into arbitrary file read, recover Gitea credentials for SSH access, and escalate through a scheduled ImageMagick process |
 | Outcome | SSH access as the recovered Gitea user; root via an ImageMagick shared-library hijack (CVE-2024-41817) |
 
-## Summary
+## Download traversal to ImageMagick library hijack
 
 Titanic is an Easy-rated Hack The Box Linux lab. An unsanitized `ticket` parameter in a download endpoint provides arbitrary file read, exposing Gitea's configuration and SQLite database and yielding password hashes that crack to an SSH login. A cron-driven image-identification script then runs a vulnerable ImageMagick build from a writable directory, where a planted shared library is loaded as root. Target and attacker addresses, hostnames, account names, file paths, credentials, and secrets are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Path-traversal file read → Gitea configuration and SQLite database exposure → offline hash cracking → SSH access → cron-driven ImageMagick shared-library hijack (CVE-2024-41817) → root**
 
-## Context and Objective
+## Ubuntu Apache host fronting Gitea, download parameter to root
 
 - **Target:** an Ubuntu Linux host exposing SSH (22) and Apache httpd 2.4.52 (80).
 - **Web application:** the HTTP service redirects to a lab hostname whose virtual-host namespace hosts a Gitea instance with repositories and a SQLite database backend.
@@ -51,7 +51,7 @@ Titanic is an Easy-rated Hack The Box Linux lab. An unsanitized `ticket` paramet
 - **Objective:** move from an externally reachable download parameter to authenticated access, then to root by abusing a scheduled image-processing job.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: traversal file read to ImageMagick hijack
 
 ### 1. Service and Virtual-Host Discovery
 
@@ -202,11 +202,11 @@ Result: the scheduled processing returns an elevated shell in the root context.
 
 The source records no failed attempts, tradeoffs, or fixes for this machine.
 
-## Outcome
+## Outcome: SSH access and root via shared-library hijack
 
 The evidence establishes authenticated SSH access as the recovered Gitea user and a root context obtained through the scheduled ImageMagick process. Limitation: the malicious library source is summarized, so the payload is not reproducible from this writeup.
 
-## Lessons and Recommendations
+## Recommendations: the download parameter, exposed hashes, ImageMagick, and committed secrets
 
 The actions below are recommendations; none was validated in the lab.
 

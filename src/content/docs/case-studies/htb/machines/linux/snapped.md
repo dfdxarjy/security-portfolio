@@ -39,20 +39,20 @@ outcome: "SSH user access from a cracked application password hash, then root vi
 | Objective | Exploit an unauthenticated backup endpoint that leaks its own AES key material to recover an SSH credential, then escalate to root |
 | Outcome | SSH user shell from a cracked application password hash; root via a local kernel vulnerability |
 
-## Summary
+## Backup endpoint leaks its AES key
 
 Snapped is a Hard-rated Hack The Box Linux lab exposing SSH and an Nginx-hosted web service. Virtual-host enumeration uncovers an administrative subdomain running Nginx UI, whose exact version is disclosed by client-side JavaScript. A backup endpoint reachable without authentication returns the AES key and IV needed to decrypt its own backup in a response header; decrypting the application database yields bcrypt password hashes, and cracking one provides SSH access as a low-privileged user. Local CVE enumeration then identifies a kernel vulnerability that provides root. Target and operator addresses, hostnames, credentials, hash values, and backup key material are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Virtual-host discovery → Nginx UI version disclosure → unauthenticated backup endpoint leaking AES key/IV → database decryption → bcrypt hash cracking → SSH user access → local kernel CVE → root**
 
-## Context and Objective
+## Ubuntu Nginx UI host, unauthenticated start, root objective
 
 - **Target:** an Ubuntu host exposing OpenSSH 9.6p1 and nginx 1.24.0.
 - **Starting position:** unauthenticated network access, with no provided credentials.
 - **Objective:** discover the real administrative surface, recover application-authentication material from an unauthenticated backup feature, turn it into system access, and assess local privilege escalation.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: vhost discovery, backup decrypt, and kernel CVE
 
 ### 1. Service and Virtual-Host Enumeration
 
@@ -224,18 +224,18 @@ Significance: the enumeration script reports CVE-2026-31431, a Linux kernel cryp
 
 Result: the proof-of-concept returns a root shell, confirmed by `whoami`.
 
-## Challenges and Decisions
+## Vhost fuzzing and decrypting with the leaked key
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | The primary vhost exposed only static content | Moved from directory enumeration to virtual-host fuzzing | Directory brute-force did not reveal the administrative interface carried on a subdomain |
 | Backup artifacts were encrypted | Decrypted them with the AES key and IV leaked in the same response header | The key material was disclosed by the unauthenticated backup endpoint itself |
 
-## Outcome
+## Outcome: SSH user and root via kernel CVE
 
 The evidence establishes unauthenticated access to an application backup endpoint, recovery of an SSH credential, and SSH access as `<LAB_USER>`, plus a root shell from a local kernel proof-of-concept. The privilege-escalation exploit is summarized rather than reproduced.
 
-## Lessons and Recommendations
+## Recommendations: the backup endpoint, credential reuse, version disclosure, and the kernel CVE
 
 Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
 

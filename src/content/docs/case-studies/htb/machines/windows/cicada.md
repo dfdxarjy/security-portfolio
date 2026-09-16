@@ -30,13 +30,13 @@ outcome: "Pass-the-hash authentication as the domain Administrator after Backup 
 | Objective | Chain credential disclosures across SMB shares, LDAP attributes, and an embedded script to reach domain administrator |
 | Outcome | Pass-the-hash authentication as the domain Administrator |
 
-## Summary
+## From guest SMB to pass-the-hash Administrator
 
 Cicada is an Easy-rated Hack The Box Windows machine that shows how several small credential exposures compound into domain administrative control. Guest SMB access exposes an onboarding notice holding a default password; password spraying maps it to a first domain account; user description attributes and a development-share backup script disclose two further credentials; and the last account's `Backup Operators` membership allows SAM and SYSTEM hive extraction from the domain controller and recovery of an administrative NTLM hash. Credential values, hostnames, and addresses are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Guest SMB → onboarding default password → password spray → LDAP description leak → development-share backup script → WinRM → `Backup Operators` hive dump → pass-the-hash Administrator**
 
-## Context and Objective
+## Target, exposed services, and starting position
 
 - **Target:** Windows Server 2022 Active Directory Domain Controller (build 20348), host `<DC_HOST>` in domain `<DOMAIN>`.
 - **Exposed services:** DNS (53), Kerberos (88), RPC (135), SMB (139/445), LDAP (389/636/3268/3269), and WinRM (5985); SMB signing is enabled and required.
@@ -44,7 +44,7 @@ Cicada is an Easy-rated Hack The Box Windows machine that shows how several smal
 - **Objective:** move from guest access to domain administrative control and demonstrate how independent credential leaks chain together.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: guest access to hive extraction
 
 The WinRM logon and the final administrative logon are recorded as outcomes without captured console output; every other result below is shown with the output that establishes it.
 
@@ -332,17 +332,17 @@ Significance: the local Administrator hash supports pass-the-hash over WinRM, so
 
 Result: administrative access as the domain Administrator.
 
-## Challenges and Decisions
+## The decision to spray the onboarding password
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | The onboarding password was not tied to a named account | Enumerate domain users, then spray the password | A direct login was not possible, so the valid account had to be identified across the user list |
 
-## Outcome
+## Outcome: pass-the-hash domain Administrator
 
 The evidence establishes administrative control of the domain controller reached without exploiting a software vulnerability — each access change after the initial guest logon follows from a credential recovered in a prior step. Recovered credentials are validated through SMB or WinRM before use, and the escalation is proven by the hive-dump output and the offline hash extraction. The two interactive sessions are recorded outcomes rather than captured transcripts, and the exercise is confined to the Hack The Box lab.
 
-## Lessons and Recommendations
+## Recommendations: guest access, default password, LDAP, scripts, and Backup Operators
 
 No remediation was tested in this lab; the entries below are recommendations.
 

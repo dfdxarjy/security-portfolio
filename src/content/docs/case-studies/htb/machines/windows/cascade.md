@@ -33,20 +33,20 @@ outcome: "Administrative domain access via a password recovered from a deleted A
 | Objective | Enumerate anonymously exposed domain data, validate recovered account access, and reach administrative control through AD Recycle Bin data |
 | Outcome | Low-privileged domain access, then administrative access via a password recovered from a deleted AD object |
 
-## Summary
+## Anonymous LDAP to Recycle Bin credential recovery
 
 Cascade is a Medium-rated Hack The Box Active Directory lab built on credential exposure rather than a single exploitable flaw. Anonymous LDAP enumeration discloses a custom credential-like attribute; an SMB-readable share exposes a VNC configuration export and an audit application whose stored credentials can be reversed; and the AD Recycle Bin retains a deleted account whose password equals the domain Administrator's. Target names, credentials, keys, encrypted values, and flags are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Anonymous LDAP enumeration → Base64 legacy-attribute decode → SMB access → VNC config DES decryption → `Audit$` share → .NET static analysis and AES key recovery → service-account access → AD Recycle Bin deleted-object query → Administrator**
 
-## Context and Objective
+## Domain controller, anonymous start, and enumeration goal
 
 - **Target:** a Windows Server 2008 R2 domain controller (`<DC_HOST>`) for the `<DOMAIN>` domain, exposing DNS, Kerberos, LDAP, SMB, and RPC.
 - **Starting position:** unauthenticated network access, with no provided credentials.
 - **Objective:** enumerate anonymously readable directory data, validate any recovered account access, and establish whether the resulting permissions lead to administrative control.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: anonymous LDAP to Recycle Bin disclosure
 
 ### 1. Service Enumeration
 
@@ -220,16 +220,16 @@ Significance: the deleted temporary administrator had been created with the same
 
 Result: the recovered password authenticates as the domain Administrator.
 
-## Challenges and Decisions
+## Correlating the deleted object and Recycle Bin retention
 
 - **Linking the deleted object to the current Administrator.** The deleted object alone exposed only a legacy attribute; correlating the `ArkAdRecycleBin.log` with the meeting-notes file in the `Data` share established that the temporary administrator had been created with the same password as the normal administrator. That correlation, not a distinct exploit, connected the recovered value to administrative access.
 - **Recycle Bin retention.** Because the feature preserves all attributes of deleted objects until the tombstone lifetime expires, a credential-bearing attribute that should have been destroyed remained queryable.
 
-## Outcome
+## Outcome: administrative access from retained object data
 
 The evidence establishes authenticated low-privileged domain access and then administrative access to the domain controller, confirmed by SMB authentication returning an administrative marker. Every credential in the chain came from data readable by a lower-privileged account or retained on a deleted object, and the final escalation depended on password reuse between the deleted temporary administrator and the current domain Administrator. Flag values are omitted.
 
-## Lessons and Recommendations
+## Recommendations: anonymous LDAP, custom attributes, VNC, keys, and deleted objects
 
 None of the actions below was tested in the lab; they are recommendations derived from the observed weaknesses.
 

@@ -39,13 +39,13 @@ outcome: "Domain administrator access via a created privileged domain account"
 | Objective | Escalate from an unauthenticated web upload to domain administrator via NTLMv2 capture, delegation abuse, and CVE-2024-0670 |
 | Outcome | Domain administrator access via a newly created privileged domain account |
 
-## Summary
+## ZIP upload to MSI repair escalation
 
 NanoCorp is a Hack The Box Windows Active Directory lab that starts at an unauthenticated web application and ends with domain administrator access. A ZIP upload handler performs outbound connections while processing an archive, so a crafted ZIP triggers an SMB callback to `Responder`, which captures the `<WEB_SVC_ACCOUNT>` NTLMv2 challenge-response. The hash cracks against a common wordlist, and the recovered service-account credentials open the directory path: `<WEB_SVC_ACCOUNT>` holds `AddSelf` over the `<IT_SUPPORT_GROUP>` group, which holds `ForceChangePassword` over `<MONITORING_ACCOUNT>`. Adding `<WEB_SVC_ACCOUNT>` to the group and resetting `<MONITORING_ACCOUNT>`'s password yields WinRM access to the domain controller, where the CheckMK monitoring agent is affected by CVE-2024-0670; abusing the MSI repair as SYSTEM creates a new domain account with administrative rights. Target addresses, credential values, hostnames, and exploit specifics are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **ZIP-upload SSRF → `Responder` NTLMv2 capture → offline crack of `<WEB_SVC_ACCOUNT>` → BloodHound `AddSelf`/`ForceChangePassword` path → `<MONITORING_ACCOUNT>` password reset → WinRM → CheckMK MSI repair (CVE-2024-0670) → domain administrator**
 
-## Context and Objective
+## AD controller with a PHP web upload, no credentials
 
 - **Target:** Windows Active Directory domain controller hosting an Apache/PHP web application.
 - **Exposed services:** DNS (53), HTTP (80), Kerberos (88), MSRPC (135), NetBIOS (139), LDAP (389/3268), SMB (445), WinRM (5986), and others.
@@ -53,7 +53,7 @@ NanoCorp is a Hack The Box Windows Active Directory lab that starts at an unauth
 - **Objective:** chain the exposed web upload, AD delegation, and a vulnerable monitoring agent into domain administrator access.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: ZIP SSRF to delegation to MSI repair
 
 ### 1. Service Enumeration
 
@@ -239,11 +239,11 @@ Result: domain administrator access is obtained through the newly created accoun
 
 The source documents no failed attempts, alternate approaches, or troubleshooting; the recorded chain advances in a single successful sequence, so no decision tradeoffs are recovered.
 
-## Outcome
+## Outcome: domain administrator via a created account
 
 The evidence establishes domain administrator access obtained entirely through misconfiguration rather than a Windows vulnerability: an upload handler that initiates outbound connections, a crackable service-account password, permissive AD delegation (`AddSelf` and `ForceChangePassword`), and an unpatched third-party monitoring agent whose MSI repair runs staged payloads as SYSTEM. The only CVE required was in the CheckMK agent (CVE-2024-0670); the operating system and directory services were used through their legitimate, misconfigured features. The final access level is supported by the `Pwn3d!` authentication result and the Administrators group membership.
 
-## Lessons and Recommendations
+## Recommendations: upload egress, service passwords, delegation, and the agent
 
 The actions below are recommendations; none was validated in the lab. Each pairs the observed root cause with its demonstrated impact and a prioritized action.
 

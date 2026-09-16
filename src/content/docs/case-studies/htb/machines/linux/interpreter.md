@@ -37,13 +37,13 @@ outcome: "Unauthenticated command execution as the Mirth Connect service account
 | Objective | Chain an unauthenticated Mirth Connect RCE, database credential recovery, and Python eval() injection to reach root |
 | Outcome | Service-account shell, recovered user credential with SSH access, and root execution in a root-owned Flask service |
 
-## Summary
+## Mirth Connect deserialization to Flask eval root
 
 Interpreter is a Medium Hack The Box Linux machine built around a vulnerable healthcare integration platform, NextGen Mirth Connect 4.4.0. An unauthenticated XStream deserialization flaw (CVE-2023-43208) in the REST API yields a shell as the `<INTEGRATION_SERVICE_ACCOUNT>` service account. The application configuration exposes database credentials; the MariaDB database stores a PBKDF2-HMAC-SHA256 hash for `<LAB_USER>`, which is reformatted for Hashcat mode 10900, cracked, and used for SSH access. A root-owned Flask service (`notif.py`) on port 54321 renders XML patient records through a double `eval()` pattern, and a regex filter restricting spaces and special characters is bypassed to gain root. Target and attacker addresses, credentials, and hashes are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Mirth Connect 4.4.0 → CVE-2023-43208 XStream deserialization → service-account shell → `mirth.properties` database credentials → MariaDB PBKDF2 hash → Hashcat crack → SSH as `<LAB_USER>` → root-owned Flask `eval()` injection → root**
 
-## Context and Objective
+## Linux Mirth Connect 4.4.0, unauthenticated, chain to root
 
 - **Target:** a Linux server running Mirth Connect 4.4.0, a healthcare integration engine that processes HL7 messages.
 - **Exposed services:** SSH (22), HTTP (80, nginx redirect), and HTTPS (443, Jetty — Mirth Connect).
@@ -51,7 +51,7 @@ Interpreter is a Medium Hack The Box Linux machine built around a vulnerable hea
 - **Objective:** move from an unauthenticated foothold to full root compromise by chaining an application-layer RCE with a privilege-escalation flaw in a second service.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: XStream deserialization to PBKDF2 crack to eval injection
 
 ### 1. Service Enumeration and Version Fingerprinting
 
@@ -204,18 +204,18 @@ Significance: the first f-string interpolation happens before `eval()` processes
 
 Result: the returned prompt confirms root-level command execution.
 
-## Challenges and Decisions
+## Obstacles: unconverted hash layout and regex filter
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | The stored hash is not in a ready-to-crack format | Decode the 40-byte value and re-encode the salt and derived key as `sha256:600000:<salt>:<dk>` | Matches the delimited input Hashcat mode 10900 expects |
 | Regex filter blocks spaces, commas, and brackets | Encode the command and reach modules without the blocked characters | The filter still permits the parentheses, quotes, dots, and slashes needed to build the expression |
 
-## Outcome
+## Outcome: root execution via eval() in a root Flask service
 
 The evidence establishes unauthenticated command execution as the Mirth Connect service account, recovery of a user credential from the application database, and root command execution through `eval()` injection in a root-owned Flask service. The credential recovered from the database is reused to authenticate over SSH as `<LAB_USER>`, forming the intermediate user-level foothold.
 
-## Lessons and Recommendations
+## Recommendations: deserialization patch, exposed config, root service, eval() use
 
 The actions below are recommendations; none was validated in the lab.
 

@@ -38,20 +38,20 @@ outcome: "Mail-server credential recovery, a coerced NetNTLMv2 hash validated th
 | Objective | Chain an unauthenticated web path traversal, recovered mail credentials, NTLM coercion, and a document-processor flaw into privileged code execution |
 | Outcome | Mail-server credential recovery; user access via a coerced NetNTLMv2 hash; code execution as a privileged local account |
 
-## Summary
+## Mail traversal, NTLM coercion, document exploit
 
 Mailing is an Easy-rated Hack The Box Windows lab whose mail server and IIS website expose a path traversal, an unpatched mail client, and an unpatched document processor. A download endpoint reads `hMailServer.ini`, disclosing the administrator password hash; recovered offline, it authenticates to SMTP, from which a crafted Moniker-link email coerces a user's NetNTLMv2 authentication to an operator-controlled server. The captured hash recovers a WinRM credential, and a crafted ODT document exploits the document processor to execute code in a privileged local account's context. Target addresses, hostnames, accounts, and secret values are replaced with role-based placeholders; command syntax is preserved. Two hand-offs — the interactive WinRM shell and the document delivery — are described as recorded, without captured output.
 
 **Attack path:** **Download-endpoint path traversal → hMailServer administrator hash recovery → authenticated SMTP → CVE-2024-21413 Moniker-link NTLM coercion → NetNTLMv2 recovery → WinRM user access → CVE-2023-2255 document payload → privileged local account execution**
 
-## Context and Objective
+## hMailServer host with unauthenticated access
 
 - **Target:** a Windows host running hMailServer (SMTP, POP3, IMAP) and an IIS web server, with WinRM exposed.
 - **Starting position:** unauthenticated network access, with no provided credentials.
 - **Objective:** chain web-based information disclosure into authenticated email abuse, coerce NTLM authentication to capture a user hash, and escalate privileges through a vulnerable document processor.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: traversal to Moniker coercion to ODT execution
 
 ### 1. Service Enumeration
 
@@ -235,11 +235,11 @@ Result: the callback returns as `<DOMAIN>\<PRIVILEGED_LOCAL_ACCOUNT>`, confirmed
 
 No failed attempts, alternative approaches, or fixes are documented for this path; the traversal, mail-based coercion, and document exploit proceeded as the evidence shows.
 
-## Outcome
+## Outcome: mail credentials, WinRM user, privileged local code
 
 The evidence establishes authenticated mail access, a user credential validated through WinRM, and code execution as `<DOMAIN>\<PRIVILEGED_LOCAL_ACCOUNT>`. The embedded payload is summarized rather than reproduced.
 
-## Lessons and Recommendations
+## Recommendations: traversal, config secrets, weak hashes, NTLM coercion, and the document flaw
 
 The actions below are recommendations; none was validated in the lab.
 

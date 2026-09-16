@@ -36,13 +36,13 @@ outcome: "WinRM access as <DOMAIN_USER> and Administrator command execution via 
 | Objective | Escalate from anonymous SMB and MSSQL access to domain administrator by chaining NTLM coercion with AD CS ESC1 certificate abuse |
 | Outcome | WinRM access as `<DOMAIN_USER>`; Administrator command execution via an ESC1-issued certificate and pass-the-hash |
 
-## Summary
+## From anonymous SMB to ESC1 certificate abuse
 
 Escape is a Medium-rated Hack The Box Windows Active Directory lab. Anonymous SMB access exposes a readable `Public` share whose PDF discloses temporary MSSQL credentials. MSSQL is then abused with `xp_dirtree` to coerce NetNTLMv2 authentication from the SQL service account, and the captured hash is cracked offline. A SQL-accessible backup error log leaks a domain-user credential, which grants WinRM access. Privilege escalation abuses an ESC1-vulnerable AD CS certificate template to request a certificate for `<PRIVILEGED_USER>` and recover the account NT hash through PKINIT. Credential values, target and operator addresses, and sensitive output are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Anonymous SMB share → PDF MSSQL credential → `xp_dirtree` NTLMv2 coercion and crack → SQL error-log credential disclosure → WinRM as `<DOMAIN_USER>` → AD CS ESC1 certificate → PKINIT → Administrator NT hash → pass-the-hash**
 
-## Context and Objective
+## Domain controller services, anonymous SMB, and the escalation goal
 
 - **Target:** Windows Server acting as the Active Directory domain controller for `<DOMAIN>`.
 - **Exposed services:** DNS (53), Kerberos (88), LDAP (389), SMB (445), MSSQL (1433), WinRM (5985).
@@ -50,7 +50,7 @@ Escape is a Medium-rated Hack The Box Windows Active Directory lab. Anonymous SM
 - **Objective:** move from anonymous access through coercion, credential disclosure, and AD CS abuse to domain administrator control.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: anonymous share to ESC1 certificate
 
 ### 1. Service Enumeration
 
@@ -255,17 +255,17 @@ Significance: ESC1 combines three template conditions — low-privileged enrollm
 
 Result: an Administrator WinRM session is obtained via an ESC1-issued certificate and pass-the-hash.
 
-## Challenges and Decisions
+## Challenges: enumeration dead end and a log-file pivot
 
 | Challenge | Decision |
 |---|---|
 | Attack-path enumeration with the service account surfaced no direct route | Reviewed SQL-accessible host files and the backup error log instead, which held the `<DOMAIN_USER>` credential |
 
-## Outcome
+## Outcome: Administrator WinRM via certificate and pass-the-hash
 
 An Administrator WinRM session is obtained through an ESC1-issued certificate and pass-the-hash. The source records the NetNTLMv2 capture and the attack-path collection without terminal excerpts, so those transitions are reported as narrative steps.
 
-## Lessons and Recommendations
+## Recommendations: anonymous shares, SQL logs, coercion, and ESC1
 
 The actions below are recommendations; none was validated in the lab.
 

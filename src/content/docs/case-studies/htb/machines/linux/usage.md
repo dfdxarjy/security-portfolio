@@ -36,20 +36,20 @@ outcome: "Root access via a disclosed root SSH private key obtained through priv
 | Objective | Escalate from an unauthenticated password-reset SQL injection to root through an authenticated upload-validation bypass, reused service credentials, and privileged archive handling |
 | Outcome | Root access via a disclosed root SSH private key obtained through privileged 7-Zip `@listfile` and wildcard handling |
 
-## Summary
+## Password-reset SQLi to 7-Zip listfile root
 
 Usage is an Easy-rated, retired Hack The Box Linux lab running an nginx-hosted Laravel application. A password-reset workflow is vulnerable to SQL injection, which exposes the `usage_blog` database and the Laravel-admin account hash; the recovered password unlocks an administrative virtual host whose file-upload validation is bypassed to execute a payload as a local user. Local enumeration then recovers Monit service credentials that are reused for SSH access to a second local account, and a passwordless sudo backup binary that invokes `7za` with a wildcard expands an `@` list file into disclosure of the root SSH private key. Target addresses, hostnames, credentials, hashes, and key material are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Password-reset SQL injection → administrative credential recovery → authenticated upload-validation bypass (CVE-2023-24249) → code execution as a local user → Monit credential reuse over SSH → passwordless sudo 7-Zip backup → `@listfile` and wildcard abuse → root SSH key disclosure → root**
 
-## Context and Objective
+## Ubuntu nginx fronting Laravel, web surface to root
 
 - **Target:** an Ubuntu Linux host exposing SSH (OpenSSH 8.9p1) and HTTP (nginx 1.18.0) fronting a Laravel 10.18.0 application.
 - **Starting position:** unauthenticated network access, with no provided credentials.
 - **Objective:** identify the web attack surface, obtain a foothold, and assess local privilege-escalation paths to administrative control.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: password-reset SQLi, admin upload bypass, and 7za listfile
 
 ### 1. Service and Virtual-Host Enumeration
 
@@ -236,7 +236,7 @@ Significance: `@listfile` processing turns wildcard-driven archive input into ar
 
 Result: the root SSH private key is disclosed and used to obtain root.
 
-## Challenges and Decisions
+## Corrupted dump, filename check, and the wildcard backup
 
 | Challenge | Decision | Rationale |
 |---|---|---|
@@ -244,11 +244,11 @@ Result: the root SSH private key is disclosed and used to obtain root.
 | Upload validation accepted only image types | Changed the uploaded filename extension in transit | The check trusted the client-supplied filename |
 | The privileged backup expanded a wildcard in a writable directory | Created an `@` list file and a symlink to a protected file | `7za` reads `@`-prefixed arguments as list files, so the wildcard traversal exposed the symlink target |
 
-## Outcome
+## Outcome: root via disclosed 7-Zip listfile SSH key
 
 Root access was obtained via a disclosed root SSH private key recovered through privileged 7-Zip `@listfile` and wildcard handling; the recovered credential, hash, and key values are omitted, so the secrets are not reproducible from this writeup.
 
-## Lessons and Recommendations
+## Recommendations: password-reset SQLi, upload bypass, credential reuse, and the wildcard backup
 
 Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
 

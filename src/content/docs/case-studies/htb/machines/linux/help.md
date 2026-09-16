@@ -37,13 +37,13 @@ outcome: "Command execution as the web-service account via a HelpDeskZ attachmen
 | Objective | Escalate from an unauthenticated GraphQL data leak and a HelpDeskZ attachment-upload weakness to web-service code execution, then to root through a kernel eBPF vulnerability |
 | Outcome | Command execution as the web-service account; root via CVE-2017-16995 |
 
-## Summary
+## HelpDeskZ upload RCE to kernel eBPF root
 
 Help is an Easy Hack The Box Linux lab running HelpDeskZ 1.0.2 on Ubuntu. The demonstrated route is an unauthenticated attachment-upload weakness that stores a rejected PHP file under a predictable hashed name and reaches command execution as the web-service account; a GraphQL endpoint also returns HelpDeskZ credential data as an alternate disclosure path. After the upload foothold, a kernel eBPF flaw (CVE-2017-16995) escalates to root. Target addresses, the leaked hash and recovered plaintext, the upload payload, and callback ports are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Unauthenticated HelpDeskZ attachment upload → rejected PHP file stored under a predictable hashname → web-service command execution → kernel eBPF escalation (CVE-2017-16995) → root**
 
-## Context and Objective
+## Ubuntu host, HelpDeskZ 1.0.2, unauthenticated, user then root
 
 - **Target:** a Linux (Ubuntu) host exposing SSH (22), Apache HTTP (80), and a Node.js Express service (3000); the HTTP application answers on the vhost `<TARGET_HOST>`.
 - **Application:** HelpDeskZ 1.0.2 (June 2015), identified from the `/support` README, a release with known weak upload handling and SQL injection issues.
@@ -51,7 +51,7 @@ Help is an Easy Hack The Box Linux lab running HelpDeskZ 1.0.2 on Ubuntu. The de
 - **Objective:** reach user-level code execution on the web host and then escalate to root.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: GraphQL leak and upload abuse to kernel escalation
 
 ### 1. Service Discovery and Web Enumeration
 
@@ -184,7 +184,7 @@ Significance: the vulnerability is a flaw in the eBPF verifier, so an unprivileg
 
 Result: root execution is confirmed by `whoami`.
 
-## Challenges and Decisions
+## Obstacles: two footholds, blind filename, noisy kernel exploit
 
 | Challenge | Decision | Rationale |
 |---|---|---|
@@ -192,11 +192,11 @@ Result: root execution is confirmed by `whoami`.
 | Predictable but unknown stored filename | Brute-forced candidate hashes around the upload timestamp | The name is derived from the filename and server-side timestamp, so the search window is narrow and reliable |
 | CVE-2017-16995 is noisy and unstable | Treated it as the intended root path on this lab host | It was the designed escalation rather than a stable real-world technique |
 
-## Outcome
+## Outcome: web-service command execution and kernel eBPF root
 
 The evidence establishes command execution as `<WEB_SERVICE_ACCOUNT>` through an attachment uploaded to HelpDeskZ 1.0.2, and root through CVE-2017-16995 as confirmed by `whoami`. Limitations: the GraphQL credential pair is recovered but is not shown authenticating to HelpDeskZ.
 
-## Lessons and Recommendations
+## Recommendations: GraphQL exposure, outdated app, upload validation, kernel patching
 
 Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
 

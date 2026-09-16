@@ -34,13 +34,13 @@ outcome: "Unauthenticated code execution as the ActiveMQ service account, escala
 | Objective | Assess exposed ActiveMQ broker services and the privilege boundary available to the service account |
 | Outcome | Service-account code execution and root SSH access via a passwordless nginx sudo rule |
 
-## Summary
+## OpenWire RCE to nginx sudo root
 
 Broker is an Easy-rated Hack The Box Linux lab built around an Apache ActiveMQ 5.15.15 deployment. The OpenWire transport on 61616 is vulnerable to CVE-2023-46604, an unauthenticated remote code execution flaw in the OpenWire marshaller, while the management console accepted default credentials. Exploiting the marshaller returns code execution as the broker service account, and a passwordless sudo rule for the nginx binary allows a root-owned instance with WebDAV writes to place an SSH key for root. Credential values, target and attacker addresses, and payload specifics are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Unauthenticated OpenWire exploitation (CVE-2023-46604) → ActiveMQ service-account code execution → passwordless `nginx` sudo → root-owned WebDAV file write → root SSH access**
 
-## Context and Objective
+## Target, messaging services, and objective
 
 - **Target:** Linux (Ubuntu) host running Apache ActiveMQ 5.15.15.
 - **Exposed services:** SSH (22), HTTP (80), MQTT (1883), AMQP (5672), management HTTP (8161), STOMP (61613), and OpenWire (61616).
@@ -48,7 +48,7 @@ Broker is an Easy-rated Hack The Box Linux lab built around an Apache ActiveMQ 5
 - **Objective:** assess the exposed broker services and the privilege boundary available to the service account.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: OpenWire marshaller to root file write
 
 ### 1. Service Enumeration
 
@@ -157,18 +157,18 @@ Significance: a root-owned nginx with WebDAV enabled is a controlled root file-w
 
 Result: root command execution is confirmed by the `whoami` output.
 
-## Challenges and Decisions
+## Two decisions: OpenWire over console, root WebDAV
 
 | Decision | Rationale |
 |---|---|
 | Target the unauthenticated OpenWire service rather than the management console | CVE-2023-46604 is reachable on port 61616 without console authentication; the default console credentials were a separate exposure not required for exploitation |
 | Enable root workers and HTTP PUT in the nginx configuration | The sudo rule grants the daemon binary, and configuration directives control process identity and write behavior, producing a root file-write primitive |
 
-## Outcome
+## Outcome: service account and root by nginx sudo
 
 The evidence establishes unauthenticated code execution as the ActiveMQ service account through CVE-2023-46604, and root command execution through a passwordless nginx sudo rule abused to write an SSH key into root's `authorized_keys`. The management console's default credentials were a separate exposure and were not required for exploitation.
 
-## Lessons and Recommendations
+## Recommendations: OpenWire, console defaults, sudo, and WebDAV
 
 Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions below are recommendations; they were not tested in the lab.
 

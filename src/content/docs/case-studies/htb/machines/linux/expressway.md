@@ -31,7 +31,7 @@ outcome: "Offline PSK recovery, authenticated SSH access, and root command execu
 | Objective | Exploit an IKE VPN protocol weakness for initial access, then escalate to root through a non-standard sudo binary |
 | Outcome | Offline PSK recovery, authenticated SSH access, and root command execution via a sudo hostname policy bypass |
 
-## Summary
+## IKE Aggressive Mode to sudo hostname bypass
 
 Expressway is a Medium-rated Hack The Box Linux lab whose only meaningful initial attack surface is an IPsec/IKE VPN service configured with PSK authentication and Aggressive Mode. Enumerating the VPN yields the handshake material needed to capture the PSK hash, which is cracked offline and reused to authenticate over SSH. Post-access enumeration reveals a custom-compiled `sudo` binary and readable Squid proxy logs; a hostname exposed in those logs selects a permissive sudoers rule through the `sudo -h` host option and grants root.
 
@@ -39,7 +39,7 @@ Target addresses, the VPN identity, the recovered secret, and result files are r
 
 **Attack path:** **IKE Aggressive Mode enumeration → PSK hash capture and offline cracking → SSH access → Squid log hostname discovery → `sudo -h` hostname policy bypass → root**
 
-## Context and Objective
+## IPsec/IKE host, unauthenticated, root via non-standard sudo
 
 - **Target:** Linux host with an IPsec/IKE VPN service as the primary surface; no web application was exposed.
 - **Exposed services:** SSH (22) and IKE on UDP 500.
@@ -47,7 +47,7 @@ Target addresses, the VPN identity, the recovered secret, and result files are r
 - **Objective:** identify VPN configuration weaknesses, recover credentials through offline cracking, and escalate privileges on a host running a custom-compiled `sudo` binary.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: IKE hash capture to sudo host policy bypass
 
 ### 1. Discover the IKE service
 
@@ -166,17 +166,17 @@ Significance: supplying the internal hostname causes `sudo` to evaluate the name
 
 Result: the `id` output confirms execution in the root context.
 
-## Challenges and Decisions
+## Obstacles: UDP-only surface and default-deny sudo
 
 - The VPN was reachable only over UDP; a TCP-only enumeration would have missed the primary attack surface entirely.
 - No web application or credential was provided, so initial access depended on the offline protocol weakness rather than a direct authentication bypass.
 - The privilege escalation required correlating a hostname observed in proxy logs with the `sudo` binary's version and host-option behavior; the default `sudo` policy denied the user, so the path only existed through a hostname-specific rule.
 
-## Outcome
+## Outcome: root command execution from unauthenticated start
 
 Root-level command execution was obtained on the target from an unauthenticated start, without a web application in the path. Remediation was not tested in the lab.
 
-## Lessons and Recommendations
+## Recommendations: IKE mode, unpatched sudo, proxy log exposure
 
 The actions below are recommendations; none was validated in the lab.
 

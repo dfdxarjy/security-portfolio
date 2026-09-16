@@ -34,7 +34,7 @@ outcome: "Domain administrator credentials decrypted from the local ADSync datab
 | Objective | Reach domain administrator access from an unauthenticated position |
 | Outcome | Domain administrator WinRM access via credentials decrypted from the ADSync database |
 
-## Summary
+## Guest SMB null to ADSync decryption
 
 Monteverde is a Medium-rated Hack The Box Windows machine whose domain controller accepts guest SMB sessions. Null-session SMB enumeration lists the domain accounts, and spraying each username as its own password recovers a service-account credential. That account can read the `users$` share, where a PowerShell CliXml file stores a domain user's password; the credential is validated over SMB and then opens a WinRM foothold. From that shell, Microsoft Azure AD Sync is found installed on the controller, and the local ADSync SQL database together with the Azure AD Connect cryptography library yields the stored connector-account password — the built-in domain `Administrator` in this deployment — confirmed by a privileged WinRM session.
 
@@ -42,14 +42,14 @@ Target addresses, hostnames, and credential values are replaced with role-based 
 
 **Attack path:** **Guest SMB null session → domain user enumeration → password spray → `users$` share → CliXml credential for a domain user → WinRM foothold → ADSync database query → Azure AD Connect credential decryption → domain administrator WinRM access**
 
-## Context and Objective
+## Domain controller with anonymous guest SMB, no credentials
 
 - **Target:** an Active Directory domain controller, `<TARGET_HOSTNAME>.<TARGET_DOMAIN>`, hosting DNS, Kerberos, LDAP, SMB, and WinRM.
 - **Starting position:** unauthenticated network access, with no provided credentials.
 - **Objective:** move from unauthenticated access to domain administrator control, and demonstrate how common Active Directory misconfigurations compose into a full compromise.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: guest SMB to CliXml to ADSync decryption
 
 ### 1. Port Scanning
 
@@ -332,11 +332,11 @@ Result: a privileged session is established as `<TARGET_DOMAIN>\<DOMAIN_ADMIN_AC
 
 No failed attempts, trade-offs, or troubleshooting steps are recorded for this path; each stage transitioned directly into the next.
 
-## Outcome
+## Outcome: domain administrator WinRM via ADSync
 
 The evidence establishes domain administrator access on the domain controller: a privileged WinRM session authenticates as `<TARGET_DOMAIN>\<DOMAIN_ADMIN_ACCOUNT>` after credentials are decrypted from the local ADSync database. The escalation depends on the Azure AD Sync installation and its locally stored encryption keys on that host; no other systems were in scope, and activity remained within the Hack The Box lab.
 
-## Lessons and Recommendations
+## Recommendations: guest SMB, service password, share secrets, and ADSync encryption
 
 The actions below are recommendations; none was tested in the lab.
 

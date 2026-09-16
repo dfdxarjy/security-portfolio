@@ -34,13 +34,13 @@ outcome: "Web shell on the domain controller, application-database credential re
 | Objective | Escalate from the exposed Gibbon LMS web application to domain-level privileges through application and Active Directory misconfiguration |
 | Outcome | Web shell on the domain controller, application-database credential recovery, and a Group Policy Creator Owners escalation path |
 
-## Summary
+## Gibbon RCE to Group Policy escalation
 
 TheFrizz is a Hack The Box Windows Active Directory lab in which a domain controller also hosts the Gibbon v25.0.00 learning management system. That release is affected by CVE-2023-45878, which yields a web shell on the host; the application configuration then discloses MySQL credentials, the database exposes a crackable password hash, and a deleted WAPT backup in the Recycle Bin preserves a second account's credential. That account's membership in Group Policy Creator Owners frames an escalation path toward Domain Administrator. Target identifiers, credentials, hashes, and encoded values are represented by role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Gibbon LMS RCE (CVE-2023-45878) web shell → `config.php` database credentials → MySQL user-hash extraction → offline password recovery → Kerberos SSH access → Recycle Bin WAPT backup → decoded credential for `<WAPT_USER>` → Group Policy Creator Owners membership → Domain Administrator path**
 
-## Context and Objective
+## Gibbon LMS on a domain controller, unauthenticated
 
 - **Target:** a Windows Active Directory domain controller exposing SSH, DNS, Kerberos, LDAP, SMB, RPC, and HTTP.
 - **Application:** Gibbon LMS v25.0.00 served from the domain controller web root.
@@ -48,7 +48,7 @@ TheFrizz is a Hack The Box Windows Active Directory lab in which a domain contro
 - **Objective:** move from the exposed web application to domain-level privileges while identifying the trust boundaries along the path.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: Gibbon RCE, config secrets, hash cracking, Recycle Bin
 
 The source records the offline password-recovery and Kerberos SSH session steps without retaining their terminal output; those transitions are described as the source documents them, while each stage that produced output carries a truncated excerpt.
 
@@ -247,13 +247,13 @@ Result: `<WAPT_USER>` is confirmed as a member of Group Policy Creator Owners; t
 
 The source documents no failed attempts, obstacles, or tradeoffs on this path.
 
-## Outcome
+## Outcome: web shell and two recovered domain credentials
 
 The recorded evidence establishes a web shell on the domain controller and recovery of two domain credentials from application and backup data; Group Policy Creator Owners membership frames, but does not demonstrate, Domain Administrator access.
 
 Limitations: the source retains no output for the offline password recovery, the SMB validation of the first account, or either SSH session.
 
-## Lessons and Recommendations
+## Recommendations: patching, config secrets, hashes, Recycle Bin, and group membership
 
 Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
 

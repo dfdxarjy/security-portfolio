@@ -35,13 +35,13 @@ outcome: "Authenticated WinRM access via a directory-disclosed credential, then 
 | Objective | Assess how a guest-readable utility, reversible credential obfuscation, exposed directory attributes, and delegated computer-object permissions combine into domain compromise |
 | Outcome | Authenticated WinRM access, then `nt authority\system` on the domain controller via RBCD |
 
-## Summary
+## Guest tooling to RBCD impersonation
 
 Support is an Easy-rated Hack The Box Windows Active Directory lab. A guest-readable SMB share exposes a .NET utility whose LDAP service credential is hidden behind a reversible transformation; the recovered credential enables full directory enumeration, which discloses a second plaintext password in a user's `info` attribute. That password yields WinRM access, and a group membership granting `GenericAll` over the domain-controller computer object opens a resource-based constrained delegation (RBCD) path to `Administrator`. Target identifiers, account names, credential values, and artifacts are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Guest SMB share → embedded credential recovery from a .NET binary → LDAP enumeration → plaintext `info` attribute password → WinRM access → `GenericAll` on the domain-controller object → RBCD impersonation of `Administrator` → `nt authority\system`**
 
-## Context and Objective
+## Guest-readable share on a lab domain controller
 
 - **Target:** a Windows Active Directory lab domain (`<DOMAIN>`) whose domain controller runs Windows Server (build 10.0.20348).
 - **Exposed services:** standard Active Directory services, including SMB, LDAP, and WinRM.
@@ -49,7 +49,7 @@ Support is an Easy-rated Hack The Box Windows Active Directory lab. A guest-read
 - **Objective:** assess how a leaked client utility, weak credential protection, directory-data exposure, and delegated computer-object permissions combine into domain compromise.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: guest share binary, directory disclosure, RBCD impersonation
 
 ### 1. Guest-Readable SMB Share
 
@@ -232,18 +232,18 @@ Significance: write access to `msDS-AllowedToActOnBehalfOfOtherIdentity` lets an
 
 Result: the delegated ticket yields `nt authority\system` on the domain controller.
 
-## Challenges and Decisions
+## Two obstacles: the reversible credential and the CVE-free escalation
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | Credential hidden behind a reversible transformation | Analyzed the assembly statically | Reversing the stored algorithm and key recovered the credential |
 | Privilege escalation without a CVE | Abused the granted write permission to configure RBCD | Only a misconfigured delegation permission was required, not a software flaw |
 
-## Outcome
+## Outcome: WinRM foothold and SYSTEM via RBCD
 
 The evidence establishes authenticated WinRM access as `<LAB_USER>` and `nt authority\system` on the domain controller through resource-based constrained delegation. The directory relationship was recorded without reproducing tool output.
 
-## Lessons and Recommendations
+## Recommendations: embedded credentials, info attributes, computer ACLs, and guest shares
 
 Each finding pairs an observed root cause with its demonstrated impact and a prioritized action. None of the actions below was re-tested in the lab.
 

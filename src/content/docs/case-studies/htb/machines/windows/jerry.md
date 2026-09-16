@@ -34,13 +34,13 @@ outcome: "SYSTEM-level command execution via WAR deployment through the Tomcat M
 | Objective | Validate the documented default-credential path from Tomcat Manager access to OS-level control |
 | Outcome | SYSTEM-level command execution through Tomcat Manager WAR deployment |
 
-## Summary
+## From Tomcat defaults to a SYSTEM shell
 
 Jerry is an Easy-rated Hack The Box Windows lab whose only exposed service is Apache Tomcat 7.0.88, with the Manager application reachable without IP restriction. The Manager authenticates with credentials shown in Tomcat's own sample configuration, and its legitimate WAR deployment feature executes a JSP reverse shell under the `NT AUTHORITY\SYSTEM` account that runs the service. Target addresses, credential values, and the deployed JSP filename are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Exposed Tomcat Manager → default credentials → authenticated WAR deployment → JSP reverse shell → SYSTEM command execution**
 
-## Context and Objective
+## A Tomcat 7 host with no provided credentials
 
 - **Target:** Windows Server 2012 R2 running Apache Tomcat 7.0.88 — an older release in the 7.x branch.
 - **Exposed service:** HTTP on TCP 8080, exposing the Manager and Host Manager applications.
@@ -48,7 +48,7 @@ Jerry is an Easy-rated Hack The Box Windows lab whose only exposed service is Ap
 - **Objective:** validate the documented default-credential attack path from Tomcat Manager access to OS-level control.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: default credentials to WAR deployment
 
 ### 1. Service Enumeration
 
@@ -198,11 +198,11 @@ Result: the module reproduces SYSTEM-level code execution on the same target.
 
 No significant obstacles were encountered: the default credential was valid on the first attempt and the WAR deployment completed without error. Tomcat's sample configuration and the absence of IP restrictions on the Manager are configuration weaknesses rather than exploitable software bugs, so no troubleshooting or workaround was required.
 
-## Outcome
+## Outcome: SYSTEM shell through WAR deployment
 
 The evidence establishes SYSTEM-level command execution obtained by deploying a JSP reverse-shell WAR through the Tomcat Manager authenticated with default credentials; the privileged `whoami` output confirms the execution context, and the Metasploit module reproduces the same result. No privilege escalation was required because the Tomcat service runs as `NT AUTHORITY\SYSTEM`. The demonstrated activity is confined to a single-host Hack The Box lab, and the deployed JSP filename and credential values are omitted.
 
-## Lessons and Recommendations
+## Recommendations: default accounts, Manager exposure, and service privilege
 
 Neither the compromise path's remediation nor any control below was validated in the lab; only the compromise itself was demonstrated. Each finding pairs the observed root cause with its demonstrated impact and a recommended action.
 

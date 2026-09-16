@@ -37,13 +37,13 @@ outcome: "Web-service code execution, an SSH credential recovered through WebSoc
 | Objective | From exposed file-management software to root through an executable upload, WebSocket SQL injection, and a delegated `dstat` rule |
 | Outcome | Web-service shell, SSH access as a lab user, and a root context through `dstat` plugin loading |
 
-## Summary
+## Default file manager to dstat root
 
 Soccer is an Easy-rated Hack The Box Linux lab that chains an exposed file manager, an executable upload directory, a WebSocket SQL injection flaw, and a delegated privilege rule into root. Default credentials open Tiny File Manager, the upload directory runs PHP, local nginx configuration reveals a second application virtual host, and its ticket-checking WebSocket is injectable and discloses an SSH credential; a `doas` rule then permits `dstat`, whose Python plugin loading yields root. Target and attacker addresses, virtual hosts, account names, credentials, and the reverse-shell payload are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Tiny File Manager default access → upload-directory PHP execution → web-service shell → local nginx configuration → secondary virtual host → WebSocket ticket-check SQL injection → database credential recovery → SSH as lab user → delegated `doas` rule for `dstat` → Python plugin execution → root**
 
-## Context and Objective
+## Ubuntu host exposing SSH, nginx, and a WebSocket service
 
 - **Target:** an Ubuntu Linux host running SSH, nginx, and an unidentified service on port 9091.
 - **Exposed services:** SSH (22), HTTP (80), and a high port (9091) later identified as the ticket-checking WebSocket.
@@ -51,7 +51,7 @@ Soccer is an Easy-rated Hack The Box Linux lab that chains an exposed file manag
 - **Objective:** follow documented paths from web access to privileged execution, showing how default configuration, an executable upload, an unvalidated WebSocket endpoint, and a delegated rule combine.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: default login, upload execution, and dstat plugin
 
 ### 1. Service and Content Discovery
 
@@ -220,18 +220,18 @@ Significance: because `dstat` executes plugin code while running as root, the de
 
 Result: a root context is obtained through the permitted `dstat` command.
 
-## Challenges and Decisions
+## WebSocket transport and a dstat-only doas rule
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | The ticket check is transported as a WebSocket message, which the selected SQL-injection tool does not speak natively | Proxied HTTP requests into the WebSocket message format | Needed to drive the tool against the endpoint |
 | The `doas` rule permits only `dstat`, not a shell | Invoked a plugin loaded by the permitted program | The binary's extension mechanism, not its command name, determined the available privilege |
 
-## Outcome
+## Outcome: web shell, SSH credential, and dstat root
 
 The evidence establishes default-credential file-manager access, code execution as the web-service account, a credential recovered through WebSocket SQL injection and validated over SSH, and root through `dstat` plugin loading under a delegated `doas` rule.
 
-## Lessons and Recommendations
+## Recommendations: default credentials, executable uploads, WebSocket input, and doas scope
 
 Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
 

@@ -37,13 +37,13 @@ outcome: "SSH shell as the initial account, Pandora FMS session hijacking and ap
 | Objective | Move from unauthenticated enumeration to user and root access through a credential leak, an internal monitoring service, and a local misconfiguration |
 | Outcome | SSH shell as the initial account; application code execution and a shell as the application account; root via SUID PATH hijacking |
 
-## Summary
+## From SNMP leak to SUID tar hijack
 
 Pandora is an Easy-rated Hack The Box Linux lab whose path begins with UDP enumeration: an SNMP walk using the default community string exposes a cleartext host-check credential for `<INITIAL_ACCESS_ACCOUNT>`, which grants SSH access. From that shell, an Apache virtual-host configuration reveals a Pandora FMS instance bound to localhost; an SSH dynamic forward exposes it, and a SQL injection in `chart_generator.php` dumps a live session that authenticates as `<APPLICATION_ACCOUNT>`. An authenticated command-execution flaw in the Events AJAX endpoint yields a shell as that account, and a SUID backup binary that calls `tar` by relative name allows PATH hijacking to root. Target addresses, account names, credentials, and session identifiers are replaced with role-based placeholders; command syntax is preserved. Several transitions — the virtual-host disclosure, the session-table dump, and the confirmed command execution — were documented without retained terminal output and are stated as recorded.
 
 **Attack path:** **SNMP community-string enumeration → cleartext SSH credential → internal Pandora FMS discovery → SQL injection session hijacking → authenticated command execution → SUID `tar` PATH hijacking → root**
 
-## Context and Objective
+## Ubuntu SSH and Apache host from unauthenticated enumeration
 
 - **Target:** an Ubuntu host exposing SSH (OpenSSH 8.2p1) and Apache httpd 2.4.41 over TCP, plus SNMP over UDP.
 - **Web front end:** identifies itself as `<TARGET_HOST>`, so a local hosts-file entry is required to browse by name.
@@ -51,7 +51,7 @@ Pandora is an Easy-rated Hack The Box Linux lab whose path begins with UDP enume
 - **Objective:** enumerate the attack surface, pivot through an internal monitoring application, and escalate to root.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: SNMP credential to SUID tar PATH
 
 ### 1. TCP Enumeration
 
@@ -243,7 +243,7 @@ root
 
 Result: the privileged context executes the substituted `tar`, returning a root shell.
 
-## Challenges and Decisions
+## No TCP path, a loopback service, and a relative tar call
 
 | Challenge | Decision | Rationale |
 |---|---|---|
@@ -251,11 +251,11 @@ Result: the privileged context executes the substituted `tar`, returning a root 
 | Pandora FMS bound to localhost only | Reached through an SSH dynamic forward | The internal service is not directly routable from the attack machine |
 | Backup binary resolved a dependency by name | Supplied a replacement `tar` earlier in `PATH` | A setuid-root process follows `PATH` when it invokes `tar` relatively |
 
-## Outcome
+## Outcome: SSH access, application code execution, and root
 
 The evidence establishes user-level SSH access as the initial account, application-account code execution, and root through a setuid-root backup binary that invokes `tar` by relative name. Flag files are not reproduced.
 
-## Lessons and Recommendations
+## Recommendations: default SNMP, internal exposure, the injection, and relative paths
 
 The actions below are recommendations; none was validated in the lab.
 

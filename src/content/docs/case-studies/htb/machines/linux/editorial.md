@@ -34,13 +34,13 @@ outcome: "Root command execution via GitPython CVE-2022-24439 through a sudo-per
 | Objective | Chain SSRF, credential leakage, and a vulnerable GitPython sudo script to root |
 | Outcome | Root command execution via CVE-2022-24439 as the production user |
 
-## Summary
+## SSRF to GitPython ext:: root
 
 Editorial is an Easy-rated Hack The Box Linux lab. A book-cover upload feature on a publishing platform fetches user-supplied URLs server-side, and the resulting SSRF reaches an internal API that returns development-user credentials; SSH access with those credentials then exposes a Git repository whose history leaks production credentials, and a sudo rule lets the production user run a GitPython script as root that is vulnerable to CVE-2022-24439. Credential values, target and attacker addresses, hostnames, and internal paths are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **SSRF via cover upload → internal API credential leak → SSH as development user → Git history production credential leak → SSH as production user → GitPython `ext::` command injection (CVE-2022-24439) → root**
 
-## Context and Objective
+## Ubuntu publishing platform, unauthenticated, SSRF to root
 
 - **Target:** Linux (Ubuntu 22.04) hosting an nginx publishing platform.
 - **Exposed services:** SSH (22) and HTTP (80).
@@ -48,7 +48,7 @@ Editorial is an Easy-rated Hack The Box Linux lab. A book-cover upload feature o
 - **Objective:** identify and exploit the SSRF vector, enumerate internal services, recover credentials, and escalate to root.
 - **Constraints:** activity was confined to the Hack The Box lab environment. The platform is served under a hostname-based vhost, so `<TARGET_HOST>` is resolved to the target address for the web requests below.
 
-## Approach and Evidence
+## Evidence: SSRF to git history to GitPython injection
 
 ### 1. Service Enumeration
 
@@ -226,11 +226,11 @@ Result: a root shell is returned on the callback, confirming the privilege chang
 
 The source documents no failed attempts or tradeoffs; the exploitation path was linear from SSRF to root, with each stage handing the next one a usable credential or execution context.
 
-## Outcome
+## Outcome: root command execution via sudo-permitted GitPython
 
 The evidence establishes root command execution on the target through a sudo-permitted GitPython script vulnerable to CVE-2022-24439, with the privilege change confirmed by the returned root shell prompt.
 
-## Lessons and Recommendations
+## Recommendations: upload SSRF, API credentials, git history, wildcard sudo
 
 1. **Server-side request forgery in the upload feature.** The cover-upload action fetched any user-supplied URL, exposing loopback-only services. *Recommendation:* validate and allowlist outbound fetch destinations, block loopback and internal ranges, and avoid returning fetched response bodies to the requester. *Detection:* alert on requests whose `bookurl` targets internal addresses.
 2. **Internal API returned plaintext credentials.** The authors endpoint disclosed onboarding credentials to any caller reaching it. *Recommendation:* never return reusable credentials from APIs, and require authentication even for internal-only endpoints.

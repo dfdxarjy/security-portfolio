@@ -37,13 +37,13 @@ outcome: "Command execution as the NiFi service account, operator SSH access fro
 | Objective | Escalate from an unauthenticated Apache NiFi workflow service to root by abusing CVE-2023-34468, a recovered operator key, and a control-system maintenance window |
 | Outcome | NiFi service-account command execution; operator SSH access; time-limited root via a privileged maintenance console |
 
-## Summary
+## NiFi RCE to OPC UA maintenance root
 
 Helix is a Medium-rated Hack The Box Linux lab in which an unauthenticated Apache NiFi instance on a virtual host is abused through CVE-2023-34468 — an H2-backed `DBCPConnectionPool` driving an `ExecuteSQL` processor that runs a remote SQL script — to gain command execution as the NiFi service account. Local file search recovers a backup operator SSH key, the operator home directory exposes an internal OPC UA control service and a password-protected operations guide, and the guide's process conditions open a maintenance window in which a privileged maintenance console grants temporary root. Target and attacker addresses, hostnames, accounts, key and password values, and flags are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Unauthenticated Apache NiFi on `flow.<TARGET_HOSTNAME>` → CVE-2023-34468 H2 `RUNSCRIPT` command execution as the NiFi service account → backup operator SSH key in a NiFi support bundle → operator SSH access → control-system diagram and cracked operations guide identifying an internal OPC UA service and its unlock conditions → OPC UA maintenance window → privileged maintenance console root**
 
-## Context and Objective
+## Ubuntu host, hostname-gated NiFi, unauthenticated, maintenance root
 
 - **Target:** an Ubuntu Linux host exposing SSH (OpenSSH 8.9p1) and HTTP (nginx 1.18.0).
 - **Exposed services:** HTTP redirects to a hostname rather than an IP, so host-based virtual-host enumeration is required before the web tier is reachable.
@@ -51,7 +51,7 @@ Helix is a Medium-rated Hack The Box Linux lab in which an unauthenticated Apach
 - **Objective:** gain initial access through the NiFi service, enumerate the host for escalation material, and reach root by satisfying the control-system conditions that unlock privileged maintenance access.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: NiFi H2 execution to OPC UA maintenance window
 
 ### 1. Service enumeration and virtual-host discovery
 
@@ -232,17 +232,17 @@ Significance: a privileged wrapper gated only by a manipulable process condition
 
 Result: a root-context session is obtained and expires after 100 seconds.
 
-## Challenges and Decisions
+## Obstacle: support-bundle search after failed decryption
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | NiFi sensitive-properties key did not immediately yield a credential | Continued with a filesystem search for key material | The flow-decryption route produced no credential; the support-bundle search instead recovered a backup operator SSH key |
 
-## Outcome
+## Outcome: operator SSH and a time-limited root session
 
 The evidence establishes service-account command execution, operator SSH access from a recovered backup key, and a time-limited root context; the root session expires after 100 seconds.
 
-## Lessons and Recommendations
+## Recommendations: NiFi auth, H2 driver, bundle keys, docs, wrapper
 
 The actions below are recommendations; none was validated in the lab.
 

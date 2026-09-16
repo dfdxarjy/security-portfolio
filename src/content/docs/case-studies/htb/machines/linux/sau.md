@@ -36,13 +36,13 @@ outcome: "Unauthenticated SSRF to internal Maltrail command injection for a user
 | Objective | Chain SSRF, unauthenticated command injection, and a passwordless systemctl pager rule to root |
 | Outcome | User shell via Maltrail command injection; root via the `less` pager under `sudo` |
 
-## Summary
+## From SSRF to Maltrail injection and pager escape
 
 Sau is an Easy-rated Hack The Box Linux lab built on vulnerability chaining: an SSRF in request-baskets 1.2.1 (CVE-2023-27163) reaches a firewall-filtered internal Maltrail v0.53 service, whose login endpoint is vulnerable to unauthenticated OS command injection, yielding a shell as `puma`. A passwordless `sudo` rule for `systemctl status trail.service` is then escalated through the `less` pager (CVE-2023-26604) to root. Target and attacker addresses, basket names, and payload values are replaced with role-based placeholders; command patterns are preserved.
 
 **Attack path:** **request-baskets SSRF (CVE-2023-27163) → internal Maltrail v0.53 login command injection → `puma` shell → `sudo systemctl status` `less` pager escape (CVE-2023-26604) → root**
 
-## Context and Objective
+## Ubuntu host with firewalled HTTP from unauthenticated access
 
 - **Target:** Ubuntu 20.04 running systemd 245.
 - **Exposed services:** SSH (22) and request-baskets (55555); HTTP services on ports 80 and 8338 are filtered by a host firewall.
@@ -50,7 +50,7 @@ Sau is an Easy-rated Hack The Box Linux lab built on vulnerability chaining: an 
 - **Objective:** reach the filtered internal services and chain their weaknesses to root.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: request-baskets SSRF to pager escape
 
 ### 1. Service Enumeration
 
@@ -213,17 +213,17 @@ Significance: because `systemctl` runs as root, the `less` process inherits root
 
 Result: a root shell is obtained, confirmed by the `uid=0(root)` identity output.
 
-## Challenges and Decisions
+## The payload breaking through basket forwarding
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | Reverse-shell payload broke when forwarded through a basket | Base64-encoded the payload so it is decoded on the target before execution | Special shell characters would otherwise be mangled in the forwarded request |
 
-## Outcome
+## Outcome: root through the chained SSRF and pager escape
 
 The evidence establishes root-level control of the target from an unauthenticated start by chaining the request-baskets SSRF, the Maltrail login command injection, and the `less` pager escape under a passwordless `sudo` rule. The individual flaws are limited in isolation — the SSRF alone cannot execute code, the injection is unreachable without it, and the sudo rule requires an existing local shell — so only the combination yields full compromise.
 
-## Lessons and Recommendations
+## Recommendations: SSRF parameters, shell input, and pager rules
 
 The actions below are recommendations; none was validated in the lab.
 

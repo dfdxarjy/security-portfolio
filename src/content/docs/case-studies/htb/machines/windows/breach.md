@@ -36,20 +36,20 @@ outcome: "Domain administrator access via domain controller TGT capture, DCSync,
 | Objective | Escalate from a guest-readable NETLOGON logon script to domain administrator control by abusing an over-permissive ACL and unconstrained delegation |
 | Outcome | Domain administrator access via domain controller TGT capture, DCSync, and pass-the-hash |
 
-## Summary
+## Delegation abuse from a guest-readable script
 
 Breach is a Medium-rated Hack The Box Windows Active Directory lab. A guest-readable NETLOGON logon script exposes a cleartext credential, directory analysis shows that the recovered account holds `GenericWrite` over a second user, and the second account's delegation-administration group membership supports an unconstrained-delegation attack. The domain controller is coerced into authenticating to an attacker-controlled relay, its ticket-granting ticket is captured, and the captured ticket is replayed for directory replication and administrative access. Credentials, hashes, hostnames, and addresses are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Guest-readable NETLOGON script → cleartext credential → `GenericWrite` → SPN manipulation and Kerberoasting → WinRM access → machine account trusted for unconstrained delegation → DNS spoof and authentication coercion → domain controller TGT capture → DCSync and pass-the-hash**
 
-## Context and Objective
+## Domain target, guest SMB start, and objective
 
 - **Target:** a Windows Active Directory domain (`<DOMAIN>`) whose domain controller (`<DOMAIN_CONTROLLER_FQDN>`) hosts the directory, SMB, and remote-management services.
 - **Starting position:** unauthenticated network access; guest SMB login is accepted and exposes domain-readable shares.
 - **Objective:** move from a readable logon script to domain administrator control by following the directory's authorization edges and delegation configuration.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: NETLOGON credential to DCSync pass-the-hash
 
 ### 1. Service Enumeration
 
@@ -196,11 +196,11 @@ Result: the recovered NT hash authenticated over WinRM in the administrator cont
 
 No failed attempts, blockers, or mid-chain corrections are recorded for this chain; each stage completed and supplied the input for the next.
 
-## Outcome
+## Outcome: controller TGT capture and DCSync access
 
 The evidence establishes domain administrator access on the target domain controller: the captured controller TGT supported directory replication, and the recovered NT hash yielded an administrative WinRM session. Limitation: apart from the logon-script line, the BloodHound relationship edge, the ticket-capture line, and the cracked-password excerpt, the interactive WinRM stages are recorded as results rather than captured transcripts.
 
-## Lessons and Recommendations
+## Recommendations: NETLOGON secrets, write ACLs, delegation, and coercion
 
 The actions below are recommendations; none was validated in the lab.
 

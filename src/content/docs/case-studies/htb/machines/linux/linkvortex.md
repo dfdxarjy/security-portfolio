@@ -36,13 +36,13 @@ outcome: "Authenticated Ghost CMS remote code execution as the application user,
 | Objective | Escalate from an exposed Git repository on a development virtual host to root-owned file read |
 | Outcome | Ghost CMS authenticated RCE as the application user; root-owned file read via a sudo glob and symlink chain |
 
-## Summary
+## From exposed Git history to CMS RCE
 
 LinkVortex is an Easy-rated Hack The Box Linux lab. Virtual-host enumeration exposes a development subdomain whose web root publishes a `.git` directory; the repository's staged changes reveal a Ghost CMS password that authenticates to the admin panel. That access enables an authenticated remote code execution flaw in Ghost (CVE-2026-29053), yielding a shell as the application user, whose database password is reused for SSH. Privilege escalation abuses a sudo rule that passes a user-controlled `*.png` glob to a cleanup script, and a two-hop symlink chain reads a root-owned file despite `fs.protected_symlinks=1`. Target and operator addresses, credentials, and file paths are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Exposed `.git` → Git-diff credential disclosure → Ghost CMS admin authentication → CVE-2026-29053 authenticated RCE → database-credential reuse → SSH access → sudo glob + two-hop symlink chain → root-owned file read**
 
-## Context and Objective
+## Apache and Ghost CMS host from unauthenticated access
 
 - **Target:** a single Ubuntu 22.04 Linux host running Apache with name-based virtual hosting and a Ghost CMS 5.58.0 instance.
 - **Exposed services:** SSH (22) and HTTP (80).
@@ -50,7 +50,7 @@ LinkVortex is an Easy-rated Hack The Box Linux lab. Virtual-host enumeration exp
 - **Objective:** recover credentials from an exposed repository, obtain access through Ghost, move to the system account, and read a root-owned file through a privileged cleanup script.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: exposed Git to sudo symlink read
 
 ### 1. Service Enumeration
 
@@ -216,18 +216,18 @@ CHECK_CONTENT=true sudo bash <CLEANUP_SCRIPT> <USER_CACHE>/a.png
 
 Result: the script returns the contents of the root-owned file through its own resolution of the symlink chain.
 
-## Challenges and Decisions
+## The staged credential and the symlink protection
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | The password change sat in the staged Git index rather than a configuration file | Unstaged and diffed the repository | Staged changes retained a credential the deployed files no longer showed |
 | `fs.protected_symlinks=1` is enabled on the host | Created a two-hop symlink chain | The rule passes a caller-controlled `*.png` path to a privileged cleanup script, which returns the protected file's contents despite the symlink-protection setting |
 
-## Outcome
+## Outcome: Ghost RCE and root-owned file read
 
 Authenticated Ghost CMS code execution yielded a shell as the application user; the reused configuration password provided a system-level SSH session, and a sudo rule accepting a user-controlled glob plus a two-hop symlink chain granted a read of a root-owned file. The admin login, reverse shell, and SSH session are recorded in the source as documented results without captured console output.
 
-## Lessons and Recommendations
+## Recommendations: exposed Git, credential reuse, unpatched CMS, and sudo globs
 
 The actions below are preventative recommendations; none was validated in the lab.
 

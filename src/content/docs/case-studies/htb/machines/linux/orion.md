@@ -34,13 +34,13 @@ outcome: "Root via a loopback GNU inetutils telnet authentication bypass after r
 | Objective | Escalate from a pre-authentication CMS exploit to root through credential recovery and a legacy local-service authentication bypass |
 | Outcome | Root via a loopback GNU inetutils telnet authentication bypass |
 
-## Summary
+## From pre-auth CMS RCE to telnet bypass
 
 Orion is a Hack The Box Linux lab that exposes SSH and an nginx-hosted Craft CMS 5.6.16 application. A pre-authentication remote code execution flaw in Craft CMS yields a `www-data` shell; the application environment file then discloses plaintext MySQL credentials, and the user table returns an administrator bcrypt hash. The hash is cracked offline to a password reused for SSH, and a telnet service bound to loopback running GNU inetutils 2.7 is abused through CVE-2026-24061 to reach root. Target and operator addresses, hostnames, wordlist paths, and credential material are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Unauthenticated web enumeration → Craft CMS 5.6.16 pre-auth RCE (CVE-2025-32432) → `www-data` shell → plaintext database credentials in the environment file → MySQL administrator hash → offline crack → SSH as a named user → loopback GNU inetutils telnet authentication bypass (CVE-2026-24061) → root**
 
-## Context and Objective
+## nginx Craft CMS host from unauthenticated access
 
 - **Target:** a Linux host exposing an nginx web tier and SSH.
 - **Exposed services:** SSH (22) and HTTP (80).
@@ -49,7 +49,7 @@ Orion is a Hack The Box Linux lab that exposes SSH and an nginx-hosted Craft CMS
 - **Objective:** move from an unauthenticated public service to user and root control, and demonstrate the impact of weak secret handling and a legacy local service.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: pre-auth RCE to loopback telnet root
 
 ### 1. Service Enumeration
 
@@ -243,11 +243,11 @@ Result: a root shell is obtained through the telnet authentication bypass.
 
 No failed attempts or remediation obstacles are recorded in the source for this machine; access moved cleanly from unauthenticated web exploitation to a pre-auth shell, credential recovery, SSH access, and the local bypass. No tradeoffs or fixes are documented, so none are presented here.
 
-## Outcome
+## Outcome: root via loopback telnet authentication bypass
 
 Root access was obtained through a loopback telnet authentication bypass after a reused credential recovered from a pre-authentication CMS exploit provided SSH access to a named user. The bypass required an existing local shell, because the telnet service was bound to loopback.
 
-## Lessons and Recommendations
+## Recommendations: unpatched CMS, plaintext secrets, reuse, and legacy telnet
 
 The actions below are recommendations; none was validated in the lab.
 

@@ -37,19 +37,19 @@ outcome: "Administrative domain-controller execution via an ESC9-issued Administ
 | Objective | Escalate from provided low-privilege credentials through an ACL delegation chain to administrative domain-controller access |
 | Outcome | Administrative domain-controller execution via an ESC9-issued Administrator certificate |
 
-## Summary
+## ACL delegation chain and ESC9 escalation
 
 Certified is a Medium Hack The Box Active Directory lab that starts from provided low-privilege domain credentials. Directory relationship data exposes a chain of delegated permissions across a management group, a service account, and a certificate-operator account, which is closed by abusing AD CS ESC9 to obtain an Administrator certificate. Target addresses, hostnames, account names, SIDs, and credential, hash, and certificate values are replaced with role-based placeholders; a small number of transitions are recorded by command only, without captured output.
 
 **Attack path:** **WriteOwner on `Management` → group membership → `GenericWrite` Shadow Credentials on the service account → `GenericAll` over the certificate-operator account → forced password reset → AD CS ESC9 UPN manipulation → Administrator certificate**
 
-## Context and Objective
+## Domain controller, provided account, and no foothold
 
 Certified runs Active Directory on a Windows domain controller. The lab begins from a single provided low-privilege account and requires no initial foothold; Kerberos, LDAP, SMB, and WinRM are exposed. LDAP-backed directory collection produced the relationship graph used to plan the escalation. The objective was to move from the provided account to administrative control of the domain controller by following the permitted relationships rather than exploiting a remote-code-execution flaw.
 
 Activity was confined to the Hack The Box lab environment, and the provided credentials were the only starting point.
 
-## Approach and Evidence
+## Evidence: WriteOwner to ESC9 Administrator certificate
 
 ### 1. Enumerate domain services and the ACL path
 
@@ -261,15 +261,15 @@ Significance: ESC9 lets a certificate requested under the altered UPN be trusted
 
 Result: certificate authentication returns `<ADMIN_ACCOUNT>` material, and WinRM confirms execution as `<DOMAIN>\<ADMIN_ACCOUNT>`.
 
-## Challenges and Decisions
+## The UPN swap needed for ESC9 enrollment
 
 - ESC9 enrollment requires the enrolling account to resolve to the target identity at request time. The operator account's UPN was set to `<ADMIN_ACCOUNT>` for the certificate request and restored to `<CA_OPERATOR>@<DOMAIN>` immediately afterward; the restore is part of the recorded chain, not a remediation.
 
-## Outcome
+## Outcome: ESC9 certificate and administrative execution
 
 The evidence establishes administrative execution on the domain controller as `<DOMAIN>\<ADMIN_ACCOUNT>`, obtained from a certificate issued through the vulnerable template rather than from the administrator password.
 
-## Lessons and Recommendations
+## Recommendations: ownership, GenericWrite, GenericAll, and the ESC9 template
 
 None of the recommendations below was validated in the lab.
 

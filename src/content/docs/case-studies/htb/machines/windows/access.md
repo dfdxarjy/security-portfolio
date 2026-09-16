@@ -39,13 +39,13 @@ outcome: "Telnet user access and Administrator command execution via cached runa
 | Objective | Escalate from anonymously exposed legacy services to administrative control without exploiting a single CVE |
 | Outcome | User-level Telnet shell; Administrator command execution via cached credentials |
 
-## Summary
+## Credential sprawl across legacy services
 
 Access is an Easy-rated Hack The Box Windows lab that reaches full administrative compromise without exploiting a single CVE by chaining misconfigured legacy services and stored credentials. Anonymous FTP exposes a Microsoft Access database and an encrypted ZIP archive; the database holds the archive password, the archive contains a mailbox that discloses Telnet credentials, and a cached `runas /savecred` credential turns a low-privileged shell into Administrator execution. Credential values, target and attacker addresses, and download locations are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Anonymous FTP → database credential recovery → encrypted archive → mailbox credential disclosure → Telnet access → cached `runas /savecred` abuse → Administrator**
 
-## Context and Objective
+## End-of-life target, exposed services, and anonymous start
 
 - **Target:** Windows Server 2008 R2, build 6.1.7600 — an end-of-life host outside Microsoft support.
 - **Exposed services:** FTP (21), Telnet (23), and HTTP/IIS 7.5 (80).
@@ -53,7 +53,7 @@ Access is an Easy-rated Hack The Box Windows lab that reaches full administrativ
 - **Objective:** move from anonymous legacy-service access to user and administrative control, and demonstrate the impact of credential sprawl across those services.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: anonymous FTP to cached credential abuse
 
 ### 1. Service Enumeration
 
@@ -248,18 +248,18 @@ Significance: the cached credential lets any same-user process execute as Admini
 
 Result: the privileged `whoami` output confirms execution in the Administrator context.
 
-## Challenges and Decisions
+## An unstable Telnet shell and no CVE to exploit
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | Telnet shell lacks control sequences and is unstable | Upgrade to a PowerShell-based reverse shell over HTTP is recommended | More stable interactive session |
 | No single CVE to exploit | Followed the data and credential chain | Misconfigured legitimate services provided access without patch circumvention |
 
-## Outcome
+## Outcome: Telnet user shell and Administrator execution
 
 The evidence establishes user-level access over Telnet using credentials recovered from anonymously reachable FTP data, and administrative command execution through a credential cached by `runas /savecred` — the privileged `whoami` output confirms the escalated context. HTTP was enumeration-only.
 
-## Lessons and Recommendations
+## Recommendations: anonymous FTP, plaintext secrets, Telnet, and cached credentials
 
 The actions below are recommendations; none was validated in the lab.
 

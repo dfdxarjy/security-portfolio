@@ -32,13 +32,13 @@ outcome: "User-level shell via the ThemeBleed theme upload, then SYSTEM command 
 | Objective | Gain a foothold by abusing a Windows theme-file upload, then escalate from a standard user to SYSTEM through the Common Log File System driver |
 | Outcome | User-level shell via the ThemeBleed theme upload; SYSTEM command execution via the CLFS driver vulnerability |
 
-## Summary
+## ThemeBleed upload and CLFS escalation
 
 Aero is a Medium-rated Hack The Box Windows machine built around two public vulnerabilities. Initial access abuses CVE-2023-38146 (ThemeBleed) by uploading a malicious Windows theme that causes the host to load an attacker-controlled DLL, returning a shell as `<LAB_USER>`. Privilege escalation then applies CVE-2023-28252, a Windows Common Log File System (CLFS) driver flaw, to reach `NT AUTHORITY\SYSTEM`. Target and operator addresses, accounts, and the exploit payload are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Malicious theme upload → ThemeBleed DLL load → shell as `<LAB_USER>` → local enumeration → CLFS driver abuse → `NT AUTHORITY\SYSTEM`**
 
-## Context and Objective
+## Theme portal, Windows 11 target, and no credentials
 
 - **Target:** a Windows 11 host exposing a single web service, Microsoft IIS 10.0 on port 80.
 - **Application:** a Windows theme-sharing portal with a theme-file upload feature.
@@ -46,7 +46,7 @@ Aero is a Medium-rated Hack The Box Windows machine built around two public vuln
 - **Objective:** gain a foothold through the theme-processing workflow, then escalate local privileges to SYSTEM.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: theme upload to CLFS SYSTEM execution
 
 ### 1. Service Enumeration
 
@@ -153,15 +153,15 @@ Significance: the CLFS driver flaw was the boundary crossed here, and the exploi
 
 Result: the `whoami` output confirms execution as `nt authority\system`.
 
-## Challenges and Decisions
+## Modifying the CLFS proof of concept to callback
 
 The recorded work contains no failed attempts, blocked steps, or troubleshooting. The one documented adaptation — modifying a working CVE-2023-28252 proof of concept so its SYSTEM branch launches the callback instead of a benign process — is described in Stage 4; no other decisions were recorded.
 
-## Outcome
+## Outcome: user shell and SYSTEM execution
 
 The evidence establishes authenticated code execution as `<LAB_USER>` through the theme-processing flaw and, after local privilege escalation, command execution as `NT AUTHORITY\SYSTEM`, with the SYSTEM identity confirmed by `whoami`. Limitations: the exploit payload is summarized rather than reproduced, and both intended flag captures are omitted.
 
-## Lessons and Recommendations
+## Recommendations: theme uploads, the CLFS driver, and profile notes
 
 Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
 

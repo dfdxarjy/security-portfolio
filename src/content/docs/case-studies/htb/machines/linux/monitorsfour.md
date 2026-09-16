@@ -168,7 +168,7 @@ Result: the documentation records a root shell on the host with the host filesys
 |---|---|---|
 | The recovered credential's account name was rejected at the Cacti login | Generate username permutations from the API-returned full names and test them | Application login names differ from API account names |
 
-## Outcome — container RCE and host root
+## Outcome: container RCE and host root
 
 The evidence establishes authenticated Cacti code execution as `www-data` inside the container and host root through a privileged container created via the unauthenticated Docker API; the exposed Docker daemon on an internal address was the critical control failure.
 

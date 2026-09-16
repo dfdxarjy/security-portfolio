@@ -32,13 +32,13 @@ outcome: "Authenticated Flowise access, code execution inside the application co
 | Objective | Escalate from an unauthenticated password-reset token disclosure on a Flowise AI-agent platform to root through configuration-injection code execution, container secret reuse, and an internal service flaw |
 | Outcome | Authenticated Flowise access, container code execution, host SSH access via a reused secret, and root through CVE-2025-8110 |
 
-## Summary
+## From reset-token disclosure to Gogs symlink root
 
 Silentium is an Easy-rated Hack The Box Linux lab built around a Flowise AI-agent platform. The main host runs Flowise 3.0.5, and a second Flowise instance is served on a separate staging virtual host. An unauthenticated forgot-password endpoint returns the password-reset `tempToken` directly in its JSON response (CVE-2025-58434), allowing account takeover for any known address; the authenticated session exposes an API key. The CustomMCP node then passes the user-supplied `mcpServerConfig` string to the JavaScript `Function()` constructor (CVE-2025-59528), giving code execution inside the application container, where SMTP credentials sit in environment variables and are reused to log in over SSH. The internal Gogs service is vulnerable to a symlink path-traversal issue in its file-update API (CVE-2025-8110) that yields root. Target addresses, hostnames, accounts, credentials, tokens, and keys are replaced with role-based placeholders; command syntax is preserved.
 
 **Attack path:** **Forgot-password token disclosure (CVE-2025-58434) → account takeover and API key → CustomMCP `mcpServerConfig` JavaScript injection (CVE-2025-59528) → container code execution → SMTP credential reuse → SSH host access → internal Gogs symlink RCE (CVE-2025-8110) → root**
 
-## Context and Objective
+## nginx Flowise host with internal Gogs from unauthenticated access
 
 - **Target:** a single Linux host serving a Flowise 3.0.5 AI-agent platform through nginx, plus a second Flowise instance on a staging virtual host and an internal Gogs service.
 - **Exposed services:** SSH (22) and HTTP (80); Gogs listens on a loopback port.
@@ -46,7 +46,7 @@ Silentium is an Easy-rated Hack The Box Linux lab built around a Flowise AI-agen
 - **Objective:** move from unauthenticated access to the application, reach code execution, cross into the host, and escalate to root.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: reset token to Gogs symlink RCE
 
 ### 1. Service Enumeration
 
@@ -167,18 +167,18 @@ Significance: a loopback-bound service remains part of the attack surface once h
 
 Result: the returned shell runs as root on the host.
 
-## Challenges and Decisions
+## The timing proof and the loopback Gogs service
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | Confirming code execution through the CustomMCP node | Used a controlled five-second delay as the proof of execution | A measurable delay distinguishes executed code from an ignored or rejected input |
 | Gogs listened only on the loopback interface | Forwarded the port over the authenticated SSH session | The service was unreachable directly, so the existing host shell provided access |
 
-## Outcome
+## Outcome: container execution, host SSH, and root
 
 The evidence establishes root-level control of the host, reached by chaining an unauthenticated account takeover, configuration-driven code execution, a reused container secret, and an internal service flaw. The password reset, the virtual-host discovery, the container reverse shell, and the host SSH login are recorded in the source as documented results without captured console output; every stage with captured output is quoted above.
 
-## Lessons and Recommendations
+## Recommendations: token disclosure, dynamic evaluation, secret reuse, and Gogs
 
 The actions below are recommendations; none was validated in the lab.
 
