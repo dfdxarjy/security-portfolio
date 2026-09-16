@@ -98,6 +98,10 @@ const searchableText = (study: (typeof studies)[number]) =>
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
         <meta name="twitter:card" content="summary_large_image" />
+        {/* Referrer-Policy is the only security header GitHub Pages honours, via
+            <meta name="referrer">. The Starlight Head override emits it for every
+            Starlight page; this standalone route needs its own copy. */}
+        <meta name="referrer" content="strict-origin-when-cross-origin" />
         <title>{title}</title>
         {/* This page is not a Starlight route, so the Head override cannot reach it;
             the WebSite node is emitted here instead. */}
@@ -980,6 +984,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                     <a href="/case-studies/">Case Studies</a>
                     <a href="/prolabs/">Pro Labs</a>
                     <a href="/profiles/">Profiles</a>
+                    <a href="/method/">Method</a>
                     <a href="https://github.com/taktak0x/security-portfolio">Source</a>
                     <a href="https://github.com/taktak0x/security-portfolio/issues/new">Contact</a>
                 </nav>

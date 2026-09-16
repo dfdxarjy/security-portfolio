@@ -93,6 +93,11 @@ const jsonLd = graph.length > 0 ? { '@context': 'https://schema.org', '@graph': 
 
 {pageHead.map(({ tag: Tag, attrs, content }) => <Tag {...attrs} set:html={content} />)}
 
+{/* Referrer-Policy is the only security header GitHub Pages can honour, via
+    <meta name="referrer">. Emitted directly since this override has no plain
+    meta-tag pattern to reuse; it applies to every Starlight page. */}
+<meta name="referrer" content="strict-origin-when-cross-origin" />
+
 {
 	jsonLd && (
 		<script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
