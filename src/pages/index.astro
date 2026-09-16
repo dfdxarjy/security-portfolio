@@ -26,11 +26,8 @@ const counts = {
     linux: studies.filter((study) => category(study) === "linux").length,
     windows: studies.filter((study) => category(study) === "windows").length,
     dfir: studies.filter((study) => category(study) === "dfir").length,
-};
-const contentTypeCount = new Set(
-    studies.map((study) => study.data.content_type),
-).size;
-// Deterministic preview (not the newest content): explicit immutable `addedAt`
+  };
+  // Deterministic preview (not the newest content): explicit immutable `addedAt`
 // (portfolio-addition date) descending, then stable id ascending. Entries without
 // `addedAt` are omitted here but stay in the explorer. No Git commit time or file
 // mtime is read.
@@ -263,11 +260,6 @@ const searchableText = (study: (typeof studies)[number]) =>
             .portfolio-button:hover,
             .portfolio-button:focus-visible {
                 filter: brightness(1.12);
-            }
-            .portfolio-proof {
-                margin: 0;
-                color: var(--muted);
-                font-size: 0.82rem;
             }
             .portfolio-section {
                 padding: 3rem 0;
@@ -642,15 +634,6 @@ const searchableText = (study: (typeof studies)[number]) =>
                             </a>
                         </div>
                     </div>
-                    <p
-                        class="portfolio-proof"
-                        role="group"
-                        aria-label="Portfolio totals"
-                    >
-                        {counts.all} case studies ·{" "}
-                        {counts.linux + counts.windows} machines ·{" "}
-                        {counts.dfir} DFIR · {contentTypeCount} content types
-                    </p>
                 </section>
 
                 <section
