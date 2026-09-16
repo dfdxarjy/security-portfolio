@@ -33,13 +33,13 @@ outcome: "Authenticated Cacti code execution as www-data inside the container an
 | Objective | Turn an exposed Cacti API into authenticated access and code execution, then reach the underlying host through the Docker daemon API |
 | Outcome | Code execution as `www-data` inside the container and root on the underlying host |
 
-## Summary
+## From token bypass to privileged Docker escape
 
 MonitorsFour is a Medium-rated Hack The Box Linux lab that runs Cacti network monitoring inside a Docker container. A broken access-control check on the Cacti API accepts `token=0` and returns account records with raw MD5 password hashes to unauthenticated callers. One hash is cracked offline, and username permutations generated from the full names returned by the same API yield a working Cacti login. With authenticated access, CVE-2025-24367 provides code execution as `www-data` inside the container. From there an unauthenticated Docker daemon API on an internal address allows a privileged container with the host filesystem mounted, returning root on the host. IP addresses, hostnames, accounts, artifacts, and credential values are replaced with role-based placeholders, and flag values are omitted.
 
 **Attack path:** **API access-control bypass (`token=0`) → MD5 hash disclosure → offline cracking → username generation → Cacti authentication → CVE-2025-24367 container RCE → unauthenticated Docker daemon → privileged container with host mount → host root**
 
-## Context and Objective
+## Target, discovery, and objective
 
 - **Target:** a Cacti 1.2.28 monitoring instance deployed in Docker on a Linux host.
 - **Discovery:** port scanning surfaced the HTTP service, and the Cacti application was reached over a virtual host.
@@ -47,7 +47,7 @@ MonitorsFour is a Medium-rated Hack The Box Linux lab that runs Cacti network mo
 - **Objective:** convert an exposed API into authenticated Cacti access, obtain code execution inside the container, and reach the underlying host through the Docker API.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
 
-## Approach and Evidence
+## Evidence: API bypass to container escape
 
 ### 1. API access-control bypass and hash disclosure
 
@@ -162,17 +162,17 @@ Significance: privileged mode combined with a host-filesystem bind removes the c
 
 Result: the documentation records a root shell on the host with the host filesystem mounted at `/host`.
 
-## Challenges and Decisions
+## One obstacle: the rejected account name
 
 | Challenge | Decision | Rationale |
 |---|---|---|
 | The recovered credential's account name was rejected at the Cacti login | Generate username permutations from the API-returned full names and test them | Application login names differ from API account names |
 
-## Outcome
+## Outcome — container RCE and host root
 
 The evidence establishes authenticated Cacti code execution as `www-data` inside the container and host root through a privileged container created via the unauthenticated Docker API; the exposed Docker daemon on an internal address was the critical control failure.
 
-## Lessons and Recommendations
+## Recommendations: the daemon, the token check, MD5, and the CVE
 
 No remediation was tested in the lab; the following are recommendations.
 
