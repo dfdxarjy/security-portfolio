@@ -1,0 +1,170 @@
+---
+import "../../styles/visual-previews.css";
+
+export function getStaticPaths() {
+    return [
+        { params: { direction: "report" } },
+        { params: { direction: "casefile" } },
+        { params: { direction: "editorial" } },
+    ];
+}
+
+type Direction = "report" | "casefile" | "editorial";
+
+const DIRECTION_META: Record<
+    Direction,
+    { title: string; blurb: string; theme: "light" | "dark" }
+> = {
+    report: {
+        title: "Report",
+        blurb: "Technical report — IBM Plex Serif headings, warm paper, hairline rules.",
+        theme: "light",
+    },
+    casefile: {
+        title: "Casefile",
+        blurb: "Engineering notebook — Plex Sans/Mono, neutral, dense, dark-first.",
+        theme: "dark",
+    },
+    editorial: {
+        title: "Editorial",
+        blurb: "Magazine longform — Source Serif, generous rhythm, numbered margin.",
+        theme: "light",
+    },
+};
+
+const { direction } = Astro.params as { direction: Direction };
+const meta = DIRECTION_META[direction];
+const others = (Object.keys(DIRECTION_META) as Direction[]).filter(
+    (key) => key !== direction,
+);
+
+// ---- Shared sample content (identical across all three directions). ----
+const nav = ["Cases", "Training", "About", "Method", "Source"];
+
+const lead = {
+    meta: "ESCAPETWO · ACTIVE DIRECTORY · MEDIUM",
+    headline: "EscapeTwo: the spreadsheet that ended at ESC4",
+    dek: "Exposed credentials opened the domain. Template ownership and shadow credentials provided the escalation path.",
+    body: "Initial access was a set of credentials left in a spreadsheet on a readable share. From there a misconfigured certificate template turned a low-privilege foothold into issuance against the domain controller.",
+    caption:
+        "Evidence 03 — template ownership. This ACL is where the path changed from credential reuse to AD CS abuse.",
+};
+
+const cases = [
+    {
+        title: "Bashed — Exposed Web Shell and Root-Scheduled Script Abuse",
+        meta: "Linux · Easy · php web shell, cron, privilege escalation",
+    },
+    {
+        title: "Blocky — Exposed Plugin Credentials and Unrestricted Sudo",
+        meta: "Linux · Easy · wordpress, exposed credentials, sudo",
+    },
+    {
+        title: "BoardLight — Dolibarr RCE to Enlightenment Privilege Escalation",
+        meta: "Linux · Easy · dolibarr, CVE-2023-30253, SUID",
+    },
+    {
+        title: "Broker: ActiveMQ Exposure and Unsafe Daemon Sudo",
+        meta: "Linux · Medium · activemq, CVE-2023-46604, nginx",
+    },
+    {
+        title: "Builder: Jenkins CLI File Read and Credential Exposure",
+        meta: "Linux · Medium · jenkins, file read, exposed credentials",
+    },
+    {
+        title: "Titanic: Gitea Path Traversal to Container Escape",
+        meta: "Linux · Medium · gitea, path traversal, docker",
+    },
+];
+
+const year = 2026;
+const pageTitle = `Preview — ${meta.title} · taktak.hu`;
+---
+
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="robots" content="noindex" />
+        <meta name="description" content={`Visual-direction preview: ${meta.title}.`} />
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+        <link rel="canonical" href={`https://taktak.hu/preview/${direction}/`} />
+        <title>{pageTitle}</title>
+        <style is:global>
+            html,
+            body {
+                margin: 0;
+            }
+        </style>
+    </head>
+    <body>
+        <div class={`dir-${direction}`} data-theme={meta.theme}>
+            <nav class="pv-banner" aria-label="Preview directions">
+                <span class="pv-banner-label">Preview</span>
+                <span class="pv-banner-current">{meta.title}</span>
+                <span class="pv-banner-label">·</span>
+                {
+                    others.map((key) => (
+                        <a href={`/preview/${key}/`}>{DIRECTION_META[key].title}</a>
+                    ))
+                }
+                <span class="pv-banner-label">·</span>
+                <a href="/preview/">All directions</a>
+            </nav>
+
+            <div class="pv-shell">
+                <header class="pv-header">
+                    <a class="pv-brand" href="/preview/">taktak.hu</a>
+                    <nav class="pv-nav" aria-label="Primary">
+                        {nav.map((item) => <a href="#">{item}</a>)}
+                    </nav>
+                </header>
+
+                <main>
+                    <section class="pv-masthead">
+                        <p class="pv-eyebrow">Notes from the lab</p>
+                        <h1 class="pv-headline">
+                            Security work, with the reasoning left in.
+                        </h1>
+                        <p class="pv-lede">
+                            I document how I get from the first clue to a
+                            defensible conclusion: the artifacts that mattered,
+                            the assumptions that failed, and the path I could
+                            actually prove.
+                        </p>
+                    </section>
+
+                    <section class="pv-lead" aria-label="Lead case">
+                        <p class="pv-lead-meta">{lead.meta}</p>
+                        <div class="pv-lead-grid">
+                            <div class="pv-lead-main">
+                                <h2 class="pv-lead-headline">
+                                    {lead.headline}
+                                </h2>
+                                <p class="pv-lead-dek">{lead.dek}</p>
+                                <p class="pv-lead-body">{lead.body}</p>
+                            </div>
+                            <p class="pv-lead-caption">{lead.caption}</p>
+                        </div>
+                    </section>
+
+                    <section aria-label="Case index">
+                        <h2 class="pv-result-heading">Case index</h2>
+                        <ol class="pv-index">
+                            {cases.map((item) => (
+                                <li class="pv-case">
+                                    <h3 class="pv-case-title">{item.title}</h3>
+                                    <p class="pv-case-meta">{item.meta}</p>
+                                </li>
+                            ))}
+                        </ol>
+                    </section>
+                </main>
+
+                <footer class="pv-footer">
+                    <p>© {year} taktak.hu</p>
+                </footer>
+            </div>
+        </div>
+    </body>
+</html>
