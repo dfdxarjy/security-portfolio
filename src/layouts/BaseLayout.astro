@@ -212,20 +212,26 @@ const {
 					}
 				}
 				const spotlightCards = document.querySelectorAll(".portfolio-spotlight");
-				spotlightCards.forEach((card) => {
-					card.addEventListener("pointermove", (event) => {
-						if (event.pointerType === "touch") return;
-						const rect = card.getBoundingClientRect();
-						card.style.setProperty("--spotlight-mx", `${event.clientX - rect.left}px`);
-						card.style.setProperty("--spotlight-my", `${event.clientY - rect.top}px`);
-						card.style.setProperty("--spotlight-active", "1");
+				// Reduced-motion users keep the CSS fallback border and never run the
+				// pointer handler, so no getBoundingClientRect fires on pointer moves.
+				if (
+					!window.matchMedia("(prefers-reduced-motion: reduce)").matches
+				) {
+					spotlightCards.forEach((card) => {
+						card.addEventListener("pointermove", (event) => {
+							if (event.pointerType === "touch") return;
+							const rect = card.getBoundingClientRect();
+							card.style.setProperty("--spotlight-mx", `${event.clientX - rect.left}px`);
+							card.style.setProperty("--spotlight-my", `${event.clientY - rect.top}px`);
+							card.style.setProperty("--spotlight-active", "1");
+						});
+						card.addEventListener("pointerleave", () => {
+							card.style.removeProperty("--spotlight-mx");
+							card.style.removeProperty("--spotlight-my");
+							card.style.removeProperty("--spotlight-active");
+						});
 					});
-					card.addEventListener("pointerleave", () => {
-						card.style.removeProperty("--spotlight-mx");
-						card.style.removeProperty("--spotlight-my");
-						card.style.removeProperty("--spotlight-active");
-					});
-				});
+				}
 			})();
 		</script>
 	</body>

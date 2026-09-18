@@ -57,7 +57,7 @@ export default function FocusCards({ counts }: { counts: Counts }) {
 					<a
 						key={card.kind}
 						href={card.href}
-						className="portfolio-spotlight relative block min-w-0 rounded-xl border border-input bg-card p-5 no-underline focus-visible:border-primary"
+						className="portfolio-spotlight portfolio-spotlight--compact relative block min-w-0 rounded-xl border border-input bg-card p-5 no-underline focus-visible:border-primary"
 						data-reveal
 					>
 						<span className="font-mono text-3xl font-bold tabular-nums text-primary">

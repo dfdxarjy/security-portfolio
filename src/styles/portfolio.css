@@ -270,7 +270,8 @@ select {
     pointer-events: none;
     z-index: 1;
     background: radial-gradient(
-      360px circle at var(--spotlight-mx, 50%) var(--spotlight-my, 50%),
+      var(--spotlight-radius, 360px) circle at var(--spotlight-mx, 50%)
+        var(--spotlight-my, 50%),
       var(--portfolio-accent),
       transparent 72%
     );
@@ -284,5 +285,22 @@ select {
     mask-composite: exclude;
     opacity: var(--spotlight-active, 0);
     transition: opacity 240ms ease;
+  }
+}
+/* Smaller category cards get a tighter falloff than the broad lead-card ring. */
+.portfolio-spotlight--compact {
+  --spotlight-radius: 220px;
+}
+/* Reduced-motion visitors get no spotlight ring, so still show border feedback. */
+@media (hover: hover) and (prefers-reduced-motion: reduce) {
+  .portfolio-spotlight:hover {
+    border-color: var(--portfolio-accent);
+  }
+}
+/* No-JS visitors: `js-reveal` is absent, so the pointer script never runs; keep
+   hover border feedback in its place. */
+@media (hover: hover) {
+  html:not(.js-reveal) .portfolio-spotlight:hover {
+    border-color: var(--portfolio-accent);
   }
 }
