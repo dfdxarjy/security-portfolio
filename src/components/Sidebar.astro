@@ -57,7 +57,11 @@ const categoryHref = `/${dirKey}/`;
 	// this marks the entry for the section currently being read. It is additive
 	// only: with JavaScript off the rail stays a plain, working list of links.
 	const railLinks = document.querySelectorAll('.case-rail__list a[href^="#"]');
-	if (railLinks.length > 0) {
+	// Idempotence: a second execution (dev hot reload, future view transitions)
+	// must not stack heading observers and resize listeners. One marker on
+	// documentElement makes the whole initialisation a no-op after the first.
+	if (railLinks.length > 0 && !document.documentElement.hasAttribute('data-case-rail-init')) {
+		document.documentElement.setAttribute('data-case-rail-init', '');
 		const targets = [];
 		for (const link of railLinks) {
 			// The href is already an encoded slug; decode defensively so a
@@ -129,15 +133,18 @@ const categoryHref = `/${dirKey}/`;
 			// target is not guaranteed to report `isIntersecting`, which would
 			// leave the final section unmarked. Absolutely positioned with no
 			// offsets, so it stays out of flow at its static spot at the document
-			// end and adds no layout; it is never focusable.
-			const existing = document.querySelector('[data-case-rail-sentinel]');
-			const sentinel =
-				existing instanceof HTMLElement ? existing : document.createElement('div');
-			if (!existing) {
+			// end, and the negative top margin pulls its box back so it does not
+			// extend the scrollable area or add layout; it is never focusable.
+			const existing = document.querySelector('div[data-case-rail-sentinel]');
+			let sentinel;
+			if (existing instanceof HTMLElement) {
+				sentinel = existing;
+			} else {
+				sentinel = document.createElement('div');
 				sentinel.dataset.caseRailSentinel = '';
 				sentinel.setAttribute('aria-hidden', 'true');
 				sentinel.style.cssText =
-					'position: absolute; height: 1px; width: 1px; pointer-events: none;';
+					'position: absolute; height: 1px; width: 1px; margin-top: -1px; pointer-events: none;';
 				document.body.append(sentinel);
 			}
 			// Guard the observer too, so a re-executed script cannot stack them.
