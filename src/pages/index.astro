@@ -275,6 +275,38 @@ const searchableText = (study: (typeof studies)[number]) =>
             .portfolio-hero-copy {
                 grid-column: 1 / 8;
             }
+            /* Metadata rail: offset down the right tracks, separated from the
+               copy by a hairline. Values come from the same collection query
+               the explorer uses; nothing here is hardcoded. */
+            .portfolio-hero-rail {
+                grid-column: 9 / 13;
+                align-self: start;
+                margin-top: clamp(2.5rem, 9vw, 6.5rem);
+                padding-top: 1rem;
+                border-top: 1px solid var(--line);
+            }
+            .portfolio-rail-list {
+                display: grid;
+                gap: 0.9rem;
+                margin: 0;
+            }
+            .portfolio-rail-list div {
+                display: grid;
+                gap: 0.1rem;
+            }
+            .portfolio-rail-list dt {
+                color: var(--muted);
+                font-family: var(--font-mono), ui-monospace, monospace;
+                font-size: 0.72rem;
+                letter-spacing: 0.1em;
+                text-transform: uppercase;
+            }
+            .portfolio-rail-list dd {
+                margin: 0;
+                font-family: var(--font-mono), ui-monospace, monospace;
+                font-size: 1.35rem;
+                font-variant-numeric: tabular-nums;
+            }
             .portfolio-kicker {
                 color: var(--accent);
                 font-size: 0.78rem;
@@ -391,12 +423,13 @@ const searchableText = (study: (typeof studies)[number]) =>
             }
             .portfolio-category,
             .portfolio-study {
-                border: 1px solid var(--line);
                 border-radius: var(--portfolio-radius);
                 background: var(--card);
                 box-shadow: var(--surface-shadow);
             }
+            /* Clickable card boundary uses the 3:1 interactive token. */
             .portfolio-category {
+                border: 1px solid var(--control-line);
                 padding: 1.25rem;
                 text-decoration: none;
             }
@@ -608,6 +641,7 @@ const searchableText = (study: (typeof studies)[number]) =>
             .portfolio-study {
                 display: flex;
                 flex-direction: column;
+                border: 1px solid var(--line);
                 padding: 1.15rem;
             }
             /* `display: flex` above would otherwise beat the UA `[hidden]` rule. */
@@ -680,10 +714,14 @@ const searchableText = (study: (typeof studies)[number]) =>
                steps down to two columns first, then one. */
             @media (max-width: 56.25rem) {
                 .portfolio-hero-copy,
+                .portfolio-hero-rail,
                 .portfolio-section-heading,
                 .portfolio-category-grid,
                 .portfolio-lead {
                     grid-column: 1 / -1;
+                }
+                .portfolio-hero-rail {
+                    margin-top: 1.5rem;
                 }
                 .portfolio-category-grid {
                     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -741,6 +779,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                 .portfolio-search,
                 .portfolio-sort,
                 .portfolio-load-more,
+                .portfolio-category,
                 .portfolio-skip-link {
                     border-color: ButtonBorder;
                 }
@@ -853,6 +892,29 @@ const searchableText = (study: (typeof studies)[number]) =>
                             </a>
                         </div>
                     </div>
+                    <aside
+                        class="portfolio-hero-rail"
+                        aria-label="Case studies by category"
+                    >
+                        <dl class="portfolio-rail-list">
+                            <div>
+                                <dt>All</dt>
+                                <dd>{counts.all}</dd>
+                            </div>
+                            <div>
+                                <dt>{label("linux")}</dt>
+                                <dd>{counts.linux}</dd>
+                            </div>
+                            <div>
+                                <dt>{label("windows")}</dt>
+                                <dd>{counts.windows}</dd>
+                            </div>
+                            <div>
+                                <dt>{label("dfir")}</dt>
+                                <dd>{counts.dfir}</dd>
+                            </div>
+                        </dl>
+                    </aside>
                 </section>
 
                 <section
