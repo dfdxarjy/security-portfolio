@@ -1,1216 +1,160 @@
 ---
 import { getCollection } from "astro:content";
-import "../styles/portfolio.css";
-import BrandLockup from "../components/BrandLockup.astro";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import HomeHero from "../components/home/HomeHero.tsx";
+import FocusCards from "../components/home/FocusCards.tsx";
+import LeadCase from "../components/home/LeadCase.tsx";
+import Explorer from "../components/home/Explorer.tsx";
+import { PERSON, PERSON_ID } from "../lib/schema.ts";
 
-const title = "0xTakTak — Security Portfolio";
+const title = "Taktak — Security Portfolio";
 const description =
-    "Security case studies across red and blue team work, incident investigation, and Windows and Active Directory environments.";
-const studies = (
-    await getCollection(
-        "docs",
-        ({ id, data }) =>
-            id.startsWith("case-studies/") &&
-            data.type === "case-study" &&
-            data.status === "published-ready",
-    )
-).sort((a, b) => a.data.title.localeCompare(b.data.title));
+	"Security case studies across red and blue team work, incident investigation, and Windows and Active Directory environments.";
+
+const allDocs = await getCollection("docs");
+const studiesRaw = allDocs
+	.filter(
+		({ id, data }) =>
+			id.startsWith("case-studies/") &&
+			data.type === "case-study" &&
+			data.status === "published-ready",
+	)
+	.sort((a, b) => a.data.title.localeCompare(b.data.title));
 
 // Category derived from collection path so cards show factual, path-based labels.
-const category = (study: (typeof studies)[number]) => {
-    if (study.id.includes("/sherlocks/")) return "dfir";
-    if (study.id.includes("/windows/")) return "windows";
-    return "linux";
+const category = (study: (typeof studiesRaw)[number]) => {
+	if (study.id.includes("/sherlocks/")) return "dfir";
+	if (study.id.includes("/windows/")) return "windows";
+	return "linux";
 };
+const label = (kind: string) =>
+	kind === "dfir"
+		? "DFIR / Sherlock"
+		: `${kind[0].toUpperCase()}${kind.slice(1)} machine`;
+const cleanDescription = (value: string) =>
+	value
+		.replace(/^A\s+sanitized\s+/i, "")
+		.replace(/^sanitized\s+/i, "")
+		.replace(/^./, (char) => char.toUpperCase());
+// Normalized, lowercased haystack of the same user-visible fields the cards render.
+const searchableText = (study: (typeof studiesRaw)[number]) =>
+	[
+		study.data.title,
+		cleanDescription(study.data.description),
+		category(study),
+		label(category(study)),
+		...(study.data.tags ?? []),
+		study.data.objective,
+		...(study.data.tools ?? []),
+		study.data.skill,
+		study.data.outcome,
+	]
+		.filter(Boolean)
+		.join(" ")
+		.replace(/\s+/g, " ")
+		.trim()
+		.toLowerCase();
+
+// Serialisable payload handed to the hydrated explorer.
+const studies = studiesRaw.map((study) => {
+	const kind = category(study);
+	return {
+		id: study.id,
+		href: `/${study.id}/`,
+		title: study.data.title,
+		description: cleanDescription(study.data.description),
+		category: kind,
+		label: label(kind),
+		tools: study.data.tools ?? [],
+		tags: study.data.tags ?? [],
+		addedAt: study.data.addedAt ?? "",
+		search: searchableText(study),
+	};
+});
 const counts = {
-    all: studies.length,
-    linux: studies.filter((study) => category(study) === "linux").length,
-    windows: studies.filter((study) => category(study) === "windows").length,
-    dfir: studies.filter((study) => category(study) === "dfir").length,
-  };
+	all: studies.length,
+	linux: studies.filter((study) => study.category === "linux").length,
+	windows: studies.filter((study) => study.category === "windows").length,
+	dfir: studies.filter((study) => study.category === "dfir").length,
+};
+
 // Lead case is always the newest: explicit immutable `addedAt`
 // (portfolio-addition date) descending, then stable id ascending, first entry.
 // Entries without `addedAt` are omitted here but stay in the explorer. No Git
 // commit time or file mtime is read, and `featured` is not consulted.
-const leadStudy = studies
-    .filter((study) => Boolean(study.data.addedAt))
-    .sort(
-        (a, b) =>
-            (b.data.addedAt ?? "").localeCompare(a.data.addedAt ?? "") ||
-            a.id.localeCompare(b.id),
-    )[0];
+const leadStudyRaw = studiesRaw
+	.filter((study) => Boolean(study.data.addedAt))
+	.sort(
+		(a, b) =>
+			(b.data.addedAt ?? "").localeCompare(a.data.addedAt ?? "") ||
+			a.id.localeCompare(b.id),
+	)[0];
+const leadStudy = leadStudyRaw
+	? {
+			title: leadStudyRaw.data.title,
+			href: `/${leadStudyRaw.id}/`,
+			description: cleanDescription(leadStudyRaw.data.description),
+			label: label(category(leadStudyRaw)),
+		}
+	: null;
 // Mono meta line: tools and tags, omitting any empty part.
-const leadMeta = leadStudy
-    ? [
-          leadStudy.data.tools?.length
-              ? `Tools: ${leadStudy.data.tools.join(", ")}`
-              : "",
-          leadStudy.data.tags?.length
-              ? `Tags: ${leadStudy.data.tags.join(" · ")}`
-              : "",
-      ]
-          .filter(Boolean)
-          .join(" · ")
-    : "";
-const label = (kind: string) =>
-    kind === "dfir"
-        ? "DFIR / Sherlock"
-        : `${kind[0].toUpperCase()}${kind.slice(1)} machine`;
-const cleanDescription = (value: string) =>
-    value
-        .replace(/^A\s+sanitized\s+/i, "")
-        .replace(/^sanitized\s+/i, "")
-        .replace(/^./, (char) => char.toUpperCase());
-// Normalized, lowercased haystack of the same user-visible fields the cards render.
-const searchableText = (study: (typeof studies)[number]) =>
-    [
-        study.data.title,
-        cleanDescription(study.data.description),
-        category(study),
-        label(category(study)),
-        ...(study.data.tags ?? []),
-        study.data.objective,
-        ...(study.data.tools ?? []),
-        study.data.skill,
-        study.data.outcome,
-    ]
-        .filter(Boolean)
-        .join(" ")
-        .replace(/\s+/g, " ")
-        .trim()
-        .toLowerCase();
+const leadMeta = leadStudyRaw
+	? [
+			leadStudyRaw.data.tools?.length
+				? `Tools: ${leadStudyRaw.data.tools.join(", ")}`
+				: "",
+			leadStudyRaw.data.tags?.length
+				? `Tags: ${leadStudyRaw.data.tags.join(" · ")}`
+				: "",
+		]
+			.filter(Boolean)
+			.join(" · ")
+	: "";
+
+// The only authorised `sameAs` URLs are the Markdown links in the profiles page;
+// derive them from that raw body so no URL is hand-copied into this file.
+// The docs loader strips a trailing `/index` from `entry.id`, so match the
+// profiles page by id or, defensively, by its file path.
+const profilesEntry = allDocs.find(
+	({ id, filePath }) =>
+		id === "profiles" ||
+		(filePath ?? "").replace(/\\/g, "/").endsWith("profiles/index.md"),
+);
+const profilesBody = profilesEntry?.body ?? "";
+const sameAs = [
+	...profilesBody.matchAll(/\]\((https?:\/\/[^)\s]+)\)/g),
+].map((match) => match[1]);
+
+const jsonLd = {
+	"@context": "https://schema.org",
+	"@graph": [
+		{
+			"@type": "WebSite",
+			name: "taktak.hu",
+			url: "https://taktak.hu/",
+			description,
+			author: { "@id": PERSON_ID },
+			publisher: { "@id": PERSON_ID },
+		},
+		{ ...PERSON, sameAs },
+	],
+};
 ---
 
-<html lang="en">
-    <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="description" content={description} />
-        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-        <link rel="icon" href="/favicon.ico" sizes="32x32" />
-        <link rel="canonical" href="https://taktak.hu/" />
-        <meta property="og:type" content="website" />
-        <meta property="og:site_name" content="taktak.hu" />
-        <meta property="og:title" content={title} />
-        <meta property="og:description" content={description} />
-        <meta property="og:url" content="https://taktak.hu/" />
-        <meta property="og:image" content="https://taktak.hu/og-default.png" />
-        <meta property="og:image:width" content="1200" />
-        <meta property="og:image:height" content="630" />
-        <meta name="twitter:card" content="summary_large_image" />
-        {/* Referrer-Policy is the only security header GitHub Pages honours, via
-            <meta name="referrer">. The Starlight Head override emits it for every
-            Starlight page; this standalone route needs its own copy. */}
-        <meta name="referrer" content="strict-origin-when-cross-origin" />
-        <title>{title}</title>
-        {/* This page is not a Starlight route, so the Head override cannot reach it;
-            the WebSite node is emitted here instead. */}
-        <script
-            type="application/ld+json"
-            set:html={JSON.stringify({
-                "@context": "https://schema.org",
-                "@graph": [
-                    {
-                        "@type": "WebSite",
-                        name: "taktak.hu",
-                        url: "https://taktak.hu/",
-                        description,
-                        author: { "@id": "https://taktak.hu/#person" },
-                        publisher: { "@id": "https://taktak.hu/#person" },
-                    },
-                    {
-                        "@type": "Person",
-                        "@id": "https://taktak.hu/#person",
-                        name: "0xTakTak",
-                        url: "https://taktak.hu/",
-                        sameAs: [
-                            "https://tryhackme.com/p/0xTakTak",
-                            "https://profile.hackthebox.com/profile/019c9493-c1c4-7212-a144-d2b4755f02eb",
-                        ],
-                    },
-                ],
-            })}
-        />
-        {/* Match Starlight's theme contract: shared `starlight-theme` key, set before paint.
-            Absent or empty storage means auto (follow the OS). */}
-        <script is:inline>
-            (() => {
-                const stored = (() => {
-                    try {
-                        return localStorage.getItem("starlight-theme");
-                    } catch {
-                        return null;
-                    }
-                })();
-                const explicit =
-                    stored === "light" || stored === "dark" ? stored : null;
-                const theme =
-                    explicit ??
-                    (window.matchMedia("(prefers-color-scheme: dark)").matches
-                        ? "dark"
-                        : "light");
-                document.documentElement.dataset.theme = theme;
-                document.documentElement.style.colorScheme = theme;
-            })();
-        </script>
-        <style>
-            /* Palette aliases point at the shared Starlight tokens in portfolio.css. */
-            :root {
-                --ink: var(--portfolio-ink);
-                --muted: var(--portfolio-muted);
-                --line: var(--portfolio-line);
-                --card: var(--portfolio-surface-raised);
-                --accent: var(--portfolio-accent);
-                --soft: var(--portfolio-accent-soft);
-                /* Interactive control boundaries come from --control-line in
-                   portfolio.css (>=3:1 in both themes). Decorative hairlines
-                   keep --line. Do not redefine the value here: a local override
-                   would drift from the palette. */
-            }
-            *,
-            *::before,
-            *::after {
-                box-sizing: border-box;
-            }
-            /* Shared body colour/type come from portfolio.css; the homepage body is
-         a flat surface with no decorative background. */
-            body {
-                margin: 0;
-                font-size: 1rem;
-                line-height: 1.6;
-            }
-            a {
-                color: inherit;
-            }
-            .portfolio-shell {
-                max-width: 76rem;
-                margin: auto;
-                padding: 1.25rem clamp(1.25rem, 4vw, 4rem) 4rem;
-            }
-            .portfolio-header {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                gap: 1rem;
-                padding: 0.5rem 0 3rem;
-            }
-            .portfolio-brand {
-                font-weight: 600;
-                font-synthesis: none;
-                letter-spacing: -0.02em;
-                text-decoration: none;
-            }
-            .portfolio-header-actions {
-                display: flex;
-                align-items: center;
-                gap: 1rem;
-                min-width: 0;
-            }
-            .portfolio-nav {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 1rem;
-                color: var(--muted);
-                font-size: 0.9rem;
-            }
-            .portfolio-nav a:hover,
-            .portfolio-nav a:focus-visible {
-                color: var(--accent);
-            }
-            /* Three-state theme control: segmented, monospace, hairline edges. */
-            .portfolio-theme {
-                display: inline-flex;
-                border: 1px solid var(--control-line);
-                border-radius: var(--portfolio-radius);
-                overflow: hidden;
-            }
-            .portfolio-theme-option {
-                min-width: 24px;
-                min-height: 24px;
-                padding: 0.4rem 0.7rem;
-                border: 0;
-                border-inline-start: 1px solid var(--control-line);
-                background: var(--card);
-                color: var(--ink);
-                font-family: var(--font-mono), ui-monospace, monospace;
-                font-size: 0.8rem;
-                cursor: pointer;
-            }
-            .portfolio-theme-option:first-child {
-                border-inline-start: 0;
-            }
-            .portfolio-theme-option:hover,
-            .portfolio-theme-option:focus-visible {
-                color: var(--accent);
-            }
-            /* Active state uses an underline, not colour alone. */
-            .portfolio-theme-option[aria-pressed="true"] {
-                color: var(--accent);
-                text-decoration: underline;
-                text-underline-offset: 0.25em;
-            }
-            :global(html) {
-                color-scheme: light;
-            }
-            :global(html[data-theme="dark"]) {
-                color-scheme: dark;
-            }
-            /* Single-column editorial hero: kicker, H1, lede, CTA. More air
-               below than above. */
-            .portfolio-hero {
-                padding: 2.5rem 0 5rem;
-            }
-            .portfolio-kicker {
-                color: var(--accent);
-                font-size: 0.78rem;
-                font-weight: 750;
-                letter-spacing: 0.12em;
-                text-transform: uppercase;
-            }
-            h1,
-            h2,
-            h3,
-            p {
-                margin-top: 0;
-            }
-            h1 {
-                max-width: 14ch;
-                margin-bottom: 1.25rem;
-                font-size: clamp(3rem, 8vw, 6.5rem);
-                line-height: 0.95;
-                letter-spacing: -0.07em;
-            }
-            .portfolio-lede {
-                max-width: var(--portfolio-copy);
-                color: var(--muted);
-                font-size: 1.15rem;
-            }
-            .portfolio-actions {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 0.75rem;
-                margin-top: 1.75rem;
-            }
-            .portfolio-button {
-                display: inline-block;
-                border: 1px solid var(--accent);
-                border-radius: var(--portfolio-radius);
-                padding: 0.7rem 1.1rem;
-                background: var(--accent);
-                color: var(--portfolio-accent-contrast);
-                font-weight: 700;
-                text-decoration: none;
-            }
-            .portfolio-button-secondary {
-                background: transparent;
-                color: var(--accent);
-            }
-            .portfolio-button:hover,
-            .portfolio-button:focus-visible {
-                filter: brightness(1.12);
-            }
-            .portfolio-section {
-                padding: 3rem 0;
-            }
-            /* Deliberate, non-uniform rhythm; values stay on the type scale.
-               Focus is the tightest; the lead case gets more air above than
-               below so its hairline pair reads as one unit. */
-            .portfolio-section--focus {
-                padding: 1.5rem 0 2rem;
-            }
-            .portfolio-section--lead {
-                padding: 5rem 0 2.5rem;
-            }
-            .portfolio-section-heading {
-                display: flex;
-                justify-content: space-between;
-                align-items: end;
-                gap: 1rem;
-                margin-bottom: 1.5rem;
-            }
-            .portfolio-section-heading h2 {
-                margin-bottom: 0;
-                font-size: clamp(1.7rem, 3vw, 2.4rem);
-                letter-spacing: -0.04em;
-            }
-            .portfolio-section-heading p {
-                margin-bottom: 0.2rem;
-                color: var(--muted);
-            }
-            /* Focus cards form a balanced 2×2 on desktop. */
-            .portfolio-category-grid {
-                display: grid;
-                grid-template-columns: repeat(2, 1fr);
-                gap: 1rem;
-            }
-            .portfolio-category,
-            .portfolio-study {
-                border: 1px solid var(--line);
-                border-radius: var(--portfolio-radius);
-                background: var(--card);
-            }
-            .portfolio-category {
-                padding: 1.25rem;
-                text-decoration: none;
-            }
-            .portfolio-category:hover,
-            .portfolio-category:focus-visible {
-                border-color: var(--accent);
-            }
-            .portfolio-category h3 {
-                margin: 0.75rem 0 0.25rem;
-            }
-            .portfolio-category p {
-                margin-bottom: 0;
-                color: var(--muted);
-                font-size: 0.9rem;
-            }
-            .portfolio-category-count {
-                color: var(--accent);
-                font-size: 1.8rem;
-                font-weight: 750;
-            }
-            /* Lead case: hairline rules above and below, no filled card. */
-            .portfolio-lead {
-                padding: 1.75rem 0;
-                border-top: 1px solid var(--line);
-                border-bottom: 1px solid var(--line);
-            }
-            .portfolio-lead-eyebrow {
-                color: var(--muted);
-                font-family: var(--font-mono), ui-monospace, monospace;
-                font-size: 0.72rem;
-                letter-spacing: 0.12em;
-                text-transform: uppercase;
-            }
-            .portfolio-lead-headline {
-                margin: 0.75rem 0 0;
-                max-width: 30ch;
-                font-family: var(--font-display), Georgia, serif;
-                font-size: clamp(1.6rem, 3vw, 2.1rem);
-                line-height: 1.18;
-                letter-spacing: -0.01em;
-            }
-            .portfolio-lead-headline a {
-                text-decoration: none;
-            }
-            .portfolio-lead-headline a:hover,
-            .portfolio-lead-headline a:focus-visible {
-                color: var(--accent);
-            }
-            .portfolio-lead-dek {
-                margin: 0.9rem 0 0;
-                max-width: 60ch;
-                color: var(--muted);
-                font-size: 1.05rem;
-            }
-            .portfolio-lead-meta {
-                margin: 1rem 0 0;
-                font-family: var(--font-mono), ui-monospace, monospace;
-                font-size: 0.78rem;
-                color: var(--muted);
-            }
-            .portfolio-eyebrow {
-                color: var(--accent);
-                font-size: 0.75rem;
-                font-weight: 750;
-                letter-spacing: 0.08em;
-                text-transform: uppercase;
-            }
-            .portfolio-explorer {
-                /* Clear break from the lead section; tighter trailing space. */
-                padding: 4rem 0 3rem;
-                border-top: 1px solid var(--line);
-            }
-            .portfolio-explorer-subtitle {
-                margin: -1rem 0 1.5rem;
-                color: var(--muted);
-                font-size: 0.95rem;
-            }
-            /* Search/sort row stays separate from the focus filters. */
-            .portfolio-search-row {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 0.5rem 1rem;
-                align-items: end;
-                margin-bottom: 1rem;
-            }
-            .portfolio-field {
-                display: grid;
-                gap: 0.35rem;
-                flex: 1 1 16rem;
-                min-width: 0;
-            }
-            .portfolio-field--sort {
-                flex: 0 0 auto;
-            }
-            .portfolio-controls {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 0.75rem;
-                align-items: center;
-                margin-bottom: 1.5rem;
-            }
-            .portfolio-filter-list {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 0.4rem;
-                list-style: none;
-                margin: 0;
-                padding: 0;
-            }
-            .portfolio-filter {
-                border: 1px solid var(--control-line);
-                border-radius: var(--portfolio-radius);
-                padding: 0.55rem 0.85rem;
-                background: var(--card);
-                color: var(--ink);
-                cursor: pointer;
-                font: inherit;
-            }
-            .portfolio-filter[aria-pressed="true"],
-            .portfolio-filter:hover,
-            .portfolio-filter:focus-visible {
-                border-color: var(--accent);
-                background: var(--soft);
-                color: var(--accent);
-            }
-            /* Pressed state also carries a non-colour cue, matching the theme
-               control: colour alone is not enough (WCAG 1.4.1). */
-            .portfolio-filter[aria-pressed="true"] {
-                text-decoration: underline;
-                text-underline-offset: 0.25em;
-            }
-            .portfolio-search {
-                min-width: min(100%, 16rem);
-                width: 100%;
-                border: 1px solid var(--control-line);
-                border-radius: var(--portfolio-radius);
-                padding: 0.65rem 0.8rem;
-                background: var(--card);
-                color: var(--ink);
-                font: inherit;
-            }
-            .portfolio-search-label,
-            .portfolio-sort-label {
-                color: var(--muted);
-                font-size: 0.9rem;
-            }
-            .portfolio-sort {
-                border: 1px solid var(--control-line);
-                border-radius: var(--portfolio-radius);
-                padding: 0.6rem 0.7rem;
-                background: var(--card);
-                color: var(--ink);
-                font: inherit;
-            }
-            .portfolio-study-grid {
-                display: grid;
-                grid-template-columns: repeat(3, 1fr);
-                gap: 1rem;
-            }
-            /* No fixed card widths; `min-width: 0` stops a long unbreakable title
-               or tag from widening a grid track (and overflowing) at 320px. */
-            .portfolio-category,
-            .portfolio-study {
-                min-width: 0;
-            }
-            .portfolio-category h3,
-            .portfolio-study h3,
-            .portfolio-study p,
-            .portfolio-tag {
-                overflow-wrap: anywhere;
-            }
-            .portfolio-study {
-                display: flex;
-                flex-direction: column;
-                padding: 1.15rem;
-            }
-            /* `display: flex` above would otherwise beat the UA `[hidden]` rule. */
-            .portfolio-study[hidden] {
-                display: none;
-            }
-            .portfolio-load-more-wrap {
-                display: flex;
-                justify-content: center;
-                margin-top: 1.5rem;
-            }
-            .portfolio-load-more {
-                border: 1px solid var(--accent);
-                border-radius: var(--portfolio-radius);
-                padding: 0.7rem 1.4rem;
-                background: var(--card);
-                color: var(--accent);
-                cursor: pointer;
-                font: inherit;
-                font-weight: 700;
-            }
-            .portfolio-load-more:hover,
-            .portfolio-load-more:focus-visible {
-                background: var(--soft);
-            }
-            .portfolio-load-more[hidden] {
-                display: none;
-            }
-            .portfolio-study h3 {
-                margin: 0.5rem 0;
-                font-size: 1.05rem;
-                line-height: 1.25;
-            }
-            .portfolio-study h3 a {
-                text-decoration: none;
-            }
-            .portfolio-study h3 a:hover,
-            .portfolio-study h3 a:focus-visible {
-                color: var(--accent);
-            }
-            .portfolio-study p {
-                margin-bottom: 1rem;
-                color: var(--muted);
-                font-size: 0.9rem;
-            }
-            .portfolio-tags {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 0.35rem;
-                margin-top: auto;
-                padding-top: 0.5rem;
-            }
-            .portfolio-tag {
-                border-radius: var(--portfolio-radius);
-                background: var(--soft);
-                padding: 0.2rem 0.45rem;
-                color: var(--accent);
-                font-size: 0.72rem;
-            }
-            .portfolio-empty {
-                display: none;
-                border: 1px dashed var(--line);
-                border-radius: var(--portfolio-radius);
-                padding: 2rem;
-                color: var(--muted);
-                text-align: center;
-            }
-            @media (max-width: 48rem) {
-                .portfolio-category-grid,
-                .portfolio-study-grid {
-                    grid-template-columns: 1fr;
-                }
-                .portfolio-section-heading {
-                    display: block;
-                }
-                .portfolio-section-heading p {
-                    margin-top: 0.4rem;
-                }
-            }
-            @media (max-width: 380px) {
-                .portfolio-header {
-                    align-items: stretch;
-                    flex-direction: column;
-                }
-                .portfolio-nav {
-                    flex-wrap: wrap;
-                    min-width: 0;
-                }
-                .portfolio-nav a {
-                    overflow-wrap: anywhere;
-                }
-            }
-            .portfolio-skip-link {
-                position: absolute;
-                left: 1rem;
-                top: -4rem;
-                z-index: 10;
-                border: 1px solid var(--accent);
-                border-radius: var(--portfolio-radius);
-                padding: 0.6rem 1rem;
-                background: var(--card);
-                color: var(--accent);
-                font-weight: 700;
-                text-decoration: none;
-                transition: top 0.15s ease;
-            }
-            .portfolio-skip-link:focus {
-                top: 1rem;
-                outline: 3px solid var(--accent);
-                outline-offset: 2px;
-            }
-            /* Forced-colours: keep control boundaries, pressed state and focus
-               visible using system colours (background colours are overridden). */
-            @media (forced-colors: active) {
-                .portfolio-theme-option,
-                .portfolio-filter,
-                .portfolio-search,
-                .portfolio-sort,
-                .portfolio-load-more,
-                .portfolio-skip-link {
-                    border-color: ButtonBorder;
-                }
-                .portfolio-filter[aria-pressed="true"],
-                .portfolio-theme-option[aria-pressed="true"] {
-                    border-color: Highlight;
-                    outline: 1px solid Highlight;
-                    background: Highlight;
-                    color: HighlightText;
-                }
-                .portfolio-theme-option:focus-visible,
-                .portfolio-filter:focus-visible,
-                .portfolio-search:focus-visible,
-                .portfolio-sort:focus-visible,
-                .portfolio-load-more:focus-visible,
-                .portfolio-skip-link:focus,
-                .portfolio-study h3 a:focus-visible {
-                    outline-color: Highlight;
-                }
-                .portfolio-explorer {
-                    border-top-color: ButtonText;
-                }
-                .portfolio-study {
-                    border-color: ButtonText;
-                }
-            }
-        </style>
-    </head>
-    <body>
-        <a class="portfolio-skip-link" href="#main-content">
-            Skip to main content
-        </a>
-        <div class="portfolio-shell">
-            <header class="portfolio-header">
-                <BrandLockup class="portfolio-brand" />
-                <div class="portfolio-header-actions">
-                    <nav class="portfolio-nav" aria-label="Primary navigation">
-                        <a href="/case-studies/">Case Studies</a>
-                        <a href="/prolabs/">Pro Labs</a>
-                        <a href="/profiles/">Profiles</a>
-                    </nav>
-                    <div
-                        class="portfolio-theme"
-                        id="portfolio-theme"
-                        role="group"
-                        aria-label="Colour theme"
-                    >
-                        <button
-                            class="portfolio-theme-option"
-                            type="button"
-                            data-theme-value="auto"
-                            aria-pressed="true"
-                        >
-                            Auto
-                        </button>
-                        <button
-                            class="portfolio-theme-option"
-                            type="button"
-                            data-theme-value="light"
-                            aria-pressed="false"
-                        >
-                            Light
-                        </button>
-                        <button
-                            class="portfolio-theme-option"
-                            type="button"
-                            data-theme-value="dark"
-                            aria-pressed="false"
-                        >
-                            Dark
-                        </button>
-                    </div>
-                </div>
-            </header>
-
-            <main id="main-content">
-                <section
-                    class="portfolio-hero"
-                    aria-labelledby="portfolio-title"
-                >
-                    <div>
-                        <p class="portfolio-kicker">Security case studies</p>
-                        <h1 id="portfolio-title">0xTakTak</h1>
-                        <p class="portfolio-lede">
-                            I'm interested in cybersecurity, particularly red and blue
-                            team work, incident investigation, and Windows and Active
-                            Directory environments. Most of my time goes into building
-                            labs, working through HTB content, and exploring attacks
-                            from both the offensive and defensive sides.
-                        </p>
-                        <div class="portfolio-actions">
-                            <a class="portfolio-button" href="#explorer">
-                                View case studies
-                            </a>
-                        </div>
-                    </div>
-                </section>
-
-                <section
-                    class="portfolio-section portfolio-section--focus"
-                    aria-labelledby="portfolio-categories-title"
-                >
-                    <div class="portfolio-section-heading">
-                        <h2 id="portfolio-categories-title">
-                            Pick the kind of problem
-                        </h2>
-                        <p>
-                            AD escalation, Linux footholds, or incident
-                            reconstruction.
-                        </p>
-                    </div>
-                    <div class="portfolio-category-grid">
-                        {(["linux", "windows", "dfir"] as const).map((kind) => (
-                            <a
-                                class="portfolio-category"
-                                href={
-                                    kind === "dfir"
-                                        ? "/case-studies/htb/sherlocks/dfir/"
-                                        : `/case-studies/htb/machines/${kind}/`
-                                }
-                            >
-                                <span class="portfolio-category-count">
-                                    {counts[kind]}
-                                </span>
-                                <h3>{label(kind)}</h3>
-                                <p>
-                                    {kind === "dfir"
-                                        ? "Timeline reconstruction, log analysis, and persistence."
-                                        : kind === "windows"
-                                          ? "Active Directory attack paths, delegation, and domain escalation."
-                                          : "Web and service exploitation, credential recovery, and local privilege escalation."}
-                                </p>
-                            </a>
-                        ))}
-                        <a class="portfolio-category" href="/prolabs/">
-                            <span class="portfolio-category-count">↗</span>
-                            <h3>Pro Labs</h3>
-                            <p>Completed Pro Lab credentials and their certificates.</p>
-                        </a>
-                    </div>
-                </section>
-
-                <section
-                    class="portfolio-section portfolio-section--lead"
-                    aria-labelledby="portfolio-latest-title"
-                >
-                    <div class="portfolio-section-heading">
-                        <h2 id="portfolio-latest-title">Latest case</h2>
-                        <p>
-                            The most recent addition; the explorer below lists
-                            every published study.
-                        </p>
-                    </div>
-                    {leadStudy && (
-                        <article class="portfolio-lead">
-                            <p class="portfolio-lead-eyebrow">
-                                {label(category(leadStudy))} · latest addition
-                            </p>
-                            <h3 class="portfolio-lead-headline">
-                                <a href={`/${leadStudy.id}/`}>
-                                    {leadStudy.data.title}
-                                </a>
-                            </h3>
-                            <p class="portfolio-lead-dek">
-                                {cleanDescription(leadStudy.data.description)}
-                            </p>
-                            {leadMeta && (
-                                <p class="portfolio-lead-meta">{leadMeta}</p>
-                            )}
-                        </article>
-                    )}
-                </section>
-
-                <section
-                    class="portfolio-section portfolio-explorer"
-                    id="explorer"
-                    aria-labelledby="portfolio-explorer-title"
-                >
-                    <div class="portfolio-section-heading">
-                        <h2 id="portfolio-explorer-title">
-                            Case-study explorer
-                        </h2>
-                        <p aria-live="polite" aria-atomic="true" role="status">
-                            <span id="portfolio-result-count">
-                                {studies.length}
-                            </span>{" "}
-                            results
-                        </p>
-                    </div>
-                    <p class="portfolio-explorer-subtitle">
-                        Browse all {studies.length} published case studies, then
-                        narrow by focus or keyword.
-                    </p>
-                    {/* Search/sort row is separate from the focus filters below. */}
-                    <div class="portfolio-search-row">
-                        <div class="portfolio-field">
-                            <label
-                                class="portfolio-search-label"
-                                for="portfolio-search"
-                            >
-                                Search case studies
-                            </label>
-                            <input
-                                class="portfolio-search"
-                                id="portfolio-search"
-                                type="search"
-                                placeholder="Try AD CS, Docker, Kerberos, or event logs"
-                            />
-                        </div>
-                        <div class="portfolio-field portfolio-field--sort">
-                            <label
-                                class="portfolio-sort-label"
-                                for="portfolio-sort"
-                            >
-                                Sort by
-                            </label>
-                            <select class="portfolio-sort" id="portfolio-sort">
-                                <option value="newest" selected>
-                                    Newest
-                                </option>
-                                <option value="az">A–Z</option>
-                                <option value="category">Category</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div
-                        class="portfolio-controls"
-                        role="group"
-                        aria-label="Filter case studies"
-                    >
-                        <ul class="portfolio-filter-list">
-                            {(["all", "linux", "windows", "dfir"] as const).map(
-                                (kind) => (
-                                    <li>
-                                        <button
-                                            class="portfolio-filter"
-                                            type="button"
-                                            data-filter={kind}
-                                            aria-pressed={
-                                                kind === "all"
-                                                    ? "true"
-                                                    : "false"
-                                            }
-                                        >
-                                            {kind === "all"
-                                                ? "All"
-                                                : label(kind)}{" "}
-                                            <span>({counts[kind]})</span>
-                                        </button>
-                                    </li>
-                                ),
-                            )}
-                        </ul>
-                    </div>
-                    <div
-                        class="portfolio-study-grid"
-                        id="portfolio-study-grid"
-                        tabindex="-1"
-                    >
-                        {studies.map((study, index) => {
-                            const kind = category(study);
-                            return (
-                                <article
-                                    class="portfolio-study"
-                                    data-kind={kind}
-                                    data-title={study.data.title}
-                                    data-added={study.data.addedAt ?? ""}
-                                    data-id={study.id}
-                                    data-search={searchableText(study)}
-                                    hidden={index >= 12}
-                                >
-                                    <span class="portfolio-eyebrow">
-                                        {label(kind)}
-                                    </span>
-                                    <h3>
-                                        <a href={`/${study.id}/`}>
-                                            {study.data.title}
-                                        </a>
-                                    </h3>
-                                    <p>
-                                        {cleanDescription(
-                                            study.data.description,
-                                        )}
-                                    </p>
-                                    <div
-                                        class="portfolio-tags"
-                                        role="group"
-                                        aria-label="Topics"
-                                    >
-                                        {(study.data.tags ?? [])
-                                            .slice(0, 4)
-                                            .map((tag) => (
-                                                <span class="portfolio-tag">
-                                                    {tag}
-                                                </span>
-                                            ))}
-                                    </div>
-                                </article>
-                            );
-                        })}
-                    </div>
-                    <div class="portfolio-load-more-wrap">
-                        <button
-                            class="portfolio-load-more"
-                            type="button"
-                            id="portfolio-load-more"
-                            aria-controls="portfolio-study-grid"
-                            hidden
-                        >
-                            Show 12 more cases
-                        </button>
-                    </div>
-                    {/* No-JS fallback: paging and the button are JS-only, so reveal every card. */}
-                    <noscript>
-                        <style is:global>
-                            .portfolio-study[hidden] {
-                                display: flex !important;
-                            }
-                            .portfolio-load-more-wrap {
-                                display: none;
-                            }
-                        </style>
-                    </noscript>
-                    <p
-                        class="portfolio-empty"
-                        id="portfolio-empty"
-                        role="status"
-                    >
-                        Nothing matches that combination. Clear a focus filter
-                        or search for a tool, protocol, CVE, or technique.
-                    </p>
-                </section>
-            </main>
-
-            <footer class="portfolio-footer">
-                <p>&copy; {new Date().getFullYear()} taktak.hu</p>
-                <nav class="portfolio-footer-links" aria-label="Footer">
-                    <a href="/">Home</a>
-                    <a href="/case-studies/">Case Studies</a>
-                    <a href="/prolabs/">Pro Labs</a>
-                    <a href="/profiles/">Profiles</a>
-                    <a href="/method/">Method</a>
-                    <a href="https://github.com/taktak0x/security-portfolio">Source</a>
-                    <a href="https://github.com/taktak0x/security-portfolio/issues/new">Contact</a>
-                </nav>
-            </footer>
-        </div>
-        <script is:inline>
-            const buttons = [...document.querySelectorAll("[data-filter]")];
-            const grid = document.querySelector("#portfolio-study-grid");
-            let cards = [...grid.querySelectorAll("[data-kind]")];
-            const search = document.querySelector("#portfolio-search");
-            const sort = document.querySelector("#portfolio-sort");
-            const resultCount = document.querySelector(
-                "#portfolio-result-count",
-            );
-            const empty = document.querySelector("#portfolio-empty");
-            const loadMore = document.querySelector("#portfolio-load-more");
-            const PAGE_SIZE = 12;
-            // Seed state from the URL so a filtered view can be linked/shared.
-            const urlParams = new URLSearchParams(window.location.search);
-            const focusParam = urlParams.get("focus");
-            let active = buttons.some(
-                (button) => button.dataset.filter === focusParam,
-            )
-                ? focusParam
-                : "all";
-            let shown = PAGE_SIZE;
-            const queryParam = urlParams.get("q");
-            if (queryParam) search.value = queryParam;
-            const sortParam = urlParams.get("sort");
-            if ([...sort.options].some((option) => option.value === sortParam)) {
-                sort.value = sortParam;
-            }
-            buttons.forEach((button) =>
-                button.setAttribute(
-                    "aria-pressed",
-                    String(button.dataset.filter === active),
-                ),
-            );
-
-            const collator = new Intl.Collator(undefined, {
-                sensitivity: "base",
-            });
-            const titleKey = (card) => card.dataset.title || "";
-            const idKey = (card) => card.dataset.id || "";
-            const addedKey = (card) => card.dataset.added || "";
-            // Newest: explicit `addedAt` desc (missing values last), stable id tie-break.
-            // A–Z: title. Category: category then title. All tie-break on id.
-            const comparators = {
-                newest: (a, b) => {
-                    const addedA = addedKey(a);
-                    const addedB = addedKey(b);
-                    if (addedA !== addedB) {
-                        if (!addedA) return 1;
-                        if (!addedB) return -1;
-                        return addedB.localeCompare(addedA);
-                    }
-                    return idKey(a).localeCompare(idKey(b));
-                },
-                az: (a, b) =>
-                    collator.compare(titleKey(a), titleKey(b)) ||
-                    idKey(a).localeCompare(idKey(b)),
-                category: (a, b) =>
-                    collator.compare(
-                        a.dataset.kind || "",
-                        b.dataset.kind || "",
-                    ) ||
-                    collator.compare(titleKey(a), titleKey(b)) ||
-                    idKey(a).localeCompare(idKey(b)),
-            };
-            // Keep `cards` in current DOM order so paging picks the first N by sort order.
-            const applySort = () => {
-                const comparator =
-                    comparators[sort.value] || comparators.newest;
-                cards = [...cards].sort(comparator);
-                cards.forEach((card) => grid.appendChild(card));
-            };
-
-            const matches = (card, query) =>
-                (active === "all" || card.dataset.kind === active) &&
-                card.dataset.search.includes(query);
-
-            const update = () => {
-                const query = search.value
-                    .trim()
-                    .toLowerCase()
-                    .replace(/\s+/g, " ");
-                // While browsing (no focus/keyword) reveal pages of 12. An active
-                // search or filter reveals every matching card and updates the count.
-                const browsing = active === "all" && !query;
-                const matched = cards.filter((card) => matches(card, query));
-                const limit = browsing ? shown : matched.length;
-                const visible = new Set(matched.slice(0, limit));
-                cards.forEach((card) => {
-                    card.hidden = !visible.has(card);
-                });
-                resultCount.textContent = matched.length;
-                empty.style.display = matched.length ? "none" : "block";
-                const hideLoadMore = !(browsing && matched.length > shown);
-                // Hiding the button that was just activated would drop focus to
-                // <body>; move it to the grid so the user stays in the explorer.
-                if (hideLoadMore && document.activeElement === loadMore) {
-                    grid.focus();
-                }
-                loadMore.hidden = hideLoadMore;
-            };
-
-            // Mirror explorer state into the address bar so a view is shareable.
-            // Defaults are omitted so the plain homepage URL stays plain.
-            const syncUrl = () => {
-                const params = new URLSearchParams();
-                if (active !== "all") params.set("focus", active);
-                const query = search.value.trim();
-                if (query) params.set("q", query);
-                if (sort.value !== "newest") params.set("sort", sort.value);
-                const searchPart = params.toString();
-                const hash = searchPart ? "#explorer" : window.location.hash;
-                // `replaceState` (never `pushState`): typing must not fill history.
-                history.replaceState(
-                    null,
-                    "",
-                    `${window.location.pathname}${searchPart ? `?${searchPart}` : ""}${hash}`,
-                );
-            };
-
-            buttons.forEach((button) =>
-                button.addEventListener("click", () => {
-                    active = button.dataset.filter;
-                    shown = PAGE_SIZE;
-                    buttons.forEach((item) =>
-                        item.setAttribute(
-                            "aria-pressed",
-                            String(item === button),
-                        ),
-                    );
-                    update();
-                    syncUrl();
-                }),
-            );
-            search.addEventListener("input", () => {
-                update();
-                syncUrl();
-            });
-            sort.addEventListener("change", () => {
-                applySort();
-                update();
-                syncUrl();
-            });
-            loadMore.addEventListener("click", () => {
-                shown += PAGE_SIZE;
-                update();
-            });
-
-            applySort();
-            update();
-            syncUrl();
-        </script>
-        <script is:inline>
-            (() => {
-                const root = document.documentElement;
-                const group = document.querySelector("#portfolio-theme");
-                if (!group) return;
-                const options = [
-                    ...group.querySelectorAll("[data-theme-value]"),
-                ];
-                const media = window.matchMedia(
-                    "(prefers-color-scheme: dark)",
-                );
-                const readStored = () => {
-                    try {
-                        return localStorage.getItem("starlight-theme");
-                    } catch {
-                        return null;
-                    }
-                };
-                const isExplicit = (value) =>
-                    value === "light" || value === "dark";
-                // Auto follows the OS; explicit wins.
-                const resolved = (value) =>
-                    isExplicit(value)
-                        ? value
-                        : media.matches
-                          ? "dark"
-                          : "light";
-                const sync = (stored) => {
-                    const theme = resolved(stored);
-                    root.dataset.theme = theme;
-                    root.style.colorScheme = theme;
-                    const active = isExplicit(stored) ? stored : "auto";
-                    options.forEach((option) =>
-                        option.setAttribute(
-                            "aria-pressed",
-                            String(option.dataset.themeValue === active),
-                        ),
-                    );
-                };
-                // Only listens while no explicit preference is stored.
-                const onSystemChange = () => {
-                    if (!isExplicit(readStored())) sync(readStored());
-                };
-                const setPreference = (value) => {
-                    try {
-                        if (value === "auto") {
-                            localStorage.removeItem("starlight-theme");
-                        } else {
-                            localStorage.setItem("starlight-theme", value);
-                        }
-                    } catch {}
-                    const stored = readStored();
-                    if (isExplicit(stored)) {
-                        media.removeEventListener("change", onSystemChange);
-                    } else {
-                        media.addEventListener("change", onSystemChange);
-                    }
-                    sync(stored);
-                };
-                options.forEach((option) =>
-                    option.addEventListener("click", () =>
-                        setPreference(option.dataset.themeValue),
-                    ),
-                );
-                const stored = readStored();
-                if (!isExplicit(stored)) {
-                    media.addEventListener("change", onSystemChange);
-                }
-                sync(stored);
-            })();
-        </script>
-    </body>
-</html>
+<BaseLayout
+	title={title}
+	description={description}
+	canonical="https://taktak.hu/"
+	ogType="website"
+	jsonLd={jsonLd}
+	currentPath="/"
+>
+	<main id="main-content">
+		<div class="mx-auto w-full max-w-[86rem] px-4 pb-16 lg:px-8">
+			<HomeHero counts={counts} />
+			<FocusCards counts={counts} />
+			<LeadCase study={leadStudy} meta={leadMeta} />
+			<Explorer studies={studies} client:load />
+		</div>
+	</main>
+</BaseLayout>

@@ -21,7 +21,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          # Full history so Starlight's lastUpdated can read real file dates.
+          persist-credentials: false
+          # Full history so the git log last-updated lookup in
+          # src/pages/[...slug].astro can read real file dates.
           fetch-depth: 0
 
       - name: Set up pnpm
@@ -47,6 +49,9 @@ jobs:
       - name: Check content regularity
         run: pnpm run check:content
         continue-on-error: true
+
+      - name: Check accessibility
+        run: pnpm run check:a11y
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
