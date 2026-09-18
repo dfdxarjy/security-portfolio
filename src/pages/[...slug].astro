@@ -8,6 +8,7 @@ import { Pagination } from '../components/site/Pagination.tsx';
 import { DocsMeta } from '../components/site/DocsMeta.tsx';
 import { CaseRail } from '../components/site/CaseRail.tsx';
 import { CaseInfoPanel } from '../components/site/CaseInfoPanel.tsx';
+import { PERSON, PERSON_ID } from '../lib/schema.ts';
 
 export async function getStaticPaths() {
 	const entries = await getCollection('docs');
@@ -156,6 +157,8 @@ if (isCase) {
 	const article: Record<string, unknown> = {
 		'@type': 'Article',
 		headline: entry.data.title,
+		author: { '@id': PERSON_ID },
+		publisher: { '@id': PERSON_ID },
 	};
 	if (entry.data.description) article.description = entry.data.description;
 	const datePublished = entry.data.publishedAt ?? entry.data.addedAt;
@@ -166,6 +169,7 @@ if (isCase) {
 		'@context': 'https://schema.org',
 		'@graph': [
 			article,
+			PERSON,
 			{ '@type': 'BreadcrumbList', itemListElement: breadcrumbItems },
 		],
 	};

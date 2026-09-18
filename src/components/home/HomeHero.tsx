@@ -21,7 +21,7 @@ export default function HomeHero({ counts }: { counts: Counts }) {
 					id="portfolio-title"
 					className="mt-4 max-w-[14ch] text-[clamp(3rem,1.75rem+6.5vw,7.5rem)] leading-[0.92] tracking-[-0.07em]"
 				>
-					0xTakTak
+					Taktak
 				</h1>
 				<p className="mt-5 max-w-[68ch] text-pretty text-lg text-muted-foreground">
 					I'm interested in cybersecurity, particularly red and blue team

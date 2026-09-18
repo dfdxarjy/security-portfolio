@@ -32,6 +32,7 @@ export default function SearchDialog({
 	onClose: () => void;
 }) {
 	const dialogRef = React.useRef<HTMLDialogElement>(null);
+	const inputRef = React.useRef<HTMLInputElement>(null);
 	const loadedRef = React.useRef(false);
 	const [entries, setEntries] = React.useState<Entry[]>([]);
 	const [status, setStatus] = React.useState<Status>("idle");
@@ -43,6 +44,7 @@ export default function SearchDialog({
 		if (!dialog) return;
 		if (open && !dialog.open) {
 			dialog.showModal();
+			inputRef.current?.focus();
 		} else if (!open && dialog.open) {
 			dialog.close();
 		}
@@ -118,13 +120,13 @@ export default function SearchDialog({
 	return (
 		<dialog
 			ref={dialogRef}
-			aria-label="Search the case studies"
+			aria-labelledby="search-dialog-title"
 			onClick={handleBackdropClick}
 			onKeyDown={handleKeyDown}
 			className="fixed inset-0 m-auto h-fit max-h-[85dvh] w-[min(40rem,90vw)] overflow-y-auto overscroll-contain rounded-lg border border-border bg-background p-0 text-foreground shadow-none backdrop:bg-foreground/40">
 			<div className="flex flex-col gap-3 p-4">
 				<div className="flex items-center justify-between gap-3">
-					<h2 className="text-sm font-semibold">Search</h2>
+					<h2 id="search-dialog-title" className="text-sm font-semibold">Search</h2>
 					<Button
 						type="button"
 						variant="ghost"
@@ -135,6 +137,7 @@ export default function SearchDialog({
 					</Button>
 				</div>
 				<Input
+					ref={inputRef}
 					type="search"
 					aria-label="Search query"
 					value={query}

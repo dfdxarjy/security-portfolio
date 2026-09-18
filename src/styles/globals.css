@@ -96,6 +96,10 @@
 
 .portfolio-prose p { margin: 0 0 1.15rem; text-wrap: pretty; }
 
+.portfolio-prose :where(p, ul, ol, blockquote, dl) {
+	max-width: var(--portfolio-copy, 68ch);
+}
+
 .portfolio-prose :where(ul, ol) { margin: 0 0 1.15rem; padding-inline-start: 1.5rem; }
 .portfolio-prose ul { list-style: disc; }
 .portfolio-prose ol { list-style: decimal; }
