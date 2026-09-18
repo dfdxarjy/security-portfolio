@@ -151,6 +151,10 @@ const searchableText = (study: (typeof studies)[number]) =>
                         : "light");
                 document.documentElement.dataset.theme = theme;
                 document.documentElement.style.colorScheme = theme;
+                // Opt in to the scroll-reveal gate before first paint so the
+                // reveal elements are never painted in their hidden state;
+                // without JS the class is absent and all content stays visible.
+                document.documentElement.classList.add("js-reveal");
             })();
         </script>
         <style>
@@ -749,6 +753,40 @@ const searchableText = (study: (typeof studies)[number]) =>
                     overflow-wrap: anywhere;
                 }
             }
+            /* Scroll reveal: transform + opacity only, opt-in via the
+               `js-reveal` class the pre-paint head script adds, so no-JS
+               visitors see all content. `--reveal-i` is set by nth-child
+               below, never inline; the delay is capped at six steps. */
+            .js-reveal [data-reveal] {
+                opacity: 0;
+                transform: translateY(14px);
+                transition:
+                    opacity 420ms ease,
+                    transform 420ms ease;
+                transition-delay: calc(min(var(--reveal-i, 0), 6) * 60ms);
+            }
+            .js-reveal [data-reveal].is-visible {
+                opacity: 1;
+                transform: none;
+            }
+            .js-reveal .portfolio-category-grid > [data-reveal]:nth-child(2) {
+                --reveal-i: 1;
+            }
+            .js-reveal .portfolio-category-grid > [data-reveal]:nth-child(3) {
+                --reveal-i: 2;
+            }
+            .js-reveal .portfolio-category-grid > [data-reveal]:nth-child(4) {
+                --reveal-i: 3;
+            }
+            /* Reduced motion: final state immediately, no transition. */
+            @media (prefers-reduced-motion: reduce) {
+                .js-reveal [data-reveal],
+                .js-reveal [data-reveal].is-visible {
+                    opacity: 1;
+                    transform: none;
+                    transition: none;
+                }
+            }
             .portfolio-skip-link {
                 position: absolute;
                 left: 1rem;
@@ -918,7 +956,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                     class="portfolio-section portfolio-section--focus portfolio-grid"
                     aria-labelledby="portfolio-categories-title"
                 >
-                    <div class="portfolio-section-heading">
+                    <div class="portfolio-section-heading" data-reveal>
                         <h2 id="portfolio-categories-title">
                             Pick the kind of problem
                         </h2>
@@ -931,6 +969,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                         {(["linux", "windows", "dfir"] as const).map((kind) => (
                             <a
                                 class="portfolio-category"
+                                data-reveal
                                 href={
                                     kind === "dfir"
                                         ? "/case-studies/htb/sherlocks/dfir/"
@@ -950,7 +989,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                                 </p>
                             </a>
                         ))}
-                        <a class="portfolio-category" href="/prolabs/">
+                        <a class="portfolio-category" data-reveal href="/prolabs/">
                             <span class="portfolio-category-count">↗</span>
                             <h3>Pro Labs</h3>
                             <p>Completed Pro Lab credentials and their certificates.</p>
@@ -962,7 +1001,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                     class="portfolio-section portfolio-section--lead portfolio-grid"
                     aria-labelledby="portfolio-latest-title"
                 >
-                    <div class="portfolio-section-heading">
+                    <div class="portfolio-section-heading" data-reveal>
                         <h2 id="portfolio-latest-title">Latest case</h2>
                         <p>
                             The most recent addition; the explorer below lists
@@ -970,7 +1009,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                         </p>
                     </div>
                     {leadStudy && (
-                        <article class="portfolio-lead">
+                        <article class="portfolio-lead" data-reveal>
                             <p class="portfolio-lead-eyebrow">
                                 {label(category(leadStudy))} · latest addition
                             </p>
@@ -992,6 +1031,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                 <section
                     class="portfolio-section portfolio-explorer"
                     id="explorer"
+                    data-reveal
                     aria-labelledby="portfolio-explorer-title"
                 >
                     <div class="portfolio-section-heading">
@@ -1313,6 +1353,44 @@ const searchableText = (study: (typeof studies)[number]) =>
             applySort();
             update();
             syncUrl();
+        </script>
+        <script is:inline>
+            // Scroll reveal: transform + opacity only. Reduced-motion users
+            // get the final state immediately and no observer runs. If the
+            // observer is unavailable or init throws, every element is shown
+            // so a failure can never leave content hidden; the page's other
+            // scripts are separate blocks and keep running regardless.
+            (() => {
+                const items = [...document.querySelectorAll("[data-reveal]")];
+                const showAll = () =>
+                    items.forEach((el) => el.classList.add("is-visible"));
+                try {
+                    if (
+                        window.matchMedia("(prefers-reduced-motion: reduce)")
+                            .matches ||
+                        typeof IntersectionObserver === "undefined"
+                    ) {
+                        showAll();
+                    } else {
+                        const io = new IntersectionObserver(
+                            (entries) => {
+                                entries.forEach((entry) => {
+                                    if (entry.isIntersecting) {
+                                        entry.target.classList.add(
+                                            "is-visible",
+                                        );
+                                        io.unobserve(entry.target);
+                                    }
+                                });
+                            },
+                            { threshold: 0.15, rootMargin: "0px 0px -8% 0px" },
+                        );
+                        items.forEach((el) => io.observe(el));
+                    }
+                } catch {
+                    showAll();
+                }
+            })();
         </script>
         <script is:inline>
             // Trial spotlight border: pointermove only, no animation frame.
