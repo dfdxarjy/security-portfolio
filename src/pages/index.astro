@@ -412,10 +412,10 @@ const searchableText = (study: (typeof studies)[number]) =>
                 margin-bottom: 0;
                 color: var(--muted);
             }
-            /* Focus cards are offset to the right of their heading, so the
-               two do not share a left edge. */
+            /* Focus cards share the heading's left edge; the asymmetry sits
+               on the right. */
             .portfolio-category-grid {
-                grid-column: 3 / 13;
+                grid-column: 1 / 13;
                 display: grid;
                 grid-template-columns: repeat(4, minmax(0, 1fr));
                 gap: 1rem;
@@ -452,8 +452,8 @@ const searchableText = (study: (typeof studies)[number]) =>
             /* Lead case: one bordered surface so the trial spotlight ring has
                an edge to trace. Tinted shadow keeps it on the palette. */
             .portfolio-lead {
-                /* Inset from both gutters rather than full width. */
-                grid-column: 2 / 11;
+                /* Flush left with the section heading; inset from the right gutter. */
+                grid-column: 1 / 11;
                 position: relative;
                 padding: clamp(1.5rem, 3vw, 1.75rem);
                 border: 1px solid var(--line);
