@@ -98,17 +98,19 @@ body {
 
 /*
  * Trial (local, revertible): fixed grain overlay on production pages.
- * Decorative only. `pointer-events: none` so it never intercepts input, and
- * the skip links are z-ordered above it. The class name is deliberately
- * distinct so sharing this sheet with another surface cannot double-apply
- * the effect.
+ * Decorative only. `pointer-events: none` so it never intercepts input. The
+ * z-index derives from Starlight's skip-link token (`--sl-z-index-skiplink`,
+ * falling back to 20 on the standalone homepage where Starlight tokens are not
+ * loaded) so the grain sits just below the skip link and above Starlight's
+ * navbar and menu layers. The class name is deliberately distinct so sharing
+ * this sheet with another surface cannot double-apply the effect.
  */
 .surface-grain {
 	position: fixed;
 	inset: 0;
 	width: 100%;
 	height: 100%;
-	z-index: 19;
+	z-index: calc(var(--sl-z-index-skiplink, 20) - 1);
 	opacity: var(--surface-grain-opacity);
 	pointer-events: none;
 	mix-blend-mode: multiply;
