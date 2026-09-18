@@ -2,6 +2,9 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import sitemap from '@astrojs/sitemap';
+// Preview-only wiring for the temporary shadcn preview route; remove with it.
+import react from '@astrojs/react';
+import tailwindcss from '@tailwindcss/vite';
 
 // https://astro.build/config
 export default defineConfig({
@@ -82,6 +85,10 @@ export default defineConfig({
 				},
 			],
 		}),
+		react(),
 		sitemap(),
 	],
+	vite: {
+		plugins: [tailwindcss()],
+	},
 });

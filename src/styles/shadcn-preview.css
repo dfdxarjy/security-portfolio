@@ -1,0 +1,167 @@
+/*
+ * PREVIEW-ONLY stylesheet for the temporary shadcn/React route.
+ * Imported exclusively by that route; delete together with it. Never import
+ * this file from portfolio.css or any existing page.
+ *
+ * Tailwind preflight containment: `@import "tailwindcss"` emits preflight
+ * rules whose selectors include `html`, `body`, `*, ::before, ::after`.
+ * Those are top-level selectors, so a wrapper element or a `[data-*]` scope
+ * cannot contain them — CSS has no "scoped reset" that wraps `html`. To avoid
+ * destroying visual fidelity, we scope Tailwind utilities, not preflight.
+ * Containment is therefore document-level: this file compiles to a
+ * route-scoped Vite CSS chunk loaded only by the preview route, so no existing
+ * page downloads it. On the preview route the preflight reset applies to that
+ * document (including any Starlight chrome that route reuses), which is
+ * accepted for a throwaway preview.
+ */
+
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Reduced motion is a binding accessibility constraint on this preview even
+ * though the visual rules are lifted. Neutralise the stock popover/overlay
+ * animation and the components' `transition-all`, rather than hand-editing the
+ * vendored upstream class strings.
+ *
+ * This is document-level, not `.preview-shell`-scoped, on purpose: Radix
+ * portals the popover surfaces (`data-slot="select-content"` /
+ * `"dropdown-menu-content"`, the elements that carry `animate-in`/`animate-out`)
+ * onto `document.body`, so a `.preview-shell` descendant selector would miss
+ * exactly the motion being judged. The stylesheet is loaded only by this route,
+ * so `[data-slot]` here is the preview's component subtree. */
+@media (prefers-reduced-motion: reduce) {
+	[data-slot],
+	[data-slot] * {
+		animation: none !important;
+		transition: none !important;
+	}
+}
+
+/* -------------------------------------------------------------------------
+ * 1. Stock shadcn "neutral" tokens — the default layer.
+ *    With no `[data-shadcn-warm]` attribute these values render untouched.
+ * ---------------------------------------------------------------------- */
+:root {
+	--background: oklch(1 0 0);
+	--foreground: oklch(0.145 0 0);
+	--card: oklch(1 0 0);
+	--card-foreground: oklch(0.145 0 0);
+	--popover: oklch(1 0 0);
+	--popover-foreground: oklch(0.145 0 0);
+	--primary: oklch(0.205 0 0);
+	--primary-foreground: oklch(0.985 0 0);
+	--secondary: oklch(0.97 0 0);
+	--secondary-foreground: oklch(0.205 0 0);
+	--muted: oklch(0.97 0 0);
+	--muted-foreground: oklch(0.556 0 0);
+	--accent: oklch(0.97 0 0);
+	--accent-foreground: oklch(0.205 0 0);
+	--destructive: oklch(0.577 0.245 27.325);
+	--border: oklch(0.922 0 0);
+	--input: oklch(0.922 0 0);
+	--ring: oklch(0.708 0 0);
+	--radius: 0.625rem;
+}
+
+.dark {
+	--background: oklch(0.145 0 0);
+	--foreground: oklch(0.985 0 0);
+	--card: oklch(0.205 0 0);
+	--card-foreground: oklch(0.985 0 0);
+	--popover: oklch(0.205 0 0);
+	--popover-foreground: oklch(0.985 0 0);
+	--primary: oklch(0.922 0 0);
+	--primary-foreground: oklch(0.205 0 0);
+	--secondary: oklch(0.269 0 0);
+	--secondary-foreground: oklch(0.985 0 0);
+	--muted: oklch(0.269 0 0);
+	--muted-foreground: oklch(0.708 0 0);
+	--accent: oklch(0.269 0 0);
+	--accent-foreground: oklch(0.985 0 0);
+	--destructive: oklch(0.704 0.191 22.216);
+	--border: oklch(1 0 0 / 10%);
+	--input: oklch(1 0 0 / 15%);
+	--ring: oklch(0.556 0 0);
+	--radius: 0.625rem;
+}
+
+/* -------------------------------------------------------------------------
+ * 2. Warm layer — opt-in only, remaps the same tokens to this site's
+ *    palette. Rendered only when `[data-shadcn-warm]` is present on a
+ *    wrapper; the stock layer above stays the default.
+ * ---------------------------------------------------------------------- */
+[data-shadcn-warm] {
+	--background: var(--portfolio-surface);
+	--foreground: var(--portfolio-ink);
+	--card: var(--portfolio-surface-raised);
+	--card-foreground: var(--portfolio-ink);
+	--popover: var(--portfolio-surface-raised);
+	--popover-foreground: var(--portfolio-ink);
+	--primary: var(--portfolio-accent);
+	--primary-foreground: var(--portfolio-accent-contrast);
+	--secondary: var(--portfolio-accent-soft);
+	--secondary-foreground: var(--portfolio-ink);
+	--muted: var(--portfolio-accent-soft);
+	--muted-foreground: var(--portfolio-muted);
+	--accent: var(--portfolio-accent-soft);
+	--accent-foreground: var(--portfolio-accent-strong);
+	--border: var(--portfolio-line);
+	--input: var(--portfolio-line);
+	--ring: var(--portfolio-accent);
+	/* Control-scale half of the site radius pair. */
+	--radius: var(--portfolio-radius-sm);
+}
+
+/* Warm dark values. Match the site's dark mechanisms: a `.dark` class on the
+ * wrapper or an ancestor, or Starlight's `[data-theme='dark']` root. */
+[data-shadcn-warm].dark,
+.dark [data-shadcn-warm],
+[data-theme='dark'] [data-shadcn-warm] {
+	--background: var(--portfolio-surface);
+	--foreground: var(--portfolio-ink);
+	--card: var(--portfolio-surface-raised);
+	--card-foreground: var(--portfolio-ink);
+	--popover: var(--portfolio-surface-raised);
+	--popover-foreground: var(--portfolio-ink);
+	--primary: var(--portfolio-accent);
+	--primary-foreground: var(--portfolio-accent-contrast);
+	--secondary: var(--portfolio-accent-soft);
+	--secondary-foreground: var(--portfolio-ink);
+	--muted: var(--portfolio-accent-soft);
+	--muted-foreground: var(--portfolio-muted);
+	--accent: var(--portfolio-accent-soft);
+	--accent-foreground: var(--portfolio-accent-strong);
+	--border: var(--portfolio-line);
+	--input: var(--portfolio-line);
+	--ring: var(--portfolio-accent);
+	--radius: var(--portfolio-radius-sm);
+}
+
+/* Map the tokens onto Tailwind's theme so shadcn's `bg-background`,
+ * `text-foreground`, `border-border`, `bg-primary`, `rounded-*` utilities
+ * resolve. `inline` keeps the values as live `var()` references so the warm
+ * and stock layers swap without a rebuild. */
+@theme inline {
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+	--radius-sm: calc(var(--radius) - 4px);
+	--radius-md: calc(var(--radius) - 2px);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) + 4px);
+}

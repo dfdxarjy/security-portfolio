@@ -1,0 +1,217 @@
+---
+// Preview-only route. Throwaway: delete together with the rest of
+// `src/components/shadcn-preview/` before any promotion.
+import "../styles/portfolio.css";
+import "../styles/shadcn-preview.css";
+import Showcase from "../components/shadcn-preview/Showcase";
+import ThemePicker from "../components/shadcn-preview/ThemePicker";
+
+const title = "shadcn/ui preview — taktak.hu";
+const description =
+	"Throwaway preview comparing stock shadcn/ui components with this site's own palette. Not linked, not indexed, and awaiting a keep-or-revert decision.";
+const canonical = "https://taktak.hu/shadcn-preview/";
+
+// Measurement is deferred. These are measurements, not estimates; fill the
+// five fields below from the real `pnpm build` output and flip COST_MEASURED
+// to true before presenting them as numbers. No number is guessed.
+const COST_MEASURED = false;
+const COST = {
+	packagesAdded: "",
+	routeCssBytes: "",
+	routeJsBytes: "",
+	hydrationCost: "",
+	treeShakeable: "",
+};
+const COST_ROWS: [string, string][] = COST_MEASURED
+	? [
+			["Packages added", COST.packagesAdded],
+			["Preview route CSS bytes", COST.routeCssBytes],
+			["Preview route JS bytes", COST.routeJsBytes],
+			["Hydration cost", COST.hydrationCost],
+			["Can any of it be tree-shaken away?", COST.treeShakeable],
+		]
+	: [["Cost figures", "Pending measurement from the real build output."]];
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="description" content={description} />
+		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+		<link rel="icon" href="/favicon.ico" sizes="32x32" />
+		<link rel="canonical" href={canonical} />
+		<meta name="robots" content="noindex, nofollow" />
+		<meta name="referrer" content="strict-origin-when-cross-origin" />
+		<title>{title}</title>
+		<!-- Same theme contract as the homepage: shared `starlight-theme` key,
+			applied before first paint. Absent or empty storage means auto. This
+			route owns the key; it adds no listener (ThemePicker holds the only
+			one, and only while auto). -->
+		<script is:inline>
+			(() => {
+				let stored = null;
+				try {
+					stored = localStorage.getItem("starlight-theme");
+				} catch {}
+				const explicit =
+					stored === "light" || stored === "dark" ? stored : null;
+				const theme =
+					explicit ??
+					(window.matchMedia("(prefers-color-scheme: dark)").matches
+						? "dark"
+						: "light");
+				document.documentElement.dataset.theme = theme;
+				document.documentElement.style.colorScheme = theme;
+			})();
+		</script>
+		<style>
+			*,
+			*::before,
+			*::after {
+				box-sizing: border-box;
+			}
+			body {
+				margin: 0;
+				font-family: var(--font-body);
+				line-height: 1.6;
+			}
+			.preview-shell {
+				max-width: 76rem;
+				margin: auto;
+				padding: 1.25rem clamp(1rem, 4vw, 3rem) 4rem;
+			}
+			.preview-skip-link {
+				position: absolute;
+				left: 1rem;
+				top: -4rem;
+				z-index: 10000;
+				border: 1px solid var(--portfolio-accent);
+				border-radius: var(--portfolio-radius);
+				padding: 0.6rem 1rem;
+				background: var(--portfolio-surface-raised);
+				color: var(--portfolio-accent);
+				font-weight: 700;
+				text-decoration: none;
+			}
+			.preview-skip-link:focus {
+				top: 1rem;
+				outline: 3px solid var(--portfolio-accent);
+				outline-offset: 2px;
+			}
+			.preview-header {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 0.75rem 1.5rem;
+				align-items: center;
+				justify-content: space-between;
+				border-bottom: 1px solid var(--portfolio-line);
+				padding-bottom: 1rem;
+			}
+			.preview-brand {
+				font-family: var(--font-display);
+				font-size: var(--step-1);
+				font-weight: 600;
+			}
+			.preview-brand-sub {
+				margin-inline-start: 0.6rem;
+				color: var(--portfolio-muted);
+				font-family: var(--font-mono);
+				font-size: var(--step--1);
+				text-transform: uppercase;
+				letter-spacing: 0.06em;
+			}
+			.preview-header-theme {
+				display: flex;
+				align-items: center;
+				gap: 0.5rem;
+			}
+			.preview-theme-label {
+				color: var(--portfolio-muted);
+				font-family: var(--font-mono);
+				font-size: var(--step--1);
+			}
+			.preview-intro {
+				max-width: 68ch;
+			}
+			.preview-intro h1 {
+				font-family: var(--font-display);
+				font-size: var(--step-3);
+				line-height: var(--lh-tight);
+				margin: 2rem 0 0.75rem;
+			}
+			.preview-intro p {
+				margin: 0 0 0.75rem;
+			}
+			.preview-cost {
+				border: 1px solid var(--portfolio-line);
+				border-radius: var(--portfolio-radius);
+				background: var(--portfolio-surface-raised);
+				padding: 1rem 1.25rem;
+				margin: 1.5rem 0 2.5rem;
+			}
+			.preview-cost h2 {
+				font-size: var(--step-0);
+				margin: 0 0 0.5rem;
+			}
+			.preview-cost dl {
+				display: grid;
+				grid-template-columns: max-content 1fr;
+				gap: 0.25rem 1rem;
+				margin: 0;
+				font-size: var(--step--1);
+			}
+			.preview-cost dt {
+				color: var(--portfolio-muted);
+			}
+			.preview-cost dd {
+				margin: 0;
+				font-family: var(--font-mono);
+			}
+		</style>
+	</head>
+	<body>
+		<a class="preview-skip-link" href="#preview-main">Skip to content</a>
+		<div class="preview-shell">
+			<header class="preview-header">
+				<div>
+					<span class="preview-brand">taktak.hu</span>
+					<span class="preview-brand-sub">shadcn/ui preview</span>
+				</div>
+				<div class="preview-header-theme">
+					<span class="preview-theme-label">| Theme:</span>
+					<ThemePicker client:load />
+				</div>
+			</header>
+			<main id="preview-main">
+				<div class="preview-intro">
+					<h1>shadcn/ui on this portfolio — preview</h1>
+					<p>
+						This is a throwaway preview for a keep-or-revert decision. It is
+						not linked from the site, and it is excluded from search indexing
+						with <code>noindex, nofollow</code>. Nothing here is approved,
+						deployed or permanent.
+					</p>
+					<p>
+						Stock shadcn/ui is React + Tailwind. It renders as an island on
+						this standalone route, so it cannot be dropped into Starlight's
+						own header, sidebar or theme chrome — the comparison below is the
+						component language and palette, not the shipped site shell.
+					</p>
+				</div>
+				<section class="preview-cost" aria-labelledby="preview-cost-title">
+					<h2 id="preview-cost-title">Measured cost</h2>
+					<dl>
+						{COST_ROWS.map(([label, value]) => (
+							<>
+								<dt>{label}</dt>
+								<dd>{value}</dd>
+							</>
+						))}
+					</dl>
+				</section>
+				<Showcase client:load />
+			</main>
+		</div>
+	</body>
+</html>
