@@ -52,6 +52,74 @@ const categoryHref = `/${dirKey}/`;
 	)
 }
 
+<script>
+	// Case-rail scrollspy. The Contents list is built from the page's own H2s;
+	// this marks the entry for the section currently being read. It is additive
+	// only: with JavaScript off the rail stays a plain, working list of links.
+	const railLinks = document.querySelectorAll('.case-rail__list a[href^="#"]');
+	if (railLinks.length > 0) {
+		const targets = [];
+		for (const link of railLinks) {
+			const heading = document.getElementById(decodeURIComponent(link.hash.slice(1)));
+			if (heading) targets.push({ link, heading });
+		}
+
+		if (targets.length > 0) {
+			// Latest viewport-relative top seen for each heading. The observer
+			// only fires as a heading crosses the header line, so this stays in
+			// sync without a scroll listener reading layout every frame.
+			const tops = new Map();
+			let current = null;
+
+			const setCurrent = (link) => {
+				if (link === current) return;
+				if (current) current.removeAttribute('aria-current');
+				current = link;
+				if (link) link.setAttribute('aria-current', 'location');
+			};
+
+			// "Current" = the last heading whose top has passed beneath the
+			// sticky header (its scroll-padding-top line); below that, the first.
+			const recompute = () => {
+				const offset =
+					parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
+				let active = targets[0].link;
+				for (const { link, heading } of targets) {
+					const top = tops.get(heading);
+					if (top !== undefined && top <= offset + 1) active = link;
+				}
+				setCurrent(active);
+			};
+
+			let observer = null;
+			const observe = () => {
+				if (observer) observer.disconnect();
+				const offset =
+					parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
+				// A thin band ending exactly at the header line; a heading becomes
+				// "intersecting" the moment its top crosses that line.
+				const band = 2;
+				const bandBottom = Math.max(0, window.innerHeight - offset);
+				observer = new IntersectionObserver(
+					(entries) => {
+						for (const entry of entries) tops.set(entry.target, entry.boundingClientRect.top);
+						recompute();
+					},
+					{ rootMargin: `${-Math.max(0, offset - band)}px 0px ${-bandBottom}px 0px`, threshold: 0 }
+				);
+				for (const { heading } of targets) observer.observe(heading);
+			};
+
+			observe();
+			let resizeFrame = 0;
+			window.addEventListener('resize', () => {
+				cancelAnimationFrame(resizeFrame);
+				resizeFrame = requestAnimationFrame(observe);
+			});
+		}
+	}
+</script>
+
 <style>
 	.case-rail {
 		display: flex;
@@ -100,5 +168,9 @@ const categoryHref = `/${dirKey}/`;
 	.case-rail__list a:focus-visible {
 		color: var(--portfolio-accent);
 		text-decoration: underline;
+	}
+	.case-rail__list a[aria-current='location'] {
+		color: var(--portfolio-accent);
+		font-weight: 600;
 	}
 </style>
