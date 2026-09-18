@@ -1,8 +1,8 @@
 ---
 title: Windows
-description: Hack The Box Windows machines, written up as evidence-focused case studies.
+description: Evidence-focused case studies of Windows machines on Hack The Box.
 sidebar:
   hidden: true
 ---
 
-Hack The Box Windows machines, written up as evidence-focused case studies.
+Evidence-focused case studies of Windows machines on Hack The Box.
