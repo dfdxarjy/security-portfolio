@@ -7,6 +7,31 @@ import tailwindcss from '@tailwindcss/vite';
 // https://astro.build/config
 export default defineConfig({
 	site: 'https://taktak.hu',
+	security: {
+		csp: {
+			algorithm: "SHA-256",
+			directives: [
+				"default-src 'self'",
+				"base-uri 'self'",
+				"object-src 'none'",
+				"form-action 'self'",
+				"img-src 'self' data:",
+				"font-src 'self'",
+				"connect-src 'self'",
+				"frame-src 'self'",
+			],
+			scriptDirective: {
+				resources: ["'self'"],
+				hashes: [
+					"sha256-OT6rncc3q/HAZxFhU8Z7usSuSFUYlKM4kgPHZV03rBg=",
+					"sha256-bvjZC3AnPb+ys9toP8kN5cg7sF3ndpwX9+AxzZ7FjZM=",
+				],
+			},
+			styleDirective: {
+				resources: ["'self'", "'unsafe-inline'"],
+			},
+		},
+	},
 	redirects: {
 		'/case-studies/htb/machines/windows/monitorsfour/':
 			'/case-studies/htb/machines/linux/monitorsfour/',
