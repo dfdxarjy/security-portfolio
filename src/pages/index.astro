@@ -348,6 +348,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                 border: 1px solid var(--line);
                 border-radius: var(--portfolio-radius);
                 background: var(--card);
+                box-shadow: var(--surface-shadow);
             }
             .portfolio-category {
                 padding: 1.25rem;
@@ -370,11 +371,44 @@ const searchableText = (study: (typeof studies)[number]) =>
                 font-size: 1.8rem;
                 font-weight: 750;
             }
-            /* Lead case: hairline rules above and below, no filled card. */
+            /* Lead case: one bordered surface so the trial spotlight ring has
+               an edge to trace. Tinted shadow keeps it on the palette. */
             .portfolio-lead {
-                padding: 1.75rem 0;
-                border-top: 1px solid var(--line);
-                border-bottom: 1px solid var(--line);
+                position: relative;
+                padding: clamp(1.5rem, 3vw, 1.75rem);
+                border: 1px solid var(--line);
+                border-radius: var(--portfolio-radius);
+                background: var(--card);
+                box-shadow: var(--surface-shadow);
+            }
+            /* Trial spotlight border: the edge lights up under the cursor.
+               Opacity only; the pointer-tracked custom properties are set by
+               the inline script below. With no script or a failed gate the
+               opacity stays 0 and the plain border remains. */
+            .portfolio-lead::before {
+                content: "";
+                position: absolute;
+                inset: -1px;
+                border-radius: inherit;
+                padding: 1px;
+                background: radial-gradient(
+                    220px circle at var(--lead-mx, 50%) var(--lead-my, 50%),
+                    var(--accent),
+                    transparent 72%
+                );
+                -webkit-mask:
+                    linear-gradient(#000 0 0) content-box,
+                    linear-gradient(#000 0 0);
+                -webkit-mask-composite: xor;
+                mask-composite: exclude;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 240ms ease;
+            }
+            @media (hover: hover) and (prefers-reduced-motion: no-preference) {
+                .portfolio-lead:hover::before {
+                    opacity: 1;
+                }
             }
             .portfolio-lead-eyebrow {
                 color: var(--muted);
@@ -620,7 +654,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                 position: absolute;
                 left: 1rem;
                 top: -4rem;
-                z-index: 10;
+                z-index: 10000;
                 border: 1px solid var(--accent);
                 border-radius: var(--portfolio-radius);
                 padding: 0.6rem 1rem;
@@ -675,6 +709,22 @@ const searchableText = (study: (typeof studies)[number]) =>
         <a class="portfolio-skip-link" href="#main-content">
             Skip to main content
         </a>
+        <!-- Decorative grain overlay, rendered once on this standalone page. -->
+        <svg class="surface-grain" aria-hidden="true" focusable="false">
+            <filter id="surface-grain-noise">
+                <feTurbulence
+                    type="fractalNoise"
+                    baseFrequency="0.82"
+                    numOctaves="2"
+                    stitchTiles="stitch"
+                ></feTurbulence>
+            </filter>
+            <rect
+                width="100%"
+                height="100%"
+                filter="url(#surface-grain-noise)"
+            ></rect>
+        </svg>
         <div class="portfolio-shell">
             <header class="portfolio-header">
                 <BrandLockup class="portfolio-brand" />
@@ -1140,6 +1190,33 @@ const searchableText = (study: (typeof studies)[number]) =>
             applySort();
             update();
             syncUrl();
+        </script>
+        <script is:inline>
+            // Trial spotlight border: pointermove only, no animation frame.
+            // Skipped entirely on non-hover devices and for reduced-motion
+            // users, where the plain border is the final state.
+            (() => {
+                const lead = document.querySelector(".portfolio-lead");
+                if (!lead) return;
+                if (!window.matchMedia("(hover: hover)").matches) return;
+                if (window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+                    return;
+                lead.addEventListener("pointermove", (event) => {
+                    const rect = lead.getBoundingClientRect();
+                    lead.style.setProperty(
+                        "--lead-mx",
+                        `${event.clientX - rect.left}px`,
+                    );
+                    lead.style.setProperty(
+                        "--lead-my",
+                        `${event.clientY - rect.top}px`,
+                    );
+                });
+                lead.addEventListener("pointerleave", () => {
+                    lead.style.removeProperty("--lead-mx");
+                    lead.style.removeProperty("--lead-my");
+                });
+            })();
         </script>
         <script is:inline>
             (() => {

@@ -67,6 +67,11 @@
 	--portfolio-radius-sm: 0.375rem;
 	--portfolio-copy: 68ch;
 
+	/* Trial (local, revertible): warm tinted shadow for content surfaces.
+	   The wide stop is warm rather than neutral black so it stays on palette. */
+	--surface-shadow: 0 1px 2px rgba(122, 62, 42, 0.08), 0 12px 30px -16px rgba(122, 62, 42, 0.32);
+	--surface-grain-opacity: 0.035;
+
 	/* Interactive control boundary — >=3:1 on both surfaces (WCAG 1.4.11). */
 	--control-line: #8c8477;
 }
@@ -82,6 +87,8 @@
 	--portfolio-accent-soft: #3a2a20;
 	--portfolio-accent-contrast: #1a1a17;
 	--control-line: #6f675d;
+	--surface-shadow: 0 1px 2px rgba(27, 24, 21, 0.6), 0 16px 36px -18px rgba(27, 24, 21, 0.85);
+	--surface-grain-opacity: 0.05;
 }
 
 html {
@@ -91,6 +98,28 @@ html {
 body {
 	color: var(--portfolio-ink);
 	background-color: var(--portfolio-surface);
+}
+
+/*
+ * Trial (local, revertible): fixed grain overlay on production pages.
+ * Decorative only. `pointer-events: none` so it never intercepts input, and
+ * the skip links are z-ordered above it. The class name is deliberately
+ * distinct so sharing this sheet with another surface cannot double-apply
+ * the effect.
+ */
+.surface-grain {
+	position: fixed;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	z-index: 9999;
+	opacity: var(--surface-grain-opacity);
+	pointer-events: none;
+	mix-blend-mode: multiply;
+}
+
+[data-theme='dark'] .surface-grain {
+	mix-blend-mode: screen;
 }
 
 /*
@@ -140,6 +169,9 @@ select {
 	/* Wire the Starlight shell to the editorial type system. */
 	--sl-font: var(--font-body);
 	--sl-font-mono: var(--font-mono);
+
+	/* Keep the fixed grain overlay below the Starlight skip link. */
+	--sl-z-index-skiplink: 10000;
 
 	/* Light greys remapped to the editorial palette so docs match the homepage. */
 	--sl-color-gray-1: #1a1a17;
