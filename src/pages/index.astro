@@ -276,9 +276,33 @@ const searchableText = (study: (typeof studies)[number]) =>
             h1 {
                 max-width: 14ch;
                 margin-bottom: 1.25rem;
-                font-size: clamp(3rem, 8vw, 6.5rem);
-                line-height: 0.95;
+                font-size: clamp(3rem, 1.75rem + 6.5vw, 7.5rem);
+                line-height: 0.92;
                 letter-spacing: -0.07em;
+            }
+            /* VI32 typography refinements: body copy wraps pretty, metadata
+               figures stay tabular, and small sentence-case labels carry a
+               light positive tracking. Headings keep `balance`; code and
+               tables are untouched. No new all-caps convention. */
+            .portfolio-lede,
+            .portfolio-category p,
+            .portfolio-study p,
+            .portfolio-lead-dek {
+                text-wrap: pretty;
+            }
+            .portfolio-category-count,
+            .portfolio-eyebrow,
+            .portfolio-lead-eyebrow,
+            .portfolio-lead-meta,
+            .portfolio-tag,
+            .portfolio-filter,
+            .portfolio-section-heading p,
+            .portfolio-explorer-subtitle {
+                font-variant-numeric: tabular-nums;
+            }
+            .portfolio-search-label,
+            .portfolio-sort-label {
+                letter-spacing: 0.02em;
             }
             .portfolio-lede {
                 max-width: var(--portfolio-copy);
