@@ -207,6 +207,54 @@ const searchableText = (study: (typeof studies)[number]) =>
                 align-items: center;
                 gap: 1rem;
                 padding: 0.5rem 0 3rem;
+                position: sticky;
+                top: 0;
+                z-index: 10;
+                background-color: color-mix(
+                    in srgb,
+                    var(--portfolio-surface) 85%,
+                    transparent
+                );
+                -webkit-backdrop-filter: blur(12px);
+                backdrop-filter: blur(12px);
+            }
+            /* Anchor targets must clear the sticky header. Measured header
+               height: 87.8px at one row, 118.1px once the nav wraps, and
+               150.1px in the max-width:380px stacked layout. */
+            :global(html) {
+                scroll-padding-top: 5.5rem;
+            }
+            @supports not (
+                (backdrop-filter: blur(1px)) or
+                    (-webkit-backdrop-filter: blur(1px))
+            ) {
+                .portfolio-header {
+                    background-color: var(--portfolio-surface);
+                }
+            }
+            @media (prefers-reduced-transparency: reduce) {
+                .portfolio-header {
+                    background-color: var(--portfolio-surface);
+                    -webkit-backdrop-filter: none;
+                    backdrop-filter: none;
+                }
+            }
+            @media (forced-colors: active) {
+                .portfolio-header {
+                    background-color: Canvas;
+                    -webkit-backdrop-filter: none;
+                    backdrop-filter: none;
+                }
+            }
+            @media (max-width: 37.5rem) {
+                :global(html) {
+                    scroll-padding-top: 7.5rem;
+                }
+            }
+            @media (max-width: 380px) {
+                :global(html) {
+                    scroll-padding-top: 9.5rem;
+                }
             }
             .portfolio-brand {
                 font-weight: 600;
