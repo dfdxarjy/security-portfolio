@@ -1,3 +1,4 @@
+import type { PointerEvent } from "react";
 import type { LeadStudy } from "./types";
 
 export default function LeadCase({
@@ -7,6 +8,25 @@ export default function LeadCase({
 	study: LeadStudy | null;
 	meta: string;
 }) {
+	// Cursor spotlight: write the pointer position (relative to the card) as
+	// custom properties the stylesheet reads. Touch is skipped so a tap does
+	// not emulate a spotlight that would stick after the finger lifts.
+	const handlePointerMove = (event: PointerEvent<HTMLElement>) => {
+		if (event.pointerType === "touch") return;
+		const rect = event.currentTarget.getBoundingClientRect();
+		event.currentTarget.style.setProperty(
+			"--lead-mx",
+			`${event.clientX - rect.left}px`,
+		);
+		event.currentTarget.style.setProperty(
+			"--lead-my",
+			`${event.clientY - rect.top}px`,
+		);
+	};
+	const handlePointerLeave = (event: PointerEvent<HTMLElement>) => {
+		event.currentTarget.style.removeProperty("--lead-mx");
+		event.currentTarget.style.removeProperty("--lead-my");
+	};
 	return (
 		<section className="py-12" aria-labelledby="lead-title">
 			<div className="max-w-[68ch]" data-reveal>
@@ -21,7 +41,12 @@ export default function LeadCase({
 				</p>
 			</div>
 			{study && (
-				<article className="mt-6 rounded-xl border border-border bg-card p-6" data-reveal>
+				<article
+					className="portfolio-lead relative mt-6 rounded-xl border border-border bg-card p-6"
+					data-reveal
+					onPointerMove={handlePointerMove}
+					onPointerLeave={handlePointerLeave}
+				>
 					<p className="font-mono text-[0.72rem] uppercase tracking-[0.12em] text-muted-foreground">
 						{study.label} · latest addition
 					</p>
