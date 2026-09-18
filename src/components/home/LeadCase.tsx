@@ -9,8 +9,10 @@ export default function LeadCase({
 	meta: string;
 }) {
 	// Cursor spotlight: write the pointer position (relative to the card) as
-	// custom properties the stylesheet reads. Touch is skipped so a tap does
-	// not emulate a spotlight that would stick after the finger lifts.
+	// custom properties the stylesheet reads, and flip `--lead-spotlight` on so
+	// the ring is visible only while a real pointer drives it. Touch is skipped
+	// so a tap does not emulate a spotlight that would stick after the finger
+	// lifts; without JS the ring stays hidden and the card keeps its border.
 	const handlePointerMove = (event: PointerEvent<HTMLElement>) => {
 		if (event.pointerType === "touch") return;
 		const rect = event.currentTarget.getBoundingClientRect();
@@ -22,10 +24,12 @@ export default function LeadCase({
 			"--lead-my",
 			`${event.clientY - rect.top}px`,
 		);
+		event.currentTarget.style.setProperty("--lead-spotlight", "1");
 	};
 	const handlePointerLeave = (event: PointerEvent<HTMLElement>) => {
 		event.currentTarget.style.removeProperty("--lead-mx");
 		event.currentTarget.style.removeProperty("--lead-my");
+		event.currentTarget.style.removeProperty("--lead-spotlight");
 	};
 	return (
 		<section className="py-12" aria-labelledby="lead-title">

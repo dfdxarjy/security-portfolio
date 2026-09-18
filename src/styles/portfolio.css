@@ -247,11 +247,12 @@ select {
 }
 
 /* Lead-case cursor spotlight: a 1px pointer-tracked ring tracing the card
-   border. Adopted as the single gradient exception (AGENTS.md §12.4 / VI38).
+   border. This is the portfolio's single approved gradient exception.
    Gated so touch and reduced-motion visitors get the plain existing border:
    opacity is the only animated property and nothing in the layout moves.
    `isolation: isolate` keeps the ring above the card border without covering
-   content. `LeadCase.tsx` writes `--lead-mx` / `--lead-my` from the pointer. */
+   content. `LeadCase.tsx` writes `--lead-mx` / `--lead-my` and sets
+   `--lead-spotlight` from the pointer; without JS the ring stays invisible. */
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
   .portfolio-lead {
     isolation: isolate;
@@ -277,10 +278,7 @@ select {
       linear-gradient(#000 0 0) content-box,
       linear-gradient(#000 0 0);
     mask-composite: exclude;
-    opacity: 0;
+    opacity: var(--lead-spotlight, 0);
     transition: opacity 240ms ease;
-  }
-  .portfolio-lead:hover::before {
-    opacity: 1;
   }
 }

@@ -158,16 +158,13 @@ const {
 			// Scroll reveal: transform + opacity only, one observer, no scroll
 			// listener. Static data-reveal targets and direct Markdown prose blocks
 			// are observed. Reduced-motion users get the final state immediately and
-			// no observer runs. This script first cancels the prepaint fail-open timer
-			// so normal observer operation keeps reveal active past the 2-second mark;
-			// a blocked or failed observer never reaches this line, leaving the timer
-			// to fail open. If the observer is unavailable or init throws, every
-			// target is shown, so a failure can never leave content hidden.
+			// no observer runs. This script cancels the prepaint fail-open timer only
+			// after its DOM queries succeed, so normal observer operation keeps reveal
+			// active past the 2-second mark; if a query throws, a blocked observer, or
+			// a failed init never reaches that point, the timer is left to fail open.
+			// If the observer is unavailable or init throws, every target is shown, so
+			// a failure can never leave content hidden.
 			(() => {
-				if (window.__revealFailOpenTimer) {
-					window.clearTimeout(window.__revealFailOpenTimer);
-					delete window.__revealFailOpenTimer;
-				}
 				document.querySelectorAll(".portfolio-prose").forEach((prose) => {
 					prose
 						.querySelectorAll(
@@ -176,6 +173,13 @@ const {
 						.forEach((el) => el.setAttribute("data-reveal", ""));
 				});
 				const items = [...document.querySelectorAll("[data-reveal]")];
+				// Cancel the fail-open timer only now: both queries above could throw,
+				// and if either does the timer must remain so the prepaint gate is
+				// removed after 2 seconds instead of leaving targets hidden.
+				if (window.__revealFailOpenTimer) {
+					window.clearTimeout(window.__revealFailOpenTimer);
+					delete window.__revealFailOpenTimer;
+				}
 				if (!items.length) return;
 				const showAll = () =>
 					items.forEach((el) => el.classList.add("is-visible"));
