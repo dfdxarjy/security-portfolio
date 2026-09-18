@@ -121,14 +121,9 @@ body {
 	mix-blend-mode: screen;
 }
 
-/* Forced-colours: the grain texture carries no information, so hide it rather
-   than let it sit over the system palette. */
-@media (forced-colors: active) {
-	.surface-grain { display: none; }
-}
-
-/* Print: printed output should not carry decorative layers. */
-@media print {
+/* Forced-colours and print: the grain texture carries no information, so hide
+   it rather than let it sit over the system palette or on printed output. */
+@media (forced-colors: active), print {
 	.surface-grain { display: none; }
 }
 

@@ -60,7 +60,15 @@ const categoryHref = `/${dirKey}/`;
 	if (railLinks.length > 0) {
 		const targets = [];
 		for (const link of railLinks) {
-			const heading = document.getElementById(decodeURIComponent(link.hash.slice(1)));
+			// The href is already an encoded slug; decode defensively so a
+			// malformed percent sequence cannot throw and abort the spy.
+			let id = link.hash.slice(1);
+			try {
+				id = decodeURIComponent(id);
+			} catch {
+				// Keep the raw fragment.
+			}
+			const heading = document.getElementById(id);
 			if (heading) targets.push({ link, heading });
 		}
 
@@ -70,6 +78,7 @@ const categoryHref = `/${dirKey}/`;
 			// sync without a scroll listener reading layout every frame.
 			const tops = new Map();
 			let current = null;
+			let atEnd = false;
 
 			const setCurrent = (link) => {
 				if (link === current) return;
@@ -80,13 +89,19 @@ const categoryHref = `/${dirKey}/`;
 
 			// "Current" = the last heading whose top has passed beneath the
 			// sticky header (its scroll-padding-top line); below that, the first.
+			// At the document end the last entry wins, because a short final
+			// section cannot always be scrolled up to that line.
 			const recompute = () => {
 				const offset =
 					parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
 				let active = targets[0].link;
-				for (const { link, heading } of targets) {
-					const top = tops.get(heading);
-					if (top !== undefined && top <= offset + 1) active = link;
+				if (atEnd) {
+					active = targets[targets.length - 1].link;
+				} else {
+					for (const { link, heading } of targets) {
+						const top = tops.get(heading);
+						if (top !== undefined && top <= offset + 1) active = link;
+					}
 				}
 				setCurrent(active);
 			};
@@ -96,10 +111,10 @@ const categoryHref = `/${dirKey}/`;
 				if (observer) observer.disconnect();
 				const offset =
 					parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
-				// A thin band ending exactly at the header line; a heading becomes
-				// "intersecting" the moment its top crosses that line.
+				// A thin band `band` px either side of the header line, so a
+				// heading that snaps to exactly the line still registers.
 				const band = 2;
-				const bandBottom = Math.max(0, window.innerHeight - offset);
+				const bandBottom = Math.max(0, window.innerHeight - offset - band);
 				observer = new IntersectionObserver(
 					(entries) => {
 						for (const entry of entries) tops.set(entry.target, entry.boundingClientRect.top);
@@ -109,6 +124,26 @@ const categoryHref = `/${dirKey}/`;
 				);
 				for (const { heading } of targets) observer.observe(heading);
 			};
+
+			// Inert sentinel at the document end. It is positioned absolutely with
+			// no offsets, so it keeps its static spot without adding layout, and
+			// it is never focusable. Intersecting the viewport bottom edge means
+			// the reader has reached the end.
+			const sentinel = document.createElement('div');
+			sentinel.setAttribute('aria-hidden', 'true');
+			sentinel.style.cssText = 'position: absolute; height: 0; width: 0; pointer-events: none;';
+			document.body.append(sentinel);
+			new IntersectionObserver(
+				(entries) => {
+					const reachedEnd =
+						entries.some((entry) => entry.isIntersecting) &&
+						document.documentElement.scrollHeight > window.innerHeight;
+					if (reachedEnd === atEnd) return;
+					atEnd = reachedEnd;
+					recompute();
+				},
+				{ rootMargin: '0px 0px 2px 0px', threshold: 0 }
+			).observe(sentinel);
 
 			observe();
 			let resizeFrame = 0;
