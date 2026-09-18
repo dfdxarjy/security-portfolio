@@ -1,0 +1,300 @@
+---
+import { getCollection, render, type CollectionEntry } from 'astro:content';
+import { execFileSync } from 'node:child_process';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { SidebarNav } from '../components/site/SidebarNav.tsx';
+import { Toc } from '../components/site/Toc.tsx';
+import { Pagination } from '../components/site/Pagination.tsx';
+import { DocsMeta } from '../components/site/DocsMeta.tsx';
+import { CaseRail } from '../components/site/CaseRail.tsx';
+import { CaseInfoPanel } from '../components/site/CaseInfoPanel.tsx';
+
+export async function getStaticPaths() {
+	const entries = await getCollection('docs');
+	return entries.map((entry) => {
+		const route = entry.id.endsWith('/index')
+			? entry.id.slice(0, -'/index'.length)
+			: entry.id;
+		return { params: { slug: route }, props: { entry } };
+	});
+}
+
+type Props = { entry: CollectionEntry<'docs'> };
+const { entry } = Astro.props;
+
+const { Content, headings } = await render(entry);
+
+const isCase = entry.data.type === 'case-study';
+
+const title = `${entry.data.seoTitle ?? entry.data.title} | taktak.hu`;
+const description = entry.data.description;
+const canonical = new URL(Astro.url.pathname, Astro.site).href;
+const currentPath = Astro.url.pathname;
+
+const editUrl =
+	'https://github.com/taktak0x/security-portfolio/edit/main/' + entry.filePath;
+
+let lastUpdated: string | undefined;
+try {
+	const commitDate = execFileSync(
+		'git',
+		['log', '-1', '--format=%cs', '--', entry.filePath],
+		{ cwd: process.cwd() },
+	)
+		.toString()
+		.trim();
+	lastUpdated = commitDate || undefined;
+} catch {
+	lastUpdated = undefined;
+}
+
+const categoryKey = entry.id.split('/').slice(0, -1).join('/');
+
+// Known portfolio categories, keyed by the case's parent directory.
+const CATEGORY_LABELS: [string, string][] = [
+	['machines/windows', 'Windows'],
+	['machines/linux', 'Linux'],
+	['sherlocks/dfir', 'DFIR'],
+];
+const knownCategory = CATEGORY_LABELS.find(([suffix]) => categoryKey.endsWith(suffix));
+const titleCase = (value: string) =>
+	value.replace(/(^|[- ])\w/g, (char) => char.toUpperCase());
+const categoryName =
+	knownCategory?.[1] ?? titleCase(categoryKey.split('/').at(-1) ?? 'Case');
+const railLabel = `${categoryName} cases`;
+const categoryHref = '/' + categoryKey + '/';
+
+// Same-category cases, newest first, id as tiebreak, current page excluded.
+const related = (await getCollection('docs'))
+	.filter(
+		(item) =>
+			item.data.type === 'case-study' &&
+			item.id !== entry.id &&
+			item.id.split('/').slice(0, -1).join('/') === categoryKey,
+	)
+	.sort((a, b) => {
+		const aDate = a.data.addedAt ?? '';
+		const bDate = b.data.addedAt ?? '';
+		return aDate === bDate ? a.id.localeCompare(b.id) : bDate.localeCompare(aDate);
+	})
+	.slice(0, 3)
+	.map((item) => ({ href: '/' + item.id + '/', title: item.data.title }));
+
+const published = entry.data.publishedAt ?? entry.data.addedAt;
+const updated = entry.data.updatedAt;
+const updatedLabel = lastUpdated ? 'Last updated' : 'Updated';
+
+const reportUrl = `https://github.com/taktak0x/security-portfolio/issues/new?${new URLSearchParams(
+	{
+		title: `Correction: ${entry.data.title}`,
+		body: `Page: ${new URL(Astro.url.pathname, Astro.site)}\n\nWhich specific claim needs correcting, and what should it say?`,
+	},
+).toString()}`;
+
+// Non-case leaf pages get prev/next from their parent-directory siblings,
+// ordered by title. Case pages and index pages get none. The loader strips a
+// trailing `/index` from `entry.id`, so index entries are detected by filename.
+const isIndexEntry = (item: CollectionEntry<'docs'>) =>
+	(item.filePath ?? '').split('/').pop()?.replace(/\.(md|mdx)$/, '') === 'index';
+
+let prev: { href: string; title: string } | undefined;
+let next: { href: string; title: string } | undefined;
+if (!isCase && !isIndexEntry(entry)) {
+	const siblings = (await getCollection('docs'))
+		.filter(
+			(item) =>
+				item.id.split('/').slice(0, -1).join('/') === categoryKey &&
+				!isIndexEntry(item),
+		)
+		.sort((a, b) => a.data.title.localeCompare(b.data.title));
+	const position = siblings.findIndex((item) => item.id === entry.id);
+	const toLink = (item: CollectionEntry<'docs'>) => ({
+		href: '/' + item.id + '/',
+		title: item.data.title,
+	});
+	if (position > 0) prev = toLink(siblings[position - 1]);
+	if (position !== -1 && position < siblings.length - 1)
+		next = toLink(siblings[position + 1]);
+}
+
+// Human-readable labels for the known portfolio URL segments; any other segment
+// falls back to title-casing its hyphenated words. Mirrors the breadcrumb
+// labels emitted in the case JSON-LD.
+const SEGMENT_LABELS: Record<string, string> = {
+	'case-studies': 'Case Studies',
+	prolabs: 'Pro Labs',
+	htb: 'Hack The Box',
+	sherlocks: 'Sherlocks',
+	dfir: 'DFIR',
+	machines: 'Machines',
+	windows: 'Windows',
+	linux: 'Linux',
+};
+const labelFor = (segment: string) =>
+	SEGMENT_LABELS[segment] ??
+	segment
+		.split('-')
+		.filter(Boolean)
+		.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+		.join(' ');
+
+// JSON-LD is emitted only on case pages: an Article node plus a BreadcrumbList
+// built from the canonical pathname. Non-case pages get none.
+let jsonLd: Record<string, unknown> | undefined;
+if (isCase) {
+	const pathname = Astro.url.pathname.replace(/\/+$/, '') || '/';
+	const segments = pathname.split('/').filter(Boolean);
+	const breadcrumbItems = segments.map((segment, index, all) => ({
+		'@type': 'ListItem',
+		position: index + 1,
+		name: labelFor(segment),
+		item: new URL(
+			`/${all.slice(0, index + 1).join('/')}/`,
+			Astro.site ?? canonical,
+		).href,
+	}));
+	const article: Record<string, unknown> = {
+		'@type': 'Article',
+		headline: entry.data.title,
+	};
+	if (entry.data.description) article.description = entry.data.description;
+	const datePublished = entry.data.publishedAt ?? entry.data.addedAt;
+	if (datePublished) article.datePublished = datePublished;
+	if (entry.data.updatedAt) article.dateModified = entry.data.updatedAt;
+	article.url = canonical;
+	jsonLd = {
+		'@context': 'https://schema.org',
+		'@graph': [
+			article,
+			{ '@type': 'BreadcrumbList', itemListElement: breadcrumbItems },
+		],
+	};
+}
+
+const panelProps = {
+	categoryLabel: categoryName,
+	tools: entry.data.tools ?? [],
+	skill: entry.data.skill,
+	tags: entry.data.tags ?? [],
+	published,
+	updated,
+	updatedLabel,
+	evidenceQuality: entry.data.evidenceQuality,
+	related,
+	editUrl,
+	reportUrl,
+};
+---
+
+<BaseLayout
+	title={title}
+	description={description}
+	canonical={canonical}
+	ogType={isCase ? 'article' : 'website'}
+	jsonLd={jsonLd}
+	currentPath={currentPath}
+>
+	<main id="main-content" class="bg-background">
+		{
+			!isCase && (
+				<div class="mx-auto w-full max-w-[86rem] px-4 pb-6 xl:hidden">
+					<details class="rounded-[var(--portfolio-radius)] border border-border bg-card">
+						<summary class="cursor-pointer list-none px-4 py-3 font-mono text-sm font-bold text-foreground">
+							Sections
+						</summary>
+						<div class="px-4 pb-4">
+							<SidebarNav currentPath={currentPath} />
+						</div>
+					</details>
+				</div>
+			)
+		}
+
+		{
+			isCase &&
+				headings.some((heading) => heading.depth === 2 && heading.slug) && (
+					<div class="mx-auto w-full max-w-[86rem] px-4 pb-6 xl:hidden">
+						<details class="rounded-[var(--portfolio-radius)] border border-border bg-card">
+							<summary class="cursor-pointer list-none px-4 py-3 font-mono text-sm font-bold text-foreground">
+								Contents
+							</summary>
+							<div class="px-4 pb-4">
+								<nav aria-label="Case contents">
+									<ul>
+										{headings
+											.filter(
+												(heading) => heading.depth === 2 && heading.slug,
+											)
+											.map((heading) => (
+												<li>
+													<a href={'#' + heading.slug}>{heading.text}</a>
+												</li>
+											))}
+									</ul>
+								</nav>
+							</div>
+						</details>
+					</div>
+				)
+		}
+
+		<div
+			class="mx-auto grid w-full max-w-[86rem] grid-cols-1 gap-10 px-4 py-10 lg:px-8 xl:grid-cols-[15rem_minmax(0,1fr)_17rem]"
+		>
+			<div class="hidden xl:block">
+				{
+					isCase ? (
+						<div class="sticky top-[var(--portfolio-header-h,5.5rem)]">
+							<CaseRail
+								client:load
+								categoryHref={categoryHref}
+								categoryLabel={railLabel}
+								headings={headings}
+							/>
+						</div>
+					) : (
+						<div class="sticky top-[var(--portfolio-header-h,5.5rem)]">
+							<SidebarNav currentPath={currentPath} />
+						</div>
+					)
+				}
+			</div>
+
+			<div class="min-w-0">
+				<article class="portfolio-prose">
+					<h1 id="_top">{entry.data.title}</h1>
+					<Content />
+				</article>
+				{
+					!isCase && (
+						<>
+							<DocsMeta editUrl={editUrl} lastUpdated={lastUpdated} />
+							<Pagination prev={prev} next={next} />
+						</>
+					)
+				}
+			</div>
+
+			<div class="hidden xl:block">
+				<div class="sticky top-[var(--portfolio-header-h,5.5rem)]">
+					{isCase ? <CaseInfoPanel {...panelProps} /> : <Toc headings={headings} />}
+				</div>
+			</div>
+		</div>
+
+		{
+			isCase && (
+				<div class="mx-auto w-full max-w-[86rem] px-4 pb-10 xl:hidden">
+					<details class="rounded-[var(--portfolio-radius)] border border-border bg-card">
+						<summary class="cursor-pointer list-none px-4 py-3 font-mono text-sm font-bold text-foreground">
+							Case info
+						</summary>
+						<div class="px-4 pb-4">
+							<CaseInfoPanel {...panelProps} />
+						</div>
+					</details>
+				</div>
+			)
+		}
+	</main>
+</BaseLayout>

@@ -1,0 +1,147 @@
+---
+import "../styles/globals.css";
+import SiteHeader from "../components/site/SiteHeader.tsx";
+import SiteFooter from "../components/site/SiteFooter.tsx";
+
+interface Props {
+	title: string;
+	description: string;
+	canonical: string;
+	ogType?: "website" | "article";
+	jsonLd?: Record<string, unknown>;
+	noindex?: boolean;
+	currentPath: string;
+}
+
+const {
+	title,
+	description,
+	canonical,
+	ogType = "website",
+	jsonLd,
+	noindex = false,
+	currentPath,
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="description" content={description} />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<link rel="icon" type="image/x-icon" sizes="32x32" href="/favicon.ico" />
+		<link rel="canonical" href={canonical} />
+		<meta property="og:type" content={ogType} />
+		<meta property="og:site_name" content="taktak.hu" />
+		<meta property="og:title" content={title} />
+		<meta property="og:description" content={description} />
+		<meta property="og:url" content={canonical} />
+		<meta property="og:image" content="https://taktak.hu/og-default.png" />
+		<meta property="og:image:width" content="1200" />
+		<meta property="og:image:height" content="630" />
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="referrer" content="strict-origin-when-cross-origin" />
+		<title>{title}</title>
+		{noindex && <meta name="robots" content="noindex,nofollow" />}
+		{
+			jsonLd && (
+				<script
+					type="application/ld+json"
+					is:inline
+					set:html={JSON.stringify(jsonLd)
+						.replace(/</g, "\\u003c")
+						.replace(/>/g, "\\u003e")}
+				/>
+			)
+		}
+		{/* Pre-paint theme: resolves the stored/system choice before first paint
+		    so the document never flashes the wrong palette. Absent storage = auto. */}
+		<script is:inline>
+			(() => {
+				let theme;
+				try {
+					const stored = localStorage.getItem("starlight-theme");
+					if (stored === "light" || stored === "dark") {
+						theme = stored;
+					}
+				} catch {}
+				if (!theme) {
+					theme = window.matchMedia("(prefers-color-scheme: dark)").matches
+						? "dark"
+						: "light";
+				}
+				document.documentElement.dataset.theme = theme;
+				document.documentElement.style.colorScheme = theme;
+			})();
+		</script>
+		<style is:global>
+			html {
+				scroll-padding-top: var(--portfolio-header-h, 5.5rem);
+			}
+			.portfolio-skip-link {
+				position: absolute;
+				left: 1rem;
+				top: -4rem;
+				z-index: 10000;
+				border: 1px solid var(--portfolio-accent);
+				border-radius: var(--portfolio-radius);
+				padding: 0.6rem 1rem;
+				background: var(--portfolio-surface-raised);
+				color: var(--portfolio-accent);
+				font-weight: 700;
+				text-decoration: none;
+				transition: top 0.15s ease;
+			}
+			.portfolio-skip-link:focus {
+				top: 1rem;
+				outline: 3px solid var(--portfolio-accent);
+				outline-offset: 2px;
+			}
+		</style>
+	</head>
+	<body>
+		<a class="portfolio-skip-link" href="#main-content"
+			>Skip to main content</a
+		>
+		{/* Decorative grain overlay, rendered exactly once per page. */}
+		<svg class="surface-grain" aria-hidden="true" focusable="false">
+			<filter id="surface-grain-noise">
+				<feTurbulence
+					type="fractalNoise"
+					baseFrequency="0.82"
+					numOctaves="2"
+					stitchTiles="stitch"></feTurbulence>
+			</filter>
+			<rect width="100%" height="100%" filter="url(#surface-grain-noise)"
+			></rect>
+		</svg>
+		<SiteHeader currentPath={currentPath} client:load />
+		<slot />
+		<SiteFooter />
+		{/* Measured header height feeds `--portfolio-header-h`, consumed by
+		    `scroll-padding-top` so in-page anchors clear the sticky header.
+		    Guarded so a second run cannot stack observers. */}
+		<script is:inline>
+			(() => {
+				const root = document.documentElement;
+				if (root.dataset.headerHeightInit === "true") return;
+				root.dataset.headerHeightInit = "true";
+				const header = document.querySelector(".portfolio-header");
+				if (!header) return;
+				const measure = () =>
+					root.style.setProperty(
+						"--portfolio-header-h",
+						`${header.getBoundingClientRect().height}px`,
+					);
+				measure();
+				if (typeof ResizeObserver !== "undefined") {
+					new ResizeObserver(measure).observe(header);
+				} else {
+					window.addEventListener("resize", measure);
+				}
+			})();
+		</script>
+	</body>
+</html>
