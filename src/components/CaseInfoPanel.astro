@@ -10,7 +10,6 @@ import { getCollection } from 'astro:content';
 
 const { entry } = Astro.locals.starlightRoute;
 const data = entry.data as {
-	difficulty?: string;
 	tools?: string[];
 	skill?: string;
 	tags?: string[];
@@ -79,14 +78,6 @@ const related = (await getCollection('docs'))
 	<dl class="case-info__meta">
 		<dt>Category</dt>
 		<dd>{categoryLabel}</dd>
-		{
-			data.difficulty && (
-				<>
-					<dt>Difficulty</dt>
-					<dd>{data.difficulty}</dd>
-				</>
-			)
-		}
 		{
 			tools.length > 0 && (
 				<>
