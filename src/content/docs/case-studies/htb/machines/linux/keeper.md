@@ -38,7 +38,7 @@ outcome: "Root SSH access"
 
 ## Default credentials to KeePass memory disclosure
 
-Keeper is an Easy-rated Hack The Box Linux lab that chains a default-credential weakness in Request Tracker with the KeePass master-password memory-disclosure flaw (CVE-2023-32784). The helpdesk system is reachable with publicly documented default credentials, an administrative comment field exposes a user password, and a KeePass crash dump in that user's home directory yields the master password. An unencrypted PuTTY-format root SSH key inside the unlocked database then authenticates directly as root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+Keeper is an Easy-rated Hack The Box Linux lab that chains a default-credential weakness in Request Tracker with the KeePass master-password memory-disclosure flaw (CVE-2023-32784). The helpdesk system is reachable with publicly documented default credentials, an administrative comment field exposes a user password, and a KeePass crash dump in that user's home directory yields the master password. An unencrypted PuTTY-format root SSH key inside the unlocked database then authenticates directly as root. This writeup replaces target identifiers, credentials, and secret values with role-based placeholders and leaves command syntax intact. See [how evidence is handled](/method/).
 
 **Attack path:** **Default Request Tracker credentials → password in a ticket comment field → SSH as low-privilege user → KeePass crash dump → CVE-2023-32784 master-password recovery → unencrypted root key in the KeePass database → PuTTY-to-OpenSSH conversion → root SSH**
 
@@ -48,7 +48,7 @@ Keeper is an Easy-rated Hack The Box Linux lab that chains a default-credential 
 - **Exposed services:** SSH (22) and HTTP (80).
 - **Starting position:** unauthenticated network access, with no provided credentials.
 - **Objective:** reach full compromise by following the exposed services and the credential exposure they present.
-- **Constraints:** activity was confined to the Hack The Box lab environment; the ticketing application is served on a virtual host.
+- **Constraints:** activity stayed inside the Hack The Box lab environment; the ticketing application is served on a virtual host.
 
 ## Evidence: default login to KeePass dump to root key
 
@@ -74,7 +74,7 @@ The linked page points to the helpdesk application:
 <a href="http://<APP_VHOST>/rt/">To raise an IT support ticket, please visit here</a>
 ```
 
-Significance: the web service is a pointer to a helpdesk application rather than the application itself, so the ticketing layer becomes the primary attack surface.
+Significance: the web service is a pointer to a helpdesk application rather than the application itself, so the ticketing layer is the primary attack surface.
 
 Result: SSH and nginx are exposed, and the web page links to the Request Tracker instance.
 
@@ -101,7 +101,7 @@ Result: the source records a successful administrator login with an accessible d
 
 Observation: the administrator interface lists user accounts. One profile stores an initial password in the Comments field, and a recently viewed ticket references a KeePass crash dump in that user's home directory.
 
-Interface: the affected profile and its associated ticket are reached through **Admin → Users**; both are reproduced below.
+Interface: the affected profile and its ticket are reached through **Admin → Users**; both are reproduced below.
 
 Profile excerpt (identity generalized):
 
@@ -124,7 +124,7 @@ Result: a user password is recovered and a crash-dump path is disclosed.
 
 ### 4. SSH Access as a Low-Privilege User
 
-Observation: the password recovered from the comment field is reused for the operating system account.
+Observation: I tried the password recovered from the comment field against the operating system account, and it was accepted.
 
 ```bash
 ssh <LAB_USER>@<TARGET_HOST>
@@ -140,7 +140,7 @@ Significance: the same secret crosses from the ticketing system to SSH, so a hel
 
 Result: an interactive shell as `<LAB_USER>` is obtained.
 
-### 5. Home Directory Enumeration — KeePass Crash Dump
+### 5. Home Directory Enumeration: KeePass Crash Dump
 
 Observation: the user's home directory contains an archive holding a KeePass memory dump and a database file.
 
@@ -158,7 +158,7 @@ Significance: a process memory dump stored beside a KeePass database points dire
 
 Result: `KeePassDumpFull.dmp` and `passcodes.kdbx` are extracted.
 
-### 6. CVE-2023-32784 — KeePass Master-Password Recovery from Memory
+### 6. CVE-2023-32784: KeePass Master-Password Recovery from Memory
 
 Observation: KeePass 2.x before 2.54 allocates a new managed string for every keystroke of the master password, so the heap retains progressively longer partial strings. Those strings are not zeroed, and a memory dump captured after entry exposes all but the first character.
 
@@ -177,11 +177,11 @@ Possible password: ●l<PASSWORD_FRAGMENT>
 Possible password: ●`<PASSWORD_FRAGMENT>
 ```
 
-Significance: the tool cannot recover the first character, shown as `●`, and returns several candidate first characters. The remaining phrase and the user context recorded in the ticket are enough to resolve the full passphrase. Because the dump can persist in swap files and hibernation images, the exposure outlives the running application.
+Significance: the tool cannot recover the first character, shown as `●`, and returns several candidate first characters. The full passphrase was inferred from the surviving phrase and the user context recorded in the ticket. Because the dump can persist in swap files and hibernation images, the exposure outlives the running application.
 
 Result: the master-password candidate is recovered from the dump and resolved from context.
 
-### 7. KeePass Database Access — Root SSH Key Recovery
+### 7. KeePass Database Access: Root SSH Key Recovery
 
 Observation: the resolved master password unlocks the database, whose Network group holds a PuTTY-format root SSH key in the Notes field of an entry.
 

@@ -1,8 +1,8 @@
 ---
 title: Windows
-description: Evidence-focused Windows machine case studies.
+description: Evidence-focused case studies of Windows machines on Hack The Box.
 sidebar:
   hidden: true
 ---
 
-Evidence-focused Windows machine case studies.
+Evidence-focused case studies of Windows machines on Hack The Box.

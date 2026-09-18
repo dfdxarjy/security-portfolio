@@ -41,7 +41,7 @@ outcome: "SYSTEM-level execution on the domain controller after RBCD delegation 
 
 ## Clock skew to gMSA to RBCD
 
-Pirate is a Hard-rated Hack The Box Active Directory lab that begins with supplied credentials for a low-privileged domain user. LDAP enumeration is initially blocked by Kerberos clock skew; once the clocks are aligned, `pre2k` and gMSA enumeration expose a managed service account whose NTLM hash yields a WinRM foothold on the domain controller. Local discovery reveals an internal `/24` segment hosting a web host, a Ligolo tunnel reaches it, and an NTLM relay to LDAPS grants the delegation rights needed to impersonate an administrator, recover a local secret, reset a privileged account's password, and pivot a service ticket to the domain controller. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+Pirate is a Hard-rated Hack The Box Active Directory lab that begins with supplied credentials for a low-privileged domain user. Kerberos clock skew blocks LDAP enumeration at first; once the clocks are aligned, `pre2k` and gMSA enumeration expose a managed service account whose NTLM hash yields a WinRM foothold on the domain controller. Local discovery reveals an internal `/24` segment hosting a web host, a Ligolo tunnel reaches it, and an NTLM relay to LDAPS grants the delegation rights needed to impersonate an administrator, recover a local secret, reset a privileged account's password, and pivot a service ticket to the domain controller. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Supplied domain credentials → Kerberos clock-skew alignment → `pre2k` and gMSA disclosure → WinRM foothold → internal segment discovery → Ligolo pivot → NTLM-relay RBCD → delegated CIFS ticket → local secret recovery → privileged password reset → SPN abuse → domain controller SYSTEM**
 
@@ -51,7 +51,7 @@ Pirate is a Hard-rated Hack The Box Active Directory lab that begins with suppli
 - **Starting position:** supplied credentials for `<INITIAL_USER>`, a low-privileged domain account.
 - **Internal segment:** a `/24` network reachable only through the domain controller, hosting `<INTERNAL_WEB_HOSTNAME>`.
 - **Objective:** chain trust relationships across the domain and the internal segment to reach domain administrative control.
-- **Constraints:** activity was confined to the Hack The Box lab environment; the lab hostname was mapped locally for name resolution.
+- **Constraints:** I kept activity inside the Hack The Box lab environment; the lab hostname was mapped locally for name resolution.
 
 ## Evidence: gMSA hash to relay RBCD to SPN abuse
 
@@ -74,9 +74,9 @@ Truncated scan output:
 5985/tcp open  http           Microsoft HTTPAPI httpd 2.0
 ```
 
-Significance: DNS, Kerberos, and LDAP together with WinRM (5985) identify a domain controller; port 80 exposes an IIS service that is enumeration-only, while WinRM provides the credential-based foothold.
+Significance: DNS, Kerberos, and LDAP together with WinRM (5985) identify a domain controller; port 80 exposes an IIS service that is enumeration-only, while WinRM is the credential-based foothold.
 
-Result: a Windows domain controller is enumerated, with WinRM available for a later credential-based foothold.
+Result: the scan enumerates a Windows domain controller, with WinRM available for a later credential-based foothold.
 
 ### 2. SMB Enumeration and Domain User Discovery
 
@@ -229,7 +229,7 @@ ping <INTERNAL_WEB_IP>
 64 bytes from <INTERNAL_WEB_IP>: icmp_seq=1 ttl=64 time=232 ms
 ```
 
-Significance: with a route through the agent, the attack host can address the internal segment directly, turning the domain controller into a pivot point.
+Significance: with a route through the agent, the attack host can address the internal segment directly, so the domain controller is a pivot point.
 
 Result: `<INTERNAL_WEB_IP>` is reachable through the tunnel.
 
@@ -375,15 +375,15 @@ Result: the session lands in the `<SYSTEM_ACCOUNT>` context on the domain contro
 
 ## Outcome: SYSTEM on the controller via a CIFS ticket
 
-The evidence establishes administrative compromise of the domain: an administrator-impersonating CIFS ticket was issued by the domain controller and used to execute in its `<SYSTEM_ACCOUNT>` context. Limitations: the final session's command output was not retained, so the landing context rests on the source's record, and the recovered secret values and the flag are omitted.
+The evidence establishes administrative compromise of the domain: an administrator-impersonating CIFS ticket was issued by the domain controller and used to execute in its `<SYSTEM_ACCOUNT>` context. Limitations: I could not verify the landing context from captured output because the final session's command output was not retained, so that context rests on the source's record; the recovered secret values and the flag are omitted.
 
 ## Recommendations: time sync, gMSA reads, LDAP signing, LSA secrets, and SPNs
 
-Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. These actions are recommendations; none was validated in the lab.
+These actions are recommendations; none was validated in the lab.
 
 1. **Kerberos time synchronization.** Time drift produced `KRB_AP_ERR_SKEW` and blocked account enumeration. *Recommendation:* keep domain controllers and management hosts synchronized to a reliable time source. *Detection:* monitor for `KRB_AP_ERR_SKEW` events.
-2. **Over-broad gMSA read permission.** A principal listed in `PrincipalsAllowedToReadPassword` retrieved the managed account's NTLM hash directly, yielding a WinRM foothold. *Recommendation:* restrict `PrincipalsAllowedToReadPassword` to the minimum identities that require it and review it regularly. *Detection:* monitor gMSA password reads and changes to those ACLs.
-3. **NTLM relay to LDAPS with weakly protected delegation.** Relaying coerced host authentication to LDAPS modified the web host's delegation attribute, enabling administrator impersonation via S4U2Proxy. *Recommendation:* enforce LDAP signing and channel binding, disable NTLM where possible, and restrict write access to machine-account delegation attributes. *Detection:* alert on modifications to `msDS-AllowedToActOnBehalfOfOtherIdentity` and on LDAP binds that follow coercion.
+2. **Over-broad gMSA read permission.** A principal listed in `PrincipalsAllowedToReadPassword` retrieved the managed account's NTLM hash directly, which gave a WinRM foothold. *Recommendation:* restrict `PrincipalsAllowedToReadPassword` to the minimum identities that require it and review it regularly. *Detection:* monitor gMSA password reads and changes to those ACLs.
+3. **NTLM relay to LDAPS with weakly protected delegation.** Relaying coerced host authentication to LDAPS modified the web host's delegation attribute, which enabled administrator impersonation via S4U2Proxy. *Recommendation:* enforce LDAP signing and channel binding, disable NTLM where possible, and restrict write access to machine-account delegation attributes. *Detection:* alert on modifications to `msDS-AllowedToActOnBehalfOfOtherIdentity` and on LDAP binds that follow coercion.
 4. **Reusable plaintext secret in LSA secrets.** A `DefaultPassword` stored on the web host provided a usable domain credential. *Recommendation:* avoid storing reusable account passwords in machine secrets or local configuration; where unavoidable, rotate and scope them. *Detection:* scan hosts for stored credentials and alert on unusual service-account use.
 5. **Machine-account SPN write access.** Write access to the domain controller machine account's SPNs allowed S4U2self/S4U2Proxy ticket issuance, pivoted to `CIFS` with the `altservice` option. *Recommendation:* treat SPN write access on privileged computer accounts as tier-zero and restrict it. *Detection:* alert on SPN modifications to domain controller machine accounts and on anomalous service-ticket requests.
 

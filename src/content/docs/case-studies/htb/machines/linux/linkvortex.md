@@ -39,7 +39,7 @@ outcome: "Authenticated Ghost CMS remote code execution as the application user,
 
 ## From exposed Git history to CMS RCE
 
-LinkVortex is an Easy-rated Hack The Box Linux lab. Virtual-host enumeration exposes a development subdomain whose web root publishes a `.git` directory; the repository's staged changes reveal a Ghost CMS password that authenticates to the admin panel. That access enables an authenticated remote code execution flaw in Ghost (CVE-2026-29053), yielding a shell as the application user, whose database password is reused for SSH. Privilege escalation abuses a sudo rule that passes a user-controlled `*.png` glob to a cleanup script, and a two-hop symlink chain reads a root-owned file despite `fs.protected_symlinks=1`. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+LinkVortex is an Easy-rated Hack The Box Linux lab. Virtual-host enumeration exposes a development subdomain whose web root publishes a `.git` directory; the repository's staged changes reveal a Ghost CMS password that authenticates to the admin panel. That access enables an authenticated remote code execution flaw in Ghost (CVE-2026-29053) and yields a shell as the application user, whose database password is reused for SSH. Privilege escalation abuses a sudo rule that passes a user-controlled `*.png` glob to a cleanup script, and a two-hop symlink chain reads a root-owned file despite `fs.protected_symlinks=1`. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Exposed `.git` → Git-diff credential disclosure → Ghost CMS admin authentication → CVE-2026-29053 authenticated RCE → database-credential reuse → SSH access → sudo glob + two-hop symlink chain → root-owned file read**
 
@@ -66,7 +66,7 @@ rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV -oN nmap/target-tcp
 80/tcp open  http    Apache httpd
 ```
 
-Significance: SSH needs credentials that are not yet available, so HTTP becomes the primary enumeration surface; the web service redirects, indicating name-based virtual hosting.
+Significance: SSH needs credentials that are not yet available, so HTTP becomes the primary enumeration surface; the web service redirects, which indicates name-based virtual hosting.
 
 Result: SSH and HTTP are reachable on the target.
 
@@ -85,7 +85,7 @@ gobuster vhost \
 <DEVELOPMENT_HOSTNAME>  Status: 200
 ```
 
-Significance: a development virtual host is served alongside the main site, widening the surface to an environment that typically holds unreleased code and deployment artifacts.
+Significance: a development virtual host is served alongside the main site and widens the surface to an environment that typically holds unreleased code and deployment artifacts.
 
 Result: `<DEVELOPMENT_HOSTNAME>` is identified as a valid virtual host.
 
@@ -174,9 +174,9 @@ Significance: reusing one secret across the application configuration and the op
 
 Result: a user-level SSH session is obtained with the recovered credentials.
 
-### 6. Privilege Escalation — Sudo Glob and Symlink Bypass
+### 6. Privilege Escalation: Sudo Glob and Symlink Bypass
 
-Observation: the account holds a sudo rule that runs a cleanup script with a caller-supplied glob.
+Observation: I checked the account's sudo rule, which runs a cleanup script with a caller-supplied glob.
 
 ```bash
 sudo -l
@@ -197,7 +197,7 @@ sysctl fs.protected_symlinks
 fs.protected_symlinks = 1
 ```
 
-Significance: the host enables `fs.protected_symlinks=1`, yet the read still succeeds. The sudo rule runs a privileged cleanup script and accepts a user-controlled `*.png` glob, so the caller controls the path the script is pointed at. A two-hop chain — an intermediate symlink to the protected file, then a `.png`-named symlink to that intermediate link — is passed to the script, which returns the protected file's contents.
+Significance: the host enables `fs.protected_symlinks=1`, yet the read still succeeds. The sudo rule runs a privileged cleanup script and accepts a user-controlled `*.png` glob, so the caller controls the path the script is pointed at. A two-hop chain is passed to the script: an intermediate symlink to the protected file, then a `.png`-named symlink to that intermediate link. The script returns the protected file's contents.
 
 ```bash
 ln -s <PROTECTED_FILE_PATH> <USER_CACHE>/b
@@ -226,7 +226,7 @@ Result: the script returns the contents of the root-owned file through its own r
 
 ## Outcome: Ghost RCE and root-owned file read
 
-Authenticated Ghost CMS code execution yielded a shell as the application user; the reused configuration password provided a system-level SSH session, and a sudo rule accepting a user-controlled glob plus a two-hop symlink chain granted a read of a root-owned file. The admin login, reverse shell, and SSH session are recorded in the source as documented results without captured console output.
+Authenticated Ghost CMS code execution yielded a shell as the application user; the reused configuration password provided a system-level SSH session, and a sudo rule accepting a user-controlled glob plus a two-hop symlink chain granted a read of a root-owned file. The admin login, reverse shell, and SSH session are recorded in the source as documented results without captured console output, so I could not verify them directly.
 
 ## Recommendations: exposed Git, credential reuse, unpatched CMS, and sudo globs
 

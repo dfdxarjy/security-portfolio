@@ -39,7 +39,7 @@ outcome: "Root access via a disclosed root SSH private key obtained through priv
 
 ## Password-reset SQLi to 7-Zip listfile root
 
-Usage is an Easy-rated, retired Hack The Box Linux lab running an nginx-hosted Laravel application. A password-reset workflow is vulnerable to SQL injection, which exposes the `usage_blog` database and the Laravel-admin account hash; the recovered password unlocks an administrative virtual host whose file-upload validation is bypassed to execute a payload as a local user. Local enumeration then recovers Monit service credentials that are reused for SSH access to a second local account, and a passwordless sudo backup binary that invokes `7za` with a wildcard expands an `@` list file into disclosure of the root SSH private key. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+Usage is an Easy-rated, retired Hack The Box Linux lab running an nginx-hosted Laravel application. A password-reset workflow is vulnerable to SQL injection, which exposes the `usage_blog` database and the Laravel-admin account hash; the recovered password unlocks an administrative virtual host whose file-upload validation is bypassed to execute a payload as a local user. Local enumeration then recovers Monit service credentials that are reused for SSH access to a second local account, and a passwordless sudo backup binary that invokes `7za` with a wildcard expands an `@` list file into disclosure of the root SSH private key. This writeup replaces target identifiers, credentials, and secret values with role-based placeholders and preserves the command syntax. See [how evidence is handled](/method/).
 
 **Attack path:** **Password-reset SQL injection → administrative credential recovery → authenticated upload-validation bypass (CVE-2023-24249) → code execution as a local user → Monit credential reuse over SSH → passwordless sudo 7-Zip backup → `@listfile` and wildcard abuse → root SSH key disclosure → root**
 
@@ -87,7 +87,7 @@ Result: a password-reset endpoint and an administrative virtual host are identif
 
 Observation: the `email` parameter in the password-reset request is injectable, and a threaded dump corrupts part of the stored bcrypt value.
 
-Action: confirm the backend database, enumerate databases and tables, dump the administrative-user row, then re-query that row directly with length and hexadecimal output to obtain the full hash before offline cracking.
+Action: I confirmed the backend database, enumerated its databases and tables, dumped the administrative-user row, then checked that row directly with length and hexadecimal output to obtain the full hash before offline cracking.
 
 ```bash
 sqlmap -r <REQUEST_FILE> -p email --batch --level 3 --dbs --threads 10
@@ -112,7 +112,7 @@ Validated row from the direct query:
 1,admin,<BCRYPT_HASH>,60,<HEX_ENCODED_HASH>
 ```
 
-Significance: threaded blind dumps can corrupt sensitive values, so cross-checking the stored value's length and byte representation avoids spending cracking effort on a truncated hash.
+Significance: threaded blind dumps can corrupt part of a stored hash and return a wrong value, so cross-checking the stored value's length and byte representation avoids spending cracking effort on a truncated hash.
 
 Result: the validated bcrypt hash cracks offline to the administrative account password, which authenticates to the administrative panel.
 
@@ -247,11 +247,11 @@ Result: the root SSH private key is disclosed and used to obtain root.
 
 ## Outcome: root via disclosed 7-Zip listfile SSH key
 
-Root access was obtained via a disclosed root SSH private key recovered through privileged 7-Zip `@listfile` and wildcard handling; the recovered credential, hash, and key values are omitted, so the secrets are not reproducible from this writeup.
+The evidence establishes root access through a disclosed root SSH private key recovered from privileged 7-Zip `@listfile` and wildcard handling; the recovered credential, hash, and key values are omitted, so the secrets are not reproducible from this writeup.
 
 ## Recommendations: password-reset SQLi, upload bypass, credential reuse, and the wildcard backup
 
-Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
+The actions are recommendations; none was validated in the lab.
 
 1. **SQL injection in the password-reset workflow.** The `email` parameter is used to build a database query, exposing the application database and the administrative credential. *Recommendation:* bind user input with parameterized queries instead of constructing SQL from request values. *Detection:* alert on SQL-metacharacter patterns and on enumeration-heavy queries from a single source.
 2. **Upload-validation bypass (CVE-2023-24249).** A web-accessible upload accepted a PHP payload renamed as an image, yielding code execution. *Recommendation:* validate uploads server-side, store them outside executable web paths, and track upstream releases for the management panel. *Detection:* alert on executable file types appearing under upload directories.

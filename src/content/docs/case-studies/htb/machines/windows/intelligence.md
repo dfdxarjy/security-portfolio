@@ -43,7 +43,7 @@ outcome: "Domain Administrator command execution as `nt authority\\system` on th
 
 ## From PDF metadata to GMSA delegation abuse
 
-Intelligence is a Medium-rated Hack The Box Windows Active Directory lab whose path begins with information disclosure rather than a software flaw: PDF documents on an IIS web server expose author metadata that enumerates valid domain users, and one document discloses a default onboarding password. An SMB share reachable with those credentials holds a PowerShell script that authenticates to any internal hostname beginning with `web`, which is abused by registering a spoofed DNS record and capturing a NetNTLMv2 authentication with Responder. Cracking that hash yields a higher-privileged user with `ReadGMSAPassword` rights over a Group Managed Service Account; the GMSA's NTLM hash, combined with its constrained delegation rights, allows a service ticket to be requested that impersonates the Administrator. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+Intelligence is a Medium-rated Hack The Box Windows Active Directory lab whose path begins with information disclosure: PDF documents on an IIS web server expose author metadata that enumerates valid domain users, and one document discloses a default onboarding password. An SMB share reachable with those credentials holds a PowerShell script that authenticates to any internal hostname beginning with `web`; registering a spoofed DNS record redirects its next authenticated request to a listening Responder, which captures the NetNTLMv2 authentication. Cracking that hash yields a higher-privileged user with `ReadGMSAPassword` rights over a Group Managed Service Account; the GMSA's NTLM hash, combined with its constrained delegation rights, allows a service ticket to be requested that impersonates the Administrator. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **PDF metadata enumeration → default onboarding password → authenticated SMB access → `downdetector.ps1` analysis → spoofed DNS record → NetNTLMv2 capture and crack → BloodHound enumeration → GMSA password read → service ticket via S4U2Proxy → Domain Administrator**
 
@@ -52,8 +52,8 @@ Intelligence is a Medium-rated Hack The Box Windows Active Directory lab whose p
 - **Target:** Windows Active Directory domain controller hosting an IIS web application, DNS, Kerberos, LDAP, and SMB.
 - **Services exposed:** DNS (53), HTTP/IIS (80), Kerberos (88), RPC (135), NetBIOS (139), LDAP (389/636), SMB (445).
 - **Starting position:** unauthenticated network access, with no provided credentials.
-- **Objective:** move from unauthenticated enumeration of web content to domain administrative control, demonstrating how information disclosure and a legitimate automation script combine into a full compromise.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Objective:** move from unauthenticated enumeration of web content to domain administrative control; information disclosure and a legitimate automation script combine into a full compromise.
+- **Constraints:** all activity stayed inside the Hack The Box lab environment.
 
 ## Evidence: metadata enumeration to GMSA ticket abuse
 
@@ -103,7 +103,7 @@ done | sort -u > users.txt
 kerbrute userenum --dc <TARGET_IP> -d <TARGET_DOMAIN> users.txt
 ```
 
-Significance: author metadata is an information-leakage vector — documents published without stripped metadata expose valid internal usernames, which enable targeted authentication attempts without noisy, invalid-name guessing.
+Significance: author metadata is an information-leakage vector: documents published without stripped metadata expose valid internal usernames, and the validated list spares the password spray from guessing at invalid names.
 
 Result: approximately 30 unique usernames are recovered from PDF metadata and confirmed as valid domain accounts through Kerberos user enumeration.
 
@@ -164,9 +164,9 @@ foreach($record in Get-ChildItem "AD:DC=<TARGET_DOMAIN_COMPONENT>" -Filter * |
 }
 ```
 
-Significance: `-UseDefaultCredentials` passes the running account's NTLM credentials to any HTTP endpoint the script contacts, and the script likely runs periodically via a Scheduled Task. Any DNS record matching `web*` triggers an authenticated HTTP request to that host, regardless of whether it points to a legitimate server.
+Significance: `-UseDefaultCredentials` passes the running account's NTLM credentials to any HTTP endpoint the script contacts, and a Scheduled Task appears to run it periodically. Any DNS record matching `web*` triggers an authenticated HTTP request to that host, whether or not it points to a legitimate server.
 
-Result: a script that forwards integrated credentials to attacker-selectable hostnames is identified as the path from the low-privileged account to a higher-privileged one.
+Result: the script forwards integrated credentials to any hostname an attacker can register, and that is the path from the low-privileged account to a higher-privileged one.
 
 ### 5. DNS Record Injection and NetNTLMv2 Capture
 
@@ -264,21 +264,21 @@ Result: the impersonated ticket returns a shell executing as `nt authority\syste
 
 ## Challenges: hidden naming pattern, DNS rights, and task timing
 
-- **Unknown document naming pattern.** Manual inspection established the `YYYY-MM-DD-upload.pdf` convention, so a date-range sweep was chosen over wordlist guessing; it systematically recovered the accessible documents. *Documented rationale: the naming pattern made exhaustive date enumeration reliable.*
-- **DNS injection needs authenticated writes.** The spoofed record was created with the already-recovered domain credentials; Secure Dynamic Updates alone do not block this because the attack performs an authenticated LDAP write rather than an unauthenticated dynamic update. *Documented rationale: legitimate credentials satisfy DNS update permissions.*
-- **Unknown Scheduled Task timing.** The script's periodicity was unknown, so a wait of roughly five minutes was used before expecting the DNS-triggered request to fire. *Documented rationale: patience lets the legitimate trigger fire on its own schedule.*
+- **Unknown document naming pattern.** I checked the filenames and established the `YYYY-MM-DD-upload.pdf` convention, so I chose a date-range sweep over wordlist guessing; it systematically recovered the accessible documents. *Documented rationale: the naming pattern made exhaustive date enumeration reliable.*
+- **DNS injection needs authenticated writes.** I created the spoofed record with the already-recovered domain credentials; Secure Dynamic Updates alone do not block this because the attack performs an authenticated LDAP write rather than an unauthenticated dynamic update. *Documented rationale: legitimate credentials satisfy DNS update permissions.*
+- **Unknown Scheduled Task timing.** I could not verify the script's periodicity, so I waited roughly five minutes and expected the DNS-triggered request to fire. *Documented rationale: patience lets the legitimate trigger fire on its own schedule.*
 
 ## Outcome: nt authority system on the domain controller
 
-The evidence establishes a complete path from unauthenticated enumeration to domain administrative execution, ending in a shell as `nt authority\system` on the domain controller. The pivot points were document content and a legitimate maintenance script rather than an exposed software vulnerability, and the static HTTP application was enumeration-only. No software exploit was required at any stage.
+The evidence establishes a complete path from unauthenticated enumeration to domain administrative execution, ending in a shell as `nt authority\system` on the domain controller. Document content and a legitimate maintenance script were the pivot points; the static HTTP application was enumeration-only, and no software exploit was required at any stage.
 
 ## Recommendations: metadata, default credentials, DNS trust, update rights, and GMSA exposure
 
-Each finding below pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
+The actions are recommendations; none was validated in the lab.
 
 1. **Unstripped document metadata (preventive, highest priority).** PDF author/creator fields exposed valid domain usernames that fed the credential spray. *Recommendation:* strip metadata from all publicly published documents before release (for example with `mat2` or the Microsoft Office Document Inspector) and add a pre-publication check for AD user identifiers.
-2. **Default credential published in a document (preventive).** An onboarding PDF disclosed a working default password, giving initial domain access. *Recommendation:* never embed shared default credentials in distributed documents; issue unique, one-time onboarding secrets and force a reset on first use. *Detection:* alert on a single password being attempted across many accounts.
-3. **DNS records trusted by automation (preventive/detective).** `downdetector.ps1` used `Invoke-WebRequest -UseDefaultCredentials`, forwarding the service account's NTLM credentials to any `web*` hostname. *Recommendation:* avoid Windows Integrated Authentication in scheduled scripts, allowlist the hostnames and address ranges they may contact, and, where NTLM must remain, restrict it via the `Network security: Restrict NTLM: Outgoing NTLM traffic to remote servers` policy. *Detection:* monitor for DNS records created by ordinary users and for outbound NTLM authentication from service accounts to unexpected hosts.
+2. **Default credential published in a document (preventive).** An onboarding PDF disclosed a working default password that provided initial domain access. *Recommendation:* never embed shared default credentials in distributed documents; issue unique, one-time onboarding secrets and force a reset on first use. *Detection:* alert on a single password being attempted across many accounts.
+3. **DNS records trusted by automation (preventive/detective).** `downdetector.ps1` used `Invoke-WebRequest -UseDefaultCredentials`, which forwarded the service account's NTLM credentials to any `web*` hostname. *Recommendation:* avoid Windows Integrated Authentication in scheduled scripts, allowlist the hostnames and address ranges they may contact, and, where NTLM must remain, restrict it via the `Network security: Restrict NTLM: Outgoing NTLM traffic to remote servers` policy. *Detection:* monitor for DNS records created by ordinary users and for outbound NTLM authentication from service accounts to unexpected hosts.
 4. **Over-broad DNS update rights (preventive).** Ordinary-domain-user credentials were sufficient to create an arbitrary A record. *Recommendation:* restrict DNS record creation to dedicated service accounts and DNS administrators rather than standard users. *Validation:* enumerate principals with write access on the DNS zone and confirm only intended identities remain.
 5. **Excessive GMSA exposure (preventive).** Broader group membership (`<SUPPORT_GROUP>`) granted `ReadGMSAPassword` over `<GMSA_ACCOUNT>`, whose constrained delegation reached a DC SPN. *Recommendation:* reduce `ReadGMSAPassword` grants to the minimum required and review `msDS-AllowedToDelegateTo` on service accounts so no delegation target grants administrative reach on a domain controller. *Validation:* audit GMSA password-read principals and delegation targets together, since the two combined produced full domain compromise.
 

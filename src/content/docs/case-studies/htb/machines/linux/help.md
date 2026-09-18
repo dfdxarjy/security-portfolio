@@ -78,7 +78,7 @@ feroxbuster --url http://<TARGET_HOST> --wordlist <WEB_CONTENT_WORDLIST>
 /support/README.md
 ```
 
-Significance: the `/support` path serves HelpDeskZ, and its `README.md` identifies version 1.0.2 — a 2015 release with weak upload handling, so the application exposes both an upload surface and version-specific weaknesses.
+Significance: the `/support` path serves HelpDeskZ, and its `README.md` identifies version 1.0.2, a 2015 release with weak upload handling, so the application exposes both an upload surface and version-specific weaknesses.
 
 Result: HelpDeskZ 1.0.2 is installed at `/support`, reachable without authentication.
 
@@ -113,7 +113,7 @@ hashcat -m 0 <HASH_FILE> <WORDLIST>
 <MD5_HASH>:<RECOVERED_PLAINTEXT>
 ```
 
-Significance: an unauthenticated query returns credential material, and because the disclosed value is an MD5 hash it falls to an offline dictionary attack — so a query interface becomes a credential-disclosure primitive.
+Significance: an unauthenticated query returns credential material, and because the disclosed value is an MD5 hash it falls to an offline dictionary attack, so a query interface becomes a credential-disclosure primitive.
 
 Result: one HelpDeskZ credential pair is recovered.
 
@@ -159,14 +159,14 @@ Result: commands execute as `<WEB_SERVICE_ACCOUNT>`.
 
 ### 4. Kernel Enumeration and CVE-2017-16995
 
-Observation: kernel and OS checks are used to place the host in the vulnerable range for CVE-2017-16995, an eBPF verifier flaw that permits local root escalation.
+Observation: I checked the kernel and OS versions to place the host in the vulnerable range for CVE-2017-16995, an eBPF verifier flaw that permits local root escalation.
 
 ```bash
 uname -a
 lsb_release -a
 ```
 
-The source records the target as Ubuntu 16.04 within the vulnerable range; the version output itself is not captured.
+The source records the target as Ubuntu 16.04 within the vulnerable range; the version output itself is not captured, so I could not verify it directly.
 
 A public exploit for CVE-2017-16995 is transferred, compiled, and run:
 
@@ -180,7 +180,7 @@ cd /tmp && gcc <LOCAL_SOURCE> -o <LOCAL_BINARY> && chmod +x <LOCAL_BINARY> && ./
 root
 ```
 
-Significance: the vulnerability is a flaw in the eBPF verifier, so an unprivileged local process can corrupt state that the verifier should reject and gain root — the outdated kernel is the root cause.
+Significance: the vulnerability is a flaw in the eBPF verifier, so an unprivileged local process can corrupt state that the verifier should reject and gain root; the outdated kernel is the root cause.
 
 Result: root execution is confirmed by `whoami`.
 
@@ -198,7 +198,7 @@ The evidence establishes command execution as `<WEB_SERVICE_ACCOUNT>` through an
 
 ## Recommendations: GraphQL exposure, outdated app, upload validation, kernel patching
 
-Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
+The actions are recommendations; none was validated in the lab.
 
 1. **Unauthenticated GraphQL data exposure.** A public query returned credential material. *Recommendation:* disable introspection and unauthenticated query access to internal services, and never expose credential fields over GraphQL. *Detection:* alert on unauthenticated GraphQL requests that select sensitive fields.
 2. **Outdated HelpDeskZ 1.0.2.** The 2015 release carries known upload-handling and SQL injection weaknesses. *Recommendation:* upgrade to a supported version or replace the application with maintained software. *Detection:* inventory deployed application versions and flag end-of-life releases.

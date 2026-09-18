@@ -40,7 +40,7 @@ outcome: "Interactive WinRM session in the built-in Administrator context after 
 
 ## Misconfigured ACLs to Kerberoasting and DCSync
 
-Administrator is a Medium-rated Hack The Box Active Directory lab whose compromise is driven entirely by misconfigured object-level permissions rather than a software vulnerability. Starting from a provided low-privileged domain credential, directory collection exposes ACL edges that chain Kerberoasting, a forced password reset, an FTP-hosted Password Safe vault, a WinRM foothold, a second Kerberoasting hop, and finally DCSync replication with pass-the-hash to administrative control. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+Administrator is a Medium-rated Hack The Box Active Directory lab whose compromise comes from misconfigured object-level permissions, with no software vulnerability involved. Starting from a provided low-privileged domain credential, directory collection exposes ACL edges that chain Kerberoasting, a forced password reset, an FTP-hosted Password Safe vault, a WinRM foothold, a second Kerberoasting hop, and finally DCSync replication with pass-the-hash to administrative control. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **BloodHound ACL mapping → SPN write and Kerberoasting → forced password reset → FTP-hosted Password Safe cracking → WinRM foothold → second Kerberoasting → DCSync replication → pass-the-hash Administrator**
 
@@ -49,7 +49,7 @@ Administrator is a Medium-rated Hack The Box Active Directory lab whose compromi
 - **Target:** a Windows Active Directory domain with a Domain Controller; standard AD services alongside FTP (21) and WinRM (5985).
 - **Starting position:** a provided low-privileged domain-user credential; no prior domain access.
 - **Objective:** progress from the starting account to full domain compromise by following the exposed object-permission paths.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** all activity stayed inside the Hack The Box lab environment.
 
 ## Evidence: ACL mapping to DCSync and pass-the-hash
 
@@ -63,11 +63,11 @@ Action: full default-script and version scan of the target.
 nmap -sC -sV -oA <OUT_PREFIX> <TARGET_IP>
 ```
 
-Significance: FTP and WinRM are the two non-standard surfaces. Every later pivot reuses legitimate AD or service functionality, so enumeration only needs to establish where to authenticate rather than where to exploit.
+Significance: FTP and WinRM are the two non-standard surfaces. Every later pivot reuses legitimate AD or service functionality, so enumeration mainly has to establish where to authenticate.
 
 Result: The source records a Windows Active Directory host exposing standard AD services alongside FTP (21) and WinRM (5985), and identifies the domain `<DOMAIN>` and the Domain Controller `<DC_HOST>`.
 
-### 2. Directory Collection — Mapping ACL Paths
+### 2. Directory Collection and Mapping ACL Paths
 
 Observation: with a valid domain credential, a collector resolves who controls whom across directory objects.
 
@@ -79,11 +79,11 @@ rusthound-ce -d <DOMAIN> \
   -o <OUT_DIR> -c All
 ```
 
-Significance: `GenericAll` over a user object permits writing any attribute, including `servicePrincipalName`, which controls whether the account can be Kerberoasted — a single ACL edge converts an ordinary user into a target.
+Significance: `GenericAll` over a user object permits writing any attribute, including `servicePrincipalName`, which controls whether the account can be Kerberoasted, so a single ACL edge converts an ordinary user into a target.
 
 Result: the collected graph shows a `GenericAll` edge from `<START_USER>` to a second account, `<SECOND_USER>`.
 
-### 3. First Kerberoasting Hop — SPN Write and Offline Crack
+### 3. First Kerberoasting Hop: SPN Write and Offline Crack
 
 Observation: `<SECOND_USER>` has no service principal name and is therefore not Kerberoastable, but the `GenericAll` edge permits adding one.
 
@@ -111,7 +111,7 @@ Significance: Kerberoasting turns a weak service-account password into an offlin
 
 Result: `<SECOND_USER>`'s password is recovered and used as the credential for the forced password reset in the next stage.
 
-### 4. Lateral Movement — Forced Password Reset
+### 4. Lateral Movement: Forced Password Reset
 
 Observation: `<SECOND_USER>` holds `ForceChangePassword` over a third account, `<THIRD_USER>`.
 
@@ -128,7 +128,7 @@ Significance: the reset right is equivalent to account takeover and needs no tic
 
 Result: the source records the reset succeeding, bringing `<THIRD_USER>` under the operator-chosen password.
 
-### 5. Vault Recovery — FTP-Hosted Password Safe
+### 5. Vault Recovery: FTP-Hosted Password Safe
 
 Observation: `<THIRD_USER>` can authenticate to the FTP service, which hosts a Password Safe database (`.psafe3`).
 
@@ -150,7 +150,7 @@ Recovered master password (redacted):
 <VAULT_MASTER_PASSWORD>
 ```
 
-Vault contents — three credential pairs (values redacted):
+Vault contents, three credential pairs (values redacted):
 
 ```text
 <SERVICE_USER_A>  <SERVICE_PASSWORD_A>
@@ -162,24 +162,24 @@ Significance: a single cracked master password exposes the internal credential i
 
 Result: three service credential pairs are recovered from the vault.
 
-### 6. Foothold — WinRM Login
+### 6. Foothold: WinRM Login
 
 Observation: one recovered vault credential belongs to an account permitted to authenticate over WinRM.
 
-Action: authenticate with that credential over WinRM.
+Action: I tried the recovered vault credential over WinRM.
 
 ```bash
 evil-winrm -i <DOMAIN> \
   -u '<SERVICE_USER_A>' -p '<SERVICE_PASSWORD_A>'
 ```
 
-Significance: the FTP-hosted vault credential is validated against a second service, confirming reuse from a file share to remote management; WinRM also provides a scriptable interactive shell.
+Significance: the FTP-hosted vault credential also authenticates over WinRM, so the same secret is reused from a file share for remote management; WinRM also provides a scriptable interactive shell.
 
 Result: an interactive session as the service account establishes the foothold.
 
-### 7. Second Kerberoasting Hop — Escalation Within the Domain
+### 7. Second Kerberoasting Hop and Escalation Within the Domain
 
-Observation: continued collection shows `<SERVICE_USER_A>` holds `GenericWrite` over a further account, `<PRIV_USER>` — enough to write its SPN.
+Observation: continued collection shows `<SERVICE_USER_A>` holds `GenericWrite` over a further account, `<PRIV_USER>`, enough to write its SPN.
 
 Action: repeat the SPN-write, Kerberoast, and crack sequence under the new identity.
 
@@ -202,11 +202,11 @@ Recovered value (redacted):
 <PRIV_PASSWORD>
 ```
 
-Significance: the same ACL abuse pattern recurs one level higher, showing the misconfiguration is systemic rather than isolated to a single object.
+Significance: the same ACL abuse pattern recurs one level higher, so the misconfiguration is systemic.
 
 Result: `<PRIV_USER>`'s password is recovered and subsequently validated by the replication operation in the next stage.
 
-### 8. Domain Compromise — DCSync and Pass-the-Hash
+### 8. Domain Compromise: DCSync and Pass-the-Hash
 
 Observation: `<PRIV_USER>` holds `DS-Replication-Get-Changes-All`, the replication right that constitutes DCSync.
 
@@ -234,21 +234,19 @@ Result: a WinRM session in the built-in Administrator context is established.
 
 ## Challenges and Decisions
 
-The source records no failed attempts, dead ends, or explicit tradeoffs. The path follows the ACL edges exposed by directory collection, and each hop uses documented, legitimate AD functionality.
+The source records no failed attempts, wrong turns, or explicit tradeoffs. The path follows the ACL edges exposed by directory collection, and each hop uses documented, legitimate AD functionality.
 
 ## Outcome: DCSync replication and domain administrative access
 
-The evidence establishes administrative control of the domain through misconfigured object permissions alone, with no software vulnerability exploited at any hop. Limitations: credential values and the replicated NTLM hash are redacted, so the recovered secrets are not reproducible from this writeup, and the WinRM shell transcript itself is not captured — the foothold and the escalation rest on the recorded command output and the authenticated operations that follow.
+The evidence establishes administrative control of the domain through misconfigured object permissions alone, with no software vulnerability exploited at any hop. Limitations: credential values and the replicated NTLM hash are redacted, so the recovered secrets are not reproducible from this writeup, and the WinRM shell transcript itself is not captured; the foothold and the escalation rest on the recorded command output and the authenticated operations that follow.
 
 ## Recommendations: ACLs, replication rights, the vault, and weak service passwords
 
 The actions below are recommendations; none was validated or re-tested in the lab.
 
-Each finding pairs the observed root cause with its demonstrated impact and a prioritized action.
-
 1. **Over-provisioned directory ACLs.** `GenericAll` and `GenericWrite` on user objects let one account add service principal names and roast another account's password, and `ForceChangePassword` enabled a direct takeover. *Recommendation:* audit object-level permissions regularly with a BloodHound-style collector and remove non-standard delegation paths, especially those reaching high-value targets. *Detection:* alert on directory attribute writes to `servicePrincipalName` and on out-of-band password resets.
 2. **Replication rights on a non-controller principal.** A user-class object held `DS-Replication-Get-Changes-All`, which allowed the entire domain credential set to be replicated. *Recommendation:* restrict DCSync rights to Domain Controllers and explicitly designated replication principals. *Detection:* monitor directory replication requests originating from accounts other than controllers.
-3. **Credential vault on a file share.** A Password Safe database stored on FTP exposed three service credentials once its master password was cracked offline. *Recommendation:* keep credential vaults on dedicated secrets-management infrastructure with MFA and access logging rather than on FTP or general shares. *Validation:* inventory file shares for vault-format files and confirm none are reachable without strong, monitored authentication.
+3. **Credential vault on a file share.** A Password Safe database stored on FTP exposed three service credentials once its master password was cracked offline. *Recommendation:* keep credential vaults off FTP and general shares, on dedicated secrets-management infrastructure with MFA and access logging. *Validation:* inventory file shares for vault-format files and confirm none are reachable without strong, monitored authentication.
 4. **Weak Kerberoastable service passwords.** Two accounts had passwords that fell to offline dictionary cracking of their service tickets, extending the blast radius to everything their ACLs touched. *Recommendation:* enforce long, random passwords for accounts with service principal names and rotate any that have ever been Kerberoastable.
 5. **Limited visibility into privilege-abuse primitives.** The pivots relied on SPN modification and forced password resets, both of which appear in directory audit data. *Recommendation:* enable and review directory audit logging for attribute writes, ACL changes, and account-reset events, and treat unexpected occurrences as findings to investigate.
 

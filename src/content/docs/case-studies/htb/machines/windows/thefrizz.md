@@ -46,11 +46,11 @@ TheFrizz is a Hack The Box Windows Active Directory lab in which a domain contro
 - **Application:** Gibbon LMS v25.0.00 served from the domain controller web root.
 - **Starting position:** unauthenticated network access, with no provided credentials.
 - **Objective:** move from the exposed web application to domain-level privileges while identifying the trust boundaries along the path.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** activity stayed inside the Hack The Box lab environment.
 
 ## Evidence: Gibbon RCE, config secrets, hash cracking, Recycle Bin
 
-The source records the offline password-recovery and Kerberos SSH session steps without retaining their terminal output; those transitions are described as the source documents them, while each stage that produced output carries a truncated excerpt.
+The source records the offline password-recovery and Kerberos SSH session steps without retaining their terminal output, while each stage that produced output carries a truncated excerpt.
 
 ### 1. Service and Application Enumeration
 
@@ -78,7 +78,7 @@ The application footer exposes the exact release:
 Powered by Gibbon v25.0.00 |
 ```
 
-Significance: the service mix identifies a domain controller, and the extra SSH listener indicates an additional application. The footer pins the Gibbon release, which is affected by CVE-2023-45878, making the web application the initial access surface.
+Significance: the service mix identifies a domain controller, and the extra SSH listener indicates an additional application. The footer pins the Gibbon release, which is affected by CVE-2023-45878, so the web application is the initial access surface.
 
 Result: the host is confirmed as a domain controller running a vulnerable Gibbon LMS release.
 
@@ -99,9 +99,9 @@ The listener returns a shell whose working directory is the web application root
 C:\xampp\htdocs\Gibbon-LMS
 ```
 
-Significance: the shell executes on the domain controller in the context of the web server, exposing the application files and any secrets they contain.
+Significance: the shell executes on the domain controller in the context of the web server, and exposes the application files and any secrets they contain.
 
-Result: remote code execution is obtained on the domain controller.
+Result: the shell provides remote code execution on the domain controller.
 
 ### 3. Application Configuration and Database Credentials
 
@@ -196,7 +196,7 @@ wapt_password = <ENCODED_WAPT_PASSWORD>
 echo '<ENCODED_WAPT_PASSWORD>' | base64 -d
 ```
 
-Significance: deleted backup data remains recoverable and preserves secrets, and base64 is reversible encoding rather than protection, so the stored value is only obfuscated.
+Significance: deleted backup data remains recoverable and preserves secrets, and base64 is reversible encoding, so the stored value is only obfuscated.
 
 Result: the archive from the Recycle Bin yields a base64-encoded credential for `<WAPT_USER>`, which decodes to a cleartext password.
 
@@ -204,7 +204,7 @@ Result: the archive from the Recycle Bin yields a base64-encoded credential for 
 
 Observation: the decoded credential belongs to a second domain account.
 
-Action: validate it over SMB, then open a Kerberos-backed SSH session.
+Action: I checked the decoded credential over SMB, then opened a Kerberos-backed SSH session.
 
 ```bash
 netexec smb <TARGET_IP> -u '<WAPT_USER>' -p '<WAPT_USER_PASSWORD>' -k
@@ -221,7 +221,7 @@ kinit <WAPT_USER>
 ssh -k <WAPT_USER>@<DOMAIN>
 ```
 
-Significance: the decoded secret authenticates a second account, confirming that the backup exposure provides usable domain access.
+Significance: the decoded secret authenticates a second account, so the backup exposure provides usable domain access.
 
 Result: SMB authentication for `<WAPT_USER>` succeeds, followed by a Kerberos-backed SSH session.
 
@@ -239,7 +239,7 @@ whoami /all
 <DOMAIN>\Group Policy Creator Owners  Group  <GROUP_SID>  Mandatory group, Enabled by default, Enabled group
 ```
 
-Significance: Group Policy Creator Owners can create and link Group Policy Objects in the domain, so its members can influence domain-wide policy — a documented route to Domain Administrator when delegation is not tightly controlled.
+Significance: Group Policy Creator Owners can create and link Group Policy Objects in the domain, so its members can influence domain-wide policy: a documented route to Domain Administrator when delegation is not tightly controlled.
 
 Result: `<WAPT_USER>` is confirmed as a member of Group Policy Creator Owners; the source records a path toward Domain Administrator but captures no output confirming that final privilege.
 
@@ -251,11 +251,11 @@ The source documents no failed attempts, obstacles, or tradeoffs on this path.
 
 The recorded evidence establishes a web shell on the domain controller and recovery of two domain credentials from application and backup data; Group Policy Creator Owners membership frames, but does not demonstrate, Domain Administrator access.
 
-Limitations: the source retains no output for the offline password recovery, the SMB validation of the first account, or either SSH session.
+Limitations: the source retains no output for the offline password recovery, the SMB validation of the first account, or either SSH session, so I could not verify those transitions from captured output.
 
 ## Recommendations: patching, config secrets, hashes, Recycle Bin, and group membership
 
-Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
+The actions are recommendations; none was validated in the lab.
 
 1. **Unpatched Gibbon LMS release.** Gibbon v25.0.00 was reachable and affected by CVE-2023-45878, giving remote code execution on the domain controller. *Recommendation:* track and apply upstream releases promptly, and restrict where the application is exposed. *Detection:* inventory application versions and alert on unexpected script execution by the web service account.
 2. **Plaintext database credentials in application configuration.** `config.php` stored MySQL credentials in cleartext, reachable from the web shell. *Recommendation:* move secrets out of application files into a managed secret store or environment configuration, and restrict file permissions on configuration paths. *Detection:* scan web roots for credential-shaped strings and alert on database authentication from unexpected contexts.

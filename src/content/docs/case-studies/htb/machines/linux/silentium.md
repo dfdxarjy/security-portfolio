@@ -34,7 +34,7 @@ outcome: "Authenticated Flowise access, code execution inside the application co
 
 ## From reset-token disclosure to Gogs symlink root
 
-Silentium is an Easy-rated Hack The Box Linux lab built around a Flowise AI-agent platform. The main host runs Flowise 3.0.5, and a second Flowise instance is served on a separate staging virtual host. An unauthenticated forgot-password endpoint returns the password-reset `tempToken` directly in its JSON response (CVE-2025-58434), allowing account takeover for any known address; the authenticated session exposes an API key. The CustomMCP node then passes the user-supplied `mcpServerConfig` string to the JavaScript `Function()` constructor (CVE-2025-59528), giving code execution inside the application container, where SMTP credentials sit in environment variables and are reused to log in over SSH. The internal Gogs service is vulnerable to a symlink path-traversal issue in its file-update API (CVE-2025-8110) that yields root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+Silentium is an Easy-rated Hack The Box Linux lab built around a Flowise AI-agent platform. The main host runs Flowise 3.0.5, and a second Flowise instance is served on a separate staging virtual host. An unauthenticated forgot-password endpoint returns the password-reset `tempToken` directly in its JSON response (CVE-2025-58434), allowing account takeover for any known address; the authenticated session exposes an API key. The CustomMCP node then passes the user-supplied `mcpServerConfig` string to the JavaScript `Function()` constructor (CVE-2025-59528), giving code execution inside the application container, where SMTP credentials sit in environment variables and are reused to log in over SSH. The internal Gogs service is vulnerable to a symlink path-traversal issue in its file-update API (CVE-2025-8110) that yields root. This writeup replaces target identifiers, credentials, and secret values with role-based placeholders and leaves command syntax intact. See [how evidence is handled](/method/).
 
 **Attack path:** **Forgot-password token disclosure (CVE-2025-58434) → account takeover and API key → CustomMCP `mcpServerConfig` JavaScript injection (CVE-2025-59528) → container code execution → SMTP credential reuse → SSH host access → internal Gogs symlink RCE (CVE-2025-8110) → root**
 
@@ -44,7 +44,7 @@ Silentium is an Easy-rated Hack The Box Linux lab built around a Flowise AI-agen
 - **Exposed services:** SSH (22) and HTTP (80); Gogs listens on a loopback port.
 - **Starting position:** unauthenticated network access, with no provided credentials.
 - **Objective:** move from unauthenticated access to the application, reach code execution, cross into the host, and escalate to root.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** all activity stayed inside the Hack The Box lab environment.
 
 ## Evidence: reset token to Gogs symlink RCE
 
@@ -93,7 +93,7 @@ Result: the recovered token resets the account password, and the resulting sessi
 
 ### 3. CustomMCP JavaScript Injection (CVE-2025-59528)
 
-Observation: the CustomMCP node parses the `mcpServerConfig` string by passing it to the JavaScript `Function()` constructor — equivalent to `eval()` — so supplied input runs as Node.js code with access to `child_process`. Flowise 3.0.5 is affected; the flaw is fixed in 3.0.6.
+Observation: the CustomMCP node parses the `mcpServerConfig` string by passing it to the JavaScript `Function()` constructor, equivalent to `eval()`, so supplied input runs as Node.js code with access to `child_process`. Flowise 3.0.5 is affected; the flaw is fixed in 3.0.6.
 
 Action: confirm execution with a controlled timing delay.
 
@@ -142,7 +142,7 @@ Result: a user-level host shell is obtained with the recovered container credent
 
 ### 5. Internal Gogs and Privilege Escalation (CVE-2025-8110)
 
-Observation: a listener bound to the loopback interface exposes a self-hosted Gogs service that is not reachable directly.
+Observation: I checked the local listeners and found a self-hosted Gogs service bound to the loopback interface, not reachable directly.
 
 ```bash
 netstat -tuln | grep 3001
@@ -176,7 +176,7 @@ Result: the returned shell runs as root on the host.
 
 ## Outcome: container execution, host SSH, and root
 
-The evidence establishes root-level control of the host, reached by chaining an unauthenticated account takeover, configuration-driven code execution, a reused container secret, and an internal service flaw. The password reset, the virtual-host discovery, the container reverse shell, and the host SSH login are recorded in the source as documented results without captured console output; every stage with captured output is quoted above.
+The evidence establishes root-level control of the host, reached by chaining an unauthenticated account takeover, configuration-driven code execution, a reused container secret, and an internal service flaw. The password reset, the virtual-host discovery, the container reverse shell, and the host SSH login are recorded in the source as documented results without captured console output, so I could not verify them beyond those notes; every stage with captured output is quoted above.
 
 ## Recommendations: token disclosure, dynamic evaluation, secret reuse, and Gogs
 

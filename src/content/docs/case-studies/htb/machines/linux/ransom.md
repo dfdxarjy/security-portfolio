@@ -45,7 +45,7 @@ Ransom is a medium-difficulty Hack The Box Linux lab whose Laravel login endpoin
 - **Exposed services:** SSH (22, OpenSSH 8.2p1) and HTTP (80, Apache 2.4.41).
 - **Starting position:** unauthenticated network access; the web login accepts only a password, with no username field.
 - **Objective:** bypass authentication on the web application, recover credentials from the exposed archive, obtain a shell, and escalate to root.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** I kept activity inside the Hack The Box lab environment.
 
 ## Evidence: type-juggling bypass to ZipCrypto recovery
 
@@ -70,7 +70,7 @@ Result: the exposed surface is limited to an SSH service and a Laravel web appli
 
 Observation: the login endpoint accepts a JSON body carrying a single password field.
 
-Action: a JSON string password is rejected, but a JSON boolean `true` authenticates.
+Action: I tried a JSON string password, which was rejected, and a JSON boolean `true`, which authenticated.
 
 ```bash
 curl -s http://<TARGET_IP>/api/login \
@@ -141,7 +141,7 @@ Significance: a private key recovered from the archive authenticates directly to
 
 Result: user-level SSH access as `<LAB_USER>`.
 
-### 6. Privilege escalation — hardcoded credential in controller source
+### 6. Privilege escalation: hardcoded credential in controller source
 
 Observation: the shell permits reading of the Laravel application source.
 
@@ -184,7 +184,7 @@ Result: the `id` output confirms execution in the root context.
 
 ## Outcome: authenticated session, SSH key access, and root
 
-The evidence establishes authenticated web access through the PHP type-juggling bypass, recovery of the SSH private key from the ZipCrypto-protected archive, and root execution confirmed by the `id` output after authenticating with the credential read from the controller source. The initial SSH login is the only transition recorded without captured session output.
+The evidence establishes authenticated web access through the PHP type-juggling bypass, recovery of the SSH private key from the ZipCrypto-protected archive, and root execution confirmed by the `id` output after authenticating with the credential read from the controller source. I could not verify the initial SSH login from captured output; it is the only transition recorded without it.
 
 ## Recommendations: loose comparison, hardcoded credentials, and ZipCrypto
 

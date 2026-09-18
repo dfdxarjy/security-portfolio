@@ -108,7 +108,7 @@ The PDF discloses temporary SQL credentials:
 <DB_USER> : <DB_PASSWORD>
 ```
 
-Significance: anonymous SMB is a common Windows misconfiguration, and placing an operational document with credentials on an unauthenticated share exposes a live SQL credential without any exploit.
+Significance: anonymous SMB is a common Windows misconfiguration, and placing an operational document with credentials on an unauthenticated share exposes a live SQL credential; no exploitation is required.
 
 Result: a temporary MSSQL credential is recovered from the anonymous share.
 
@@ -146,7 +146,7 @@ Result: the SQL service account's NetNTLMv2 hash is captured and cracked to a pl
 
 ### 4. Host Log Credential Discovery
 
-Observation: attack-path enumeration with the recovered service credential surfaced no direct route. A SQL-accessible backup error log at `C:\SQLServer\Logs\ERRORLOG.BAK` contains failed login attempts that expose a mis-typed password for `<DOMAIN_USER>`.
+Observation: I checked attack-path enumeration with the recovered service credential and found no direct route. A SQL-accessible backup error log at `C:\SQLServer\Logs\ERRORLOG.BAK` contains failed login attempts that expose a mis-typed password for `<DOMAIN_USER>`.
 
 Action: collect attack-path data with the service credential, then review SQL-accessible host logs.
 
@@ -251,7 +251,7 @@ evil-winrm -i <TARGET_IP> -u <PRIVILEGED_USER> -H <ADMIN_NT_HASH>
 *Evil-WinRM* PS C:\Users\<PRIVILEGED_USER>\Desktop>
 ```
 
-Significance: ESC1 combines three template conditions — low-privileged enrollment, enrollee-controlled subject, and client authentication — so a domain user can obtain a certificate naming a privileged account and authenticate with it through PKINIT. The recovered NT hash then supports pass-the-hash. This is a configuration abuse of legitimate AD CS functionality, not a software vulnerability.
+Significance: ESC1 combines three template conditions: low-privileged enrollment, enrollee-controlled subject, and client authentication, so a domain user can obtain a certificate naming a privileged account and authenticate with it through PKINIT. The recovered NT hash then supports pass-the-hash. This is a configuration abuse of legitimate AD CS functionality, not a software vulnerability.
 
 Result: an Administrator WinRM session is obtained via an ESC1-issued certificate and pass-the-hash.
 

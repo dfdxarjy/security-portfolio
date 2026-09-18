@@ -20,21 +20,21 @@ const CARDS: Card[] = [
 		href: "/case-studies/htb/machines/windows/",
 		label: "Windows machine",
 		description:
-			"Active Directory attack paths, delegation, and domain escalation.",
+			"Active Directory attack paths, including delegation and domain escalation.",
 	},
 	{
 		kind: "dfir",
 		href: "/case-studies/htb/sherlocks/dfir/",
 		label: "DFIR / Sherlock",
 		description:
-			"Timeline reconstruction, log analysis, and persistence.",
+			"Reconstructing timelines from logs and tracing persistence.",
 	},
 	{
 		kind: "all",
 		href: "/case-studies/",
 		label: "All case studies",
 		description:
-			"Searchable, filterable library of reviewed security investigations and methodologies.",
+			"The full library of reviewed investigations and methodologies.",
 	},
 ];
 
@@ -46,10 +46,10 @@ export default function FocusCards({ counts }: { counts: Counts }) {
 					id="focus-title"
 					className="text-3xl tracking-[-0.04em] sm:text-4xl"
 				>
-					Pick the kind of problem
+					Browse by focus
 				</h2>
 				<p className="mt-1 text-muted-foreground">
-					AD escalation, Linux footholds, or incident reconstruction.
+					Windows and Linux machines, or DFIR case work.
 				</p>
 			</div>
 			<div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

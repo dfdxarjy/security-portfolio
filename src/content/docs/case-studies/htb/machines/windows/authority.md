@@ -40,7 +40,7 @@ outcome: "Certificate-authenticated Domain Administrator access through ESC1 abu
 
 ## Ansible vault recovery and ESC1 abuse
 
-Authority is a Medium-rated Hack The Box Windows Active Directory lab. An open PWM password self-service portal and guest SMB access expose Ansible vault files holding domain credentials. PWM administrative access then lets the LDAP bind target be redirected to a rogue listener, capturing a service account's cleartext bind credentials. That service account has no direct certificate enrollment rights, but the domain permits non-privileged users to create machine accounts (MAQ=10). A new computer account enrolls the ESC1-vulnerable `<VULN_TEMPLATE>` template with the Administrator UPN, yielding the Administrator NTLM hash, and the service account is added to the built-in Administrators group for WinRM access to the Domain Controller. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+Authority is a Medium-rated Hack The Box Windows Active Directory lab. An open PWM password self-service portal and guest SMB access expose Ansible vault files holding domain credentials. PWM administrative access then lets the LDAP bind target be redirected to a rogue listener that captures a service account's cleartext bind credentials. That service account has no direct certificate enrollment rights, but the domain permits non-privileged users to create machine accounts (MAQ=10). A new computer account enrolls the ESC1-vulnerable `<VULN_TEMPLATE>` template with the Administrator UPN, which yields the Administrator NTLM hash, and the service account is added to the built-in Administrators group for WinRM access to the Domain Controller. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Guest SMB → Ansible vault cracking → PWM admin access → rogue LDAP listener → service-account credential capture → machine-account creation (MAQ) → ESC1 certificate abuse → Administrator NTLM hash → Domain Administrator via WinRM**
 
@@ -266,7 +266,7 @@ CERTIPY-... <TARGET_IP>   389    <DC_HOST>    [!] Vulnerabilities
 CERTIPY-... <TARGET_IP>   389    <DC_HOST>      ESC1  : Enrollee supplies subject and template allows client authentication
 ```
 
-Significance: ESC1 requires a template that allows the enrollee to supply the subject/SAN, supports client authentication, grants enrollment to a low-privileged principal, and needs no manager approval — the exact combination that permits certificate-based authentication as any user.
+Significance: ESC1 requires a template that allows the enrollee to supply the subject/SAN, supports client authentication, grants enrollment to a low-privileged principal, and needs no manager approval. That combination permits certificate-based authentication as any user.
 
 Result: the `<VULN_TEMPLATE>` template is vulnerable to ESC1.
 
@@ -284,7 +284,7 @@ certipy req -u '<SERVICE_ACCOUNT>' -p '<LDAP_PASSWORD>' -dc-ip <TARGET_IP> -ca '
 The permissions on the certificate template do not allow the current user to enroll for this type of certificate.
 ```
 
-Action: check the Machine Account Quota.
+Action: I checked the Machine Account Quota.
 
 ```bash
 nxc ldap <TARGET_IP> -u '<SERVICE_ACCOUNT>' -p '<LDAP_PASSWORD>' -M maq
@@ -358,7 +358,7 @@ Result: the service account holds Domain Administrator access on the Domain Cont
 
 ## Outcome: certificate-authenticated Domain Admin access
 
-The supported outcome is certificate-authenticated Domain Administrator access via AD CS ESC1. The certificate issuance, NTLM hash extraction, and WinRM logon are reported by the source without preserved command output, so those final transitions rest on the record's narrative. HTTP/IIS on port 80 was enumeration-only.
+The supported outcome is certificate-authenticated Domain Administrator access via AD CS ESC1. The source reports the certificate issuance, NTLM hash extraction, and WinRM logon without preserved command output, so those final transitions are inferred from the record's narrative. HTTP/IIS on port 80 was enumeration-only.
 
 ## Recommendations: PWM config, guest SMB, the vault, LDAP binds, and ESC1
 

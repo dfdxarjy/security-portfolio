@@ -36,9 +36,9 @@ outcome: "Domain administrator credentials decrypted from the local ADSync datab
 
 ## Guest SMB null to ADSync decryption
 
-Monteverde is a Medium-rated Hack The Box Windows machine whose domain controller accepts guest SMB sessions. Null-session SMB enumeration lists the domain accounts, and spraying each username as its own password recovers a service-account credential. That account can read the `users$` share, where a PowerShell CliXml file stores a domain user's password; the credential is validated over SMB and then opens a WinRM foothold. From that shell, Microsoft Azure AD Sync is found installed on the controller, and the local ADSync SQL database together with the Azure AD Connect cryptography library yields the stored connector-account password — the built-in domain `Administrator` in this deployment — confirmed by a privileged WinRM session.
+Monteverde is a Medium-rated Hack The Box Windows machine whose domain controller accepts guest SMB sessions. Null-session SMB enumeration lists the domain accounts, and spraying each username as its own password recovers a service-account credential. That account can read the `users$` share, where a PowerShell CliXml file stores a domain user's password; the credential is validated over SMB and then opens a WinRM foothold. From that shell, Microsoft Azure AD Sync is found installed on the controller, and the local ADSync SQL database together with the Azure AD Connect cryptography library yields the stored connector-account password, the built-in domain `Administrator` in this deployment, which a privileged WinRM session then validates.
 
-Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/). Where a step is described narratively without a captured console excerpt, it is summarized rather than quoted.
+This writeup replaces target identifiers, credentials, and secret values with role-based placeholders and leaves command syntax intact. See [how evidence is handled](/method/). Where a step has no captured console excerpt, the description comes from the notes alone.
 
 **Attack path:** **Guest SMB null session → domain user enumeration → password spray → `users$` share → CliXml credential for a domain user → WinRM foothold → ADSync database query → Azure AD Connect credential decryption → domain administrator WinRM access**
 
@@ -47,7 +47,7 @@ Target identifiers, credentials, and secret values are replaced with role-based 
 - **Target:** an Active Directory domain controller, `<TARGET_HOSTNAME>.<TARGET_DOMAIN>`, hosting DNS, Kerberos, LDAP, SMB, and WinRM.
 - **Starting position:** unauthenticated network access, with no provided credentials.
 - **Objective:** move from unauthenticated access to domain administrator control, and demonstrate how common Active Directory misconfigurations compose into a full compromise.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** all activity stayed inside the Hack The Box lab environment.
 
 ## Evidence: guest SMB to CliXml to ADSync decryption
 
@@ -121,7 +121,7 @@ Result: the full domain user list is enumerated anonymously.
 
 ### 4. Password Spray
 
-Observation: service accounts are a common home for weak, predictable passwords.
+Observation: I expected service accounts on this domain to carry weak, guessable passwords, so I sprayed each enumerated username as its own password.
 
 ```bash
 nxc smb <TARGET_DOMAIN> -u user.txt -p user.txt
@@ -240,7 +240,7 @@ Significance: WinRM administrative access over the network turns a recovered dom
 
 Result: an authenticated interactive shell is obtained as `<TARGET_DOMAIN>\<STANDARD_USER>`, the first foothold on the controller.
 
-### 8. Post-Exploitation Enumeration — Azure AD Sync Discovery
+### 8. Post-Exploitation Enumeration and Azure AD Sync Discovery
 
 Observation: with a domain-user shell, the directory is mapped and the host is searched for local privilege-escalation paths.
 
@@ -254,9 +254,9 @@ WinPEAS local enumeration then shows Microsoft Azure AD Sync is installed on the
 c:\program files\microsoft azure ad sync
 ```
 
-Significance: Azure AD Sync stores the on-premises connector credentials with reversible encryption in a local SQL Server database, making the ADSync database a high-value escalation target for a local administrator able to read the ADSync database and load `mcrypt.dll`. In this deployment the stored connector account was the built-in domain `Administrator`; the AD DS Connector account normally holds delegated directory permissions, and current Entra Connect guidance prohibits using a Domain Administrator as the connector account.
+Significance: Azure AD Sync stores the on-premises connector credentials with reversible encryption in a local SQL Server database. A local administrator who can read that database and load `mcrypt.dll` can recover them. In this deployment the stored connector account was the built-in domain `Administrator`; the AD DS Connector account normally holds delegated directory permissions, and current Entra Connect guidance prohibits using a Domain Administrator as the connector account.
 
-Result: Azure AD Sync is identified on the controller, and its ADSync database becomes the focus of the privilege-escalation stage.
+Result: Azure AD Sync is present on the controller, and its ADSync database is the target of the next stage.
 
 ### 9. Azure AD Connect Credential Decryption
 
@@ -308,7 +308,7 @@ Username: <DOMAIN_ADMIN_ACCOUNT>
 Password: <DOMAIN_ADMIN_PASSWORD>
 ```
 
-Significance: in this deployment the connector account extracted from the ADSync configuration was the built-in domain `Administrator`; the AD DS Connector account normally holds delegated directory permissions, and current Entra Connect guidance prohibits using a Domain Administrator as the connector account. Its password is recoverable from local state by a local administrator able to read the ADSync database and load `mcrypt.dll`.
+Significance: the connector account extracted from the ADSync configuration is the built-in domain `Administrator`, whose password was recoverable from local state.
 
 Result: a domain administrator credential pair is decrypted from the ADSync configuration.
 
@@ -324,7 +324,7 @@ evil-winrm -i <TARGET_IP> -u <DOMAIN_ADMIN_ACCOUNT> -p '<DOMAIN_ADMIN_PASSWORD>'
 <TARGET_DOMAIN>\<DOMAIN_ADMIN_ACCOUNT>
 ```
 
-Significance: authenticated WinRM execution as the connector account completes the privilege transition from domain user to domain administrator.
+Significance: authenticated WinRM execution as the connector account moves the session from domain user to domain administrator.
 
 Result: a privileged session is established as `<TARGET_DOMAIN>\<DOMAIN_ADMIN_ACCOUNT>` on the domain controller.
 
@@ -334,13 +334,11 @@ No failed attempts, trade-offs, or troubleshooting steps are recorded for this p
 
 ## Outcome: domain administrator WinRM via ADSync
 
-The evidence establishes domain administrator access on the domain controller: a privileged WinRM session authenticates as `<TARGET_DOMAIN>\<DOMAIN_ADMIN_ACCOUNT>` after credentials are decrypted from the local ADSync database. The escalation depends on the Azure AD Sync installation and its locally stored encryption keys on that host; no other systems were in scope, and activity remained within the Hack The Box lab.
+The evidence establishes domain administrator access on the domain controller: a privileged WinRM session authenticates as `<TARGET_DOMAIN>\<DOMAIN_ADMIN_ACCOUNT>` using credentials decrypted from the local ADSync database. The escalation depends on the Azure AD Sync installation and its locally stored encryption keys on that host; no other systems were in scope, and activity remained inside the Hack The Box lab.
 
 ## Recommendations: guest SMB, service password, share secrets, and ADSync encryption
 
 The actions below are recommendations; none was tested in the lab.
-
-Each finding pairs the observed root cause with its demonstrated impact and a prioritized action.
 
 1. **Null SMB sessions on the domain controller.** Anonymous SMB sessions allowed unauthenticated account and share enumeration. *Recommendation:* disable null/guest SMB access on domain controllers and restrict anonymous access to named pipes and shares. *Detection:* alert on null-session SMB authentication and anonymous share or directory queries. *Validation:* periodically re-test anonymous SMB enumeration against domain controllers.
 2. **Username-derived service-account password.** A service account used its username as its password, so a single spray pass compromised it. *Recommendation:* enforce password complexity and block username-derived passwords for service accounts. *Detection:* monitor for one-password/many-account spray patterns and for accounts matching the username-as-password shape. *Validation:* audit service-account password policy and confirm spraying fails against the enumerated list.

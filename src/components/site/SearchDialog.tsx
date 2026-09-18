@@ -94,7 +94,7 @@ export default function SearchDialog({
 			.slice(0, 20);
 	}, [entries, trimmed]);
 
-	let message = "Type to search case studies.";
+	let message = "Start typing to search.";
 	if (status === "loading") {
 		message = "Loading search index…";
 	} else if (status === "error") {

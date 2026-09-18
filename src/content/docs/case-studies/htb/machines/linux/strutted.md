@@ -170,7 +170,7 @@ Result: an interactive shell is obtained as the application service account.
 
 Observation: the application server directory contains a cleartext credential.
 
-Action: search the service configuration for password fields, then try the recovered value over SSH for another account.
+Action: I searched the service configuration for password fields, then tried the recovered value over SSH for another account.
 
 ```bash
 grep -R "password" <APPLICATION_CONFIG_DIRECTORY> 2>/dev/null
@@ -186,7 +186,7 @@ Finding:
 ssh <SSH_ACCOUNT>@<LAB_VHOST>
 ```
 
-Significance: a credential readable by the service account becomes a lateral-movement risk when another service accepts it. The documented result is that the same value authenticated over SSH as `<SSH_ACCOUNT>`; wider reuse is not shown.
+Significance: a credential readable by the service account becomes a lateral-movement risk when another service accepts it. The documented result is that the same value authenticated over SSH as `<SSH_ACCOUNT>`; I could not verify wider reuse.
 
 Result: SSH access as `<SSH_ACCOUNT>` using the recovered application password.
 
@@ -232,10 +232,10 @@ The evidence establishes command execution as the application service account, a
 
 ## Recommendations: exposed archive, legacy upload, credential reuse, and tcpdump sudo
 
-Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
+The actions are recommendations; none was validated in the lab.
 
-1. **Source archive exposed on the web root.** A downloadable archive disclosed the exact framework version and the upload configuration, removing the need for guesswork. *Recommendation:* keep build artifacts and source archives out of web-served directories and deploy only the compiled application. *Detection:* alert on requests for archive or build-file extensions under the document root.
-2. **Legacy Struts upload handling.** The upload action used the deprecated `FileUploadInterceptor`, whose request-controlled filename lets a payload traverse to a web-served path — the behavior behind CVE-2024-53677. *Recommendation:* upgrade to a patched Struts release and migrate to the current file-upload mechanism, and validate server-side upload destinations independently of request parameters. *Detection:* flag upload requests whose filename parameters contain path-traversal sequences.
+1. **Source archive exposed on the web root.** A downloadable archive disclosed the exact framework version and the upload configuration, which removed the need for guesswork. *Recommendation:* keep build artifacts and source archives out of web-served directories and deploy only the compiled application. *Detection:* alert on requests for archive or build-file extensions under the document root.
+2. **Legacy Struts upload handling.** The upload action used the deprecated `FileUploadInterceptor`, whose request-controlled filename lets a payload traverse to a web-served path, the behavior behind CVE-2024-53677. *Recommendation:* upgrade to a patched Struts release and migrate to the current file-upload mechanism, and validate server-side upload destinations independently of request parameters. *Detection:* flag upload requests whose filename parameters contain path-traversal sequences.
 3. **Cleartext application credential reused for SSH.** Configuration readable by the service account stored a cleartext password that also authenticated a distinct SSH account. *Recommendation:* keep application secrets out of files readable by the service account, and never share a value between an application account and a system login. *Detection:* alert when an application credential is used to authenticate to a separate service such as SSH.
 4. **Unrestricted sudo rule for `tcpdump`.** A passwordless rule allowed running `tcpdump` as any user; its `-z` post-rotate hook executes a command, and `-Z root` retains root for it. *Recommendation:* scope `sudoers` to specific commands and arguments, and never delegate tools that can execute arbitrary hooks. *Detection:* review `sudo -l` output and alert on privileged `tcpdump` invocations that use `-z`.
 

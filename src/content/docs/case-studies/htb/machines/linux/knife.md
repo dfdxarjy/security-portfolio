@@ -55,7 +55,7 @@ if (strstr(Z_STRVAL_P(enc), "zerodium")) {
 }
 ```
 
-The backdoor was detected within hours and never entered an official release, but builds compiled from the compromised snapshot — as this lab simulates — remained exploitable. The malformed header is `User-Agentt` (note the doubled `t`), which PHP still processes.
+The backdoor was detected within hours and never entered an official release, but builds compiled from the compromised snapshot, as this lab simulates, remained exploitable. The malformed header is `User-Agentt` (note the doubled `t`), which PHP still processes.
 
 ## Evidence: User-Agentt backdoor to NOPASSWD escalation
 
@@ -76,7 +76,7 @@ PORT   STATE SERVICE VERSION
 
 Significance: HTTP is the only application surface; SSH provides no initial vector and no credentials are supplied.
 
-Result: the target exposes SSH and an Apache web service, making the web tier the focus.
+Result: the target exposes SSH and an Apache web service, so the web tier is the focus.
 
 ### 2. HTTP Response Header Fingerprinting
 
@@ -93,7 +93,7 @@ X-Powered-By: PHP/8.1.0-dev
 Content-Type: text/html; charset=UTF-8
 ```
 
-Significance: the `X-Powered-By` header discloses `PHP/8.1.0-dev`. The `-dev` suffix marks a development or pre-release snapshot rather than a stable release — specifically the build produced from the compromised 2021 source.
+Significance: the `X-Powered-By` header discloses `PHP/8.1.0-dev`. The `-dev` suffix marks a development or pre-release snapshot, specifically the build produced from the compromised 2021 source.
 
 Result: the target runs the backdoored development build of PHP.
 
@@ -110,7 +110,7 @@ curl -s http://<TARGET_IP>/ \
 uid=1000(<LAB_USER>) gid=1000(<LAB_USER>) groups=1000(<LAB_USER>)
 ```
 
-Significance: the response body returns the output of a shell command executed by the web process, confirming unauthenticated remote code execution in the context of `<LAB_USER>`.
+Significance: the response body returns the output of a shell command executed by the web process, which confirms unauthenticated remote code execution in the context of `<LAB_USER>`.
 
 Result: code execution as the web user is confirmed without authentication.
 
@@ -134,13 +134,13 @@ connect to [<ATTACKER_IP>] from (UNKNOWN) [<TARGET_IP>] 55806
 
 Significance: an interactive foothold removes the need to re-issue single commands through the header and enables local enumeration.
 
-The source records that the session was upgraded to an interactive TTY with a Python `pty` wrapper; no session output accompanies the stabilisation commands.
+The source records that the session was upgraded to an interactive TTY with a Python `pty` wrapper; no session output accompanies the stabilisation commands, so I could not verify them.
 
 Result: an interactive shell in the context of `<LAB_USER>` is established.
 
 ### 5. Sudo Enumeration
 
-Observation: `sudo -l` lists the delegations granted to the web user.
+Observation: I checked `sudo -l` for the delegations granted to the web user.
 
 ```bash
 <LAB_USER>@knife:~$ sudo -l
@@ -174,7 +174,7 @@ Result: the privileged `id` output confirms execution in the root context.
 
 ## Challenges and Decisions
 
-The source does not document failed attempts or obstacles for this machine; the path was direct — the PHP backdoor supplied unauthenticated code execution and the `NOPASSWD` rule supplied escalation.
+The source does not document failed attempts or obstacles for this machine; the path was direct, with the PHP backdoor supplying unauthenticated code execution and the `NOPASSWD` rule supplying escalation.
 
 An alternative escalation was available: `sudo /usr/bin/knife data bag create <NAME> <ITEM> -e vim` opens a data bag in the configured editor, from which a shell escape spawns a root shell. The `knife exec` route was used as the canonical GTFOBins technique.
 
@@ -184,11 +184,11 @@ The evidence establishes unauthenticated code execution as the web user through 
 
 ## Recommendations: dev build, NOPASSWD rules, version disclosure
 
-Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions below are recommendations; none was tested in the lab.
+The actions below are recommendations; none was tested in the lab.
 
-1. **Backdoored development build in production.** The target ran `PHP/8.1.0-dev`, a pre-release snapshot compiled from compromised source, giving an unauthenticated attacker code execution. *Recommendation:* deploy software only from official, verified release channels and treat any pre-release build string (`-dev`, `-alpha`, `-beta`) as unfit for production. *Detection:* flag pre-release version strings in inventory and monitoring, and alert on the unexpected `User-Agentt` header.
+1. **Backdoored development build in production.** The target ran `PHP/8.1.0-dev`, a pre-release snapshot compiled from compromised source, which gave an unauthenticated attacker code execution. *Recommendation:* deploy software only from official, verified release channels and treat any pre-release build string (`-dev`, `-alpha`, `-beta`) as unfit for production. *Detection:* flag pre-release version strings in inventory and monitoring, and alert on the unexpected `User-Agentt` header.
 2. **Unrestricted `NOPASSWD` sudo rules.** Delegating `/usr/bin/knife` without a password allowed the low-privileged user to run arbitrary Ruby as root. *Recommendation:* audit every `NOPASSWD` rule against GTFOBins and scope each rule to the specific subcommands required rather than full binary execution. *Detection:* review sudoers entries and alert on interpreter-backed binaries run through `sudo`.
-3. **Version disclosure in response headers.** `X-Powered-By: PHP/8.1.0-dev` disclosed the vulnerable build with no active probing. *Recommendation:* suppress version banners — set `expose_php = Off` in `php.ini`, `Header unset X-Powered-By`, and `ServerTokens Prod` in Apache. *Detection:* periodically inspect production response headers for version leakage.
+3. **Version disclosure in response headers.** `X-Powered-By: PHP/8.1.0-dev` disclosed the vulnerable build with no active probing. *Recommendation:* suppress version banners by setting `expose_php = Off` in `php.ini`, `Header unset X-Powered-By`, and `ServerTokens Prod` in Apache. *Detection:* periodically inspect production response headers for version leakage.
 
 ## References
 

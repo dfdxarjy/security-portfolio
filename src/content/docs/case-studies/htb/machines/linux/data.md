@@ -74,9 +74,9 @@ v8.0.0 (41f0542c1e)
 
 Significance: Grafana 8.0.0 is within the affected range for CVE-2021-43798, and SSH is the interactive access service the recovered credential will target.
 
-Result: SSH and Grafana are identified, and the vulnerable Grafana version is confirmed from the login page without deeper fingerprinting.
+Result: SSH and Grafana are identified, and the login page confirms the vulnerable Grafana version without deeper fingerprinting.
 
-### 2. CVE-2021-43798 — Grafana Path Traversal
+### 2. CVE-2021-43798: Grafana Path Traversal
 
 Observation: Grafana serves plugin static assets from `public/plugins/<PLUGIN_ID>/` without normalizing `../` sequences, so a crafted path escapes the plugins directory and reads arbitrary files.
 
@@ -100,7 +100,7 @@ curl -o grafana.db --path-as-is \
   "http://<TARGET_IP>:3000/public/plugins/<PLUGIN_ID>/../../../../../../../../var/lib/grafana/grafana.db"
 ```
 
-Result: unauthenticated arbitrary file read is confirmed, and `grafana.db` is exfiltrated for offline analysis.
+Result: the traversal confirms unauthenticated arbitrary file read and exfiltrates `grafana.db` for offline analysis.
 
 ### 3. Grafana Database Analysis
 
@@ -131,7 +131,7 @@ The crack recovers one plaintext value:
 boris:<BORIS_PASSWORD>
 ```
 
-Result: a credential for `boris` is recovered; authentication is confirmed in the next stage.
+Result: the crack recovers a credential for `boris`; the next stage confirms authentication.
 
 ### 4. SSH Access
 
@@ -147,13 +147,13 @@ Authentication returns a shell:
 boris@data:~$
 ```
 
-Significance: the credential recovered from `grafana.db` authenticates directly over SSH, confirming cross-service reuse of the same secret.
+Significance: the credential recovered from `grafana.db` authenticates directly over SSH, which confirms cross-service reuse of the same secret.
 
-Result: an authenticated user-level shell as `boris` is obtained.
+Result: SSH returns an authenticated user-level shell as `boris`.
 
-### 5. Privilege Escalation — Sudo Docker Rights
+### 5. Privilege Escalation: Sudo Docker Rights
 
-Observation: the user's sudo policy is inspected for delegable root commands.
+Observation: I checked the user's sudo policy for delegable root commands.
 
 ```bash
 sudo -l
@@ -187,11 +187,11 @@ mkdir /mnt/host
 mount /dev/sda1 /mnt/host
 ```
 
-The source records the host root filesystem mounting successfully from inside the privileged container; no separate command output for the mount was captured.
+I could not verify the mount from separate command output; the source records the host root filesystem mounting successfully from inside the privileged container.
 
 Significance: a `docker exec` granted `--privileged`, reachable through the passwordless sudo rule, exposes the host block devices, so mounting them from the container gives read and write access to host-owned files.
 
-Result: root-equivalent access to the host filesystem is obtained through the container.
+Result: the container gives root-equivalent access to the host filesystem.
 
 ## Obstacles: no host shell, only delegated docker exec
 
@@ -206,7 +206,7 @@ The evidence establishes unauthenticated arbitrary file read through CVE-2021-43
 
 ## Recommendations: unpatched Grafana, exposed database, docker exec grant
 
-The actions below are recommendations; none was validated in the lab. Each finding pairs the observed root cause with its demonstrated impact and a prioritized action.
+The actions below are recommendations; none was validated in the lab.
 
 1. **Vulnerable Grafana release.** Grafana 8.0.0 ships within the CVE-2021-43798 affected range, allowing unauthenticated file read through plugin asset paths. *Recommendation:* upgrade to a patched release (8.0.7, 8.1.8, 8.2.7, or 8.3.1) and track the vendor advisory. *Detection:* alert on `../` traversal sequences in requests to `public/plugins/`.
 2. **Application secrets reachable in `grafana.db`.** Local user password hashes and salts could be exfiltrated and cracked offline. *Recommendation:* limit filesystem exposure from the web service, rotate affected credentials, and never reuse Grafana account passwords for SSH. *Detection:* monitor for large reads of `grafana.db` and for its retrieval by the Grafana service account.

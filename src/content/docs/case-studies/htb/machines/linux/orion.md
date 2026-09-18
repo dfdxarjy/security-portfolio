@@ -36,7 +36,7 @@ outcome: "Root via a loopback GNU inetutils telnet authentication bypass after r
 
 ## From pre-auth CMS RCE to telnet bypass
 
-Orion is a Hack The Box Linux lab that exposes SSH and an nginx-hosted Craft CMS 5.6.16 application. A pre-authentication remote code execution flaw in Craft CMS yields a `www-data` shell; the application environment file then discloses plaintext MySQL credentials, and the user table returns an administrator bcrypt hash. The hash is cracked offline to a password reused for SSH, and a telnet service bound to loopback running GNU inetutils 2.7 is abused through CVE-2026-24061 to reach root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+Orion is a Hack The Box Linux lab that exposes SSH and an nginx-hosted Craft CMS 5.6.16 application. A pre-authentication remote code execution flaw in Craft CMS yields a `www-data` shell; the application environment file then discloses plaintext MySQL credentials, and the user table returns an administrator bcrypt hash. The hash cracks offline to a password reused for SSH, and an authentication bypass in the loopback telnet service (GNU inetutils 2.7, CVE-2026-24061) reaches root. This writeup replaces target identifiers, credentials, and secret values with role-based placeholders and preserves command syntax. See [how evidence is handled](/method/).
 
 **Attack path:** **Unauthenticated web enumeration → Craft CMS 5.6.16 pre-auth RCE (CVE-2025-32432) → `www-data` shell → plaintext database credentials in the environment file → MySQL administrator hash → offline crack → SSH as a named user → loopback GNU inetutils telnet authentication bypass (CVE-2026-24061) → root**
 
@@ -66,13 +66,13 @@ Truncated scan output:
 80/tcp open  http    nginx 1.18.0 (Ubuntu)
 ```
 
-Significance: SSH is credential-gated, so the nginx web tier is the only unauthenticated attack surface.
+Significance: SSH requires credentials, so the nginx web tier is the only unauthenticated attack surface.
 
-Result: two services are exposed, and the web tier becomes the entry point.
+Result: two services are exposed, and the web tier is the entry point.
 
 ### 2. Web Application Discovery
 
-Observation: the web service redirected to a hostname — a detail the source records without capturing output. Directory enumeration then exposed an admin login page.
+Observation: the web service redirected to a hostname, a step reconstructed from the source notes because no output was captured. Directory enumeration then exposed an admin login page.
 
 ```bash
 feroxbuster --url http://<TARGET_HOSTNAME> --wordlist <WEB_CONTENT_WORDLIST>
@@ -113,7 +113,7 @@ script /dev/null -c /bin/bash
 www-data@<TARGET_HOSTNAME>:~$
 ```
 
-Significance: code execution is achieved without authentication in the context of the web service account.
+Significance: the exploit achieves code execution without authentication in the context of the web service account.
 
 Result: a `www-data` shell on the application host.
 
@@ -206,7 +206,7 @@ Result: authenticated SSH access as a named host user.
 
 ### 7. Privilege Escalation via Loopback Telnet Authentication Bypass
 
-Observation: a telnet service listens only on loopback and the installed client identifies the affected version.
+Observation: a telnet service listens only on loopback, and I checked the installed client to identify the affected version.
 
 ```bash
 netstat -tulnp
@@ -241,18 +241,18 @@ Result: a root shell is obtained through the telnet authentication bypass.
 
 ## Challenges and Decisions
 
-No failed attempts or remediation obstacles are recorded in the source for this machine; access moved cleanly from unauthenticated web exploitation to a pre-auth shell, credential recovery, SSH access, and the local bypass. No tradeoffs or fixes are documented, so none are presented here.
+The source records no failed attempts or remediation obstacles for this machine; access moved cleanly from unauthenticated web exploitation to a pre-auth shell, credential recovery, SSH access, and the local bypass. It also documents no tradeoffs or fixes, so none appear here.
 
 ## Outcome: root via loopback telnet authentication bypass
 
-Root access was obtained through a loopback telnet authentication bypass after a reused credential recovered from a pre-authentication CMS exploit provided SSH access to a named user. The bypass required an existing local shell, because the telnet service was bound to loopback.
+A reused credential recovered from the pre-authentication CMS exploit provided SSH access to a named user, and the loopback telnet authentication bypass carried that session to root. The bypass required an existing local shell, because the telnet service listened only on loopback.
 
 ## Recommendations: unpatched CMS, plaintext secrets, reuse, and legacy telnet
 
 The actions below are recommendations; none was validated in the lab.
 
 1. **Unpatched public-facing CMS.** Craft CMS 5.6.16 is affected by a pre-authentication RCE, so the web tier is compromised before any authentication occurs. *Recommendation:* upgrade to a fixed release (5.6.17 or later; 4.14.15 and 3.9.15 for older branches) and track Craft CMS security advisories. *Detection:* monitor for anomalous requests to admin and application endpoints consistent with the exploit path.
-2. **Plaintext secrets in the application environment file.** The environment file stored active MySQL credentials in readable plaintext, enabling database access from any file-read path. *Recommendation:* move secrets into a managed secret store, restrict file permissions, and use least-privilege database accounts that the web user cannot read.
+2. **Plaintext secrets in the application environment file.** The environment file stored active MySQL credentials in readable plaintext, so any file-read path on the host exposes the database. *Recommendation:* move secrets into a managed secret store, restrict file permissions, and use least-privilege database accounts that the web user cannot read.
 3. **Password reuse across application and system tiers.** The administrator hash cracked to a cleartext password that also authenticated SSH, so one recovery bridged the application and operating-system boundaries. *Recommendation:* enforce unique credentials per account and prefer key-based SSH authentication with multi-factor access.
 4. **Legacy loopback telnet service.** The local telnet service running GNU inetutils 2.7 exposed CVE-2026-24061, an authentication bypass that grants root from a local shell. *Recommendation:* remove unnecessary legacy services, upgrade or replace inetutils with a patched version, and restrict the telnet port even on loopback. *Detection:* alert on unexpected inbound telnet connections and on processes invoking `login(1)` with an attacker-controlled `USER` value.
 

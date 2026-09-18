@@ -47,7 +47,7 @@ Networked is an Easy-rated Hack The Box Linux (CentOS) lab with a flawed image-u
 - **Target:** a CentOS host exposing SSH (OpenSSH 7.4) and Apache httpd 2.4.6 running PHP 5.4.16.
 - **Starting position:** unauthenticated network access.
 - **Objective:** exploit the web application's upload handling for code execution, then escalate through a scheduled cleanup script and a sudo-delegated network script.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** activity stayed inside the Hack The Box lab environment.
 
 ## Evidence: leaked backup to sudo interface write
 
@@ -114,19 +114,19 @@ Result: the check can be satisfied by an image extension while a `.php` token re
 
 Observation: an image-valid file that also carries PHP executes when requested through the uploads path.
 
-Action — build a GIF-header PHP payload and upload it through `/upload.php`:
+Action: build a GIF-header PHP payload and upload it through `/upload.php`:
 
 ```bash
 printf 'GIF89a\n<PHP_WEBSHELL_PAYLOAD>' > shell.php.gif
 ```
 
-The stored name is confirmed through `/photos.php`:
+I checked the stored name through `/photos.php`:
 
 ```text
 <ATTACKER_IP_UNDERSCORES>.php.gif
 ```
 
-Action — request the shell parameter, then establish a callback session:
+Action: request the shell parameter, then establish a callback session:
 
 ```bash
 curl 'http://<TARGET_IP>/uploads/<ATTACKER_IP_UNDERSCORES>.php.gif?cmd=<REVERSE_SHELL_REQUEST>'
@@ -143,7 +143,7 @@ bash-4.2$ whoami
 <WEB_SERVICE_ACCOUNT>
 ```
 
-Significance: the `GIF89a` header satisfies the image check while the `.php` token in the stored filename is handed to Apache's PHP handler, so a single upload yields unauthenticated code execution with no separate vulnerability.
+Significance: the `GIF89a` header satisfies the image check while the `.php` token in the stored filename is handed to Apache's PHP handler, so the double extension alone yields unauthenticated code execution with no separate vulnerability.
 
 Result: command execution as `<WEB_SERVICE_ACCOUNT>` is established.
 
@@ -165,7 +165,7 @@ The script scans the upload directory and passes each filename into a shell comm
 exec("nohup /bin/rm -f $path$value > /dev/null 2>&1 &");
 ```
 
-Action — create a file whose name carries shell syntax, then catch the callback scheduled to run as the script owner:
+Action: create a file whose name carries shell syntax, then catch the callback scheduled to run as the script owner:
 
 ```bash
 cd /var/www/html/uploads
@@ -207,7 +207,7 @@ regexp="^[a-zA-Z0-9_\ /-]+$"
 
 It writes the supplied values into `/etc/sysconfig/network-scripts/ifcfg-<CRON_OWNER_ACCOUNT>` and then runs `ifup <CRON_OWNER_INTERFACE>`. Because the network scripts source that generated file, a value containing a command path can be interpreted as shell syntax.
 
-Action — stage a reverse-shell script, then pass a value that appends its path to the name field:
+Action: stage a reverse-shell script, then pass a value that appends its path to the name field:
 
 ```bash
 cat > /tmp/<STAGING_SCRIPT> << 'EOF'
@@ -233,22 +233,22 @@ The privileged listener returns a shell:
 <PRIVILEGED_ACCOUNT>
 ```
 
-Significance: allowing spaces in the validated value lets the input be split into a name plus a command path, and sourcing the generated interface file executes that path as the privileged account — a `sudo` delegation that consumes untrusted input becomes full command execution.
+Significance: allowing spaces in the validated value lets the input be split into a name plus a command path; sourcing the generated interface file then executes that path as the privileged account, so a `sudo` delegation that consumes untrusted input yields full command execution.
 
 Result: command execution as `<PRIVILEGED_ACCOUNT>` is confirmed by the returned `whoami` output.
 
 ## The upload check gap and injection placement
 
 - **Upload check versus execution behavior.** The handler accepted image extensions while Apache executed any `.php`-bearing filename, so the payload combined a `GIF89a` header, an allowed `.gif` extension, and an embedded `.php` token to satisfy the check and still run as PHP.
-- **Injection value placement in `changename.sh`.** The injected value was placed in the `NAME` field, and the remaining prompts were answered with neutral values (`none`, `no`, `dhcp`) so the script continued through to `ifup`.
+- **Injection value placement in `changename.sh`.** I placed the injected value in the `NAME` field and answered the remaining prompts with neutral values (`none`, `no`, `dhcp`) so the script continued through to `ifup`.
 
 ## Outcome: privileged account via the sudo network script
 
-The evidence establishes unauthenticated access escalating to privileged `<PRIVILEGED_ACCOUNT>` command execution through the sudo network script. Limitation: the payloads and injected values are summarized as placeholders, so the chain is not reproducible from this writeup.
+The evidence establishes unauthenticated access escalating to privileged `<PRIVILEGED_ACCOUNT>` command execution through the sudo network script. Limitation: the payloads and injected values appear only as placeholders, so the chain is not reproduced here and is not reproducible from this writeup.
 
 ## Recommendations: upload checks, exposed source, filenames, and sudo delegation
 
-Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
+The actions are recommendations; none was validated in the lab.
 
 1. **Extension- and MIME-only upload validation.** The upload handler trusted the MIME type and trailing extension, so a `.gif` file containing a `.php` token was stored and executed. *Recommendation:* validate the actual content, re-encode or strip images before storage, store uploads outside the web root, and disable script execution in upload directories. *Detection:* alert on executable files being written to upload or media paths.
 2. **Web-application source exposed in the web root.** A reachable source archive disclosed the exact validation logic and reduced the bypass to a read. *Recommendation:* keep backups, archives, and source control artifacts out of any web-served directory. *Detection:* monitor web paths for archive and source-file retrieval.

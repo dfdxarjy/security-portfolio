@@ -39,7 +39,7 @@ outcome: "Web-service code execution, an SSH credential recovered through WebSoc
 
 ## Default file manager to dstat root
 
-Soccer is an Easy-rated Hack The Box Linux lab that chains an exposed file manager, an executable upload directory, a WebSocket SQL injection flaw, and a delegated privilege rule into root. Default credentials open Tiny File Manager, the upload directory runs PHP, local nginx configuration reveals a second application virtual host, and its ticket-checking WebSocket is injectable and discloses an SSH credential; a `doas` rule then permits `dstat`, whose Python plugin loading yields root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+Soccer is an Easy-rated Hack The Box Linux lab. Default credentials open Tiny File Manager, and the upload directory runs PHP. Local nginx configuration then reveals a second application virtual host whose ticket-checking WebSocket is injectable and discloses an SSH credential, and a `doas` rule permits `dstat`, whose Python plugin loading yields root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Tiny File Manager default access → upload-directory PHP execution → web-service shell → local nginx configuration → secondary virtual host → WebSocket ticket-check SQL injection → database credential recovery → SSH as lab user → delegated `doas` rule for `dstat` → Python plugin execution → root**
 
@@ -99,9 +99,9 @@ Result: authenticated administrative access to Tiny File Manager is obtained.
 
 ### 3. Executable Upload to Code Execution
 
-Observation: the `/tiny/uploads` directory executes uploaded PHP files; a `phpinfo()` test confirmed that execution functions such as `system`, `exec`, `shell_exec`, and `proc_open` were available.
+Observation: the `/tiny/uploads` directory executes uploaded PHP files; a `phpinfo()` test confirmed that execution functions such as `system`, `exec`, `shell_exec`, and `proc_open` were available; the test output was not retained, so I could not verify it directly.
 
-Action: with a listener ready, uploaded a PHP file and requested it over HTTP.
+Action: with a listener ready, I checked that the upload directory executed server-side PHP, then uploaded a PHP file and requested it over HTTP.
 
 ```bash
 nc -lvnp <LISTENER_PORT>
@@ -216,7 +216,7 @@ doas -u root /usr/bin/dstat --<PLUGIN_NAME>
 root
 ```
 
-Significance: because `dstat` executes plugin code while running as root, the delegated rule amounts to arbitrary root code execution.
+Significance: because `dstat` executes plugin code while running as root, the delegated rule is arbitrary root code execution.
 
 Result: a root context is obtained through the permitted `dstat` command.
 
@@ -233,11 +233,11 @@ The evidence establishes default-credential file-manager access, code execution 
 
 ## Recommendations: default credentials, executable uploads, WebSocket input, and doas scope
 
-Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
+The actions are recommendations; none was validated in the lab.
 
 1. **Default credentials on administrative software.** Known default credentials granted full file-management access. *Recommendation:* remove or rotate default credentials before deployment and restrict administrative interfaces to trusted access paths. *Detection:* alert on logins using vendor-default accounts and on administrative interface access from unexpected sources.
-2. **Executable upload directory.** `/tiny/uploads` executed uploaded PHP, giving code execution as the web-service account. *Recommendation:* store uploads outside executable paths and explicitly disable server-side execution in upload directories. *Detection:* alert on newly written executable files under the web root.
-3. **Unvalidated WebSocket endpoint.** The ticket-checking message reached the database without input handling, disclosing an account credential. *Recommendation:* apply parameterized queries and input validation to WebSocket handlers as well as HTTP routes. *Detection:* log and review WebSocket payloads for injection patterns.
+2. **Executable upload directory.** `/tiny/uploads` executed uploaded PHP, which gave code execution as the web-service account. *Recommendation:* store uploads outside executable paths and explicitly disable server-side execution in upload directories. *Detection:* alert on newly written executable files under the web root.
+3. **Unvalidated WebSocket endpoint.** The ticket-checking message reached the database without input handling and disclosed an account credential. *Recommendation:* apply parameterized queries and input validation to WebSocket handlers as well as HTTP routes. *Detection:* log and review WebSocket payloads for injection patterns.
 4. **Over-broad `doas` delegation.** A passwordless root rule for `dstat` allowed arbitrary code execution through its plugin loading. *Recommendation:* review `sudo` and `doas` allowlists against the full behavior of each permitted program, and exclude binaries that load user-controlled extensions. *Detection:* audit delegation rules for plugin-capable or scriptable binaries and monitor plugin directories for unexpected files.
 
 ## References

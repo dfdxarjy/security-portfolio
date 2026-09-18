@@ -44,7 +44,7 @@ Cascade is a Medium-rated Hack The Box Active Directory lab built on credential 
 - **Target:** a Windows Server 2008 R2 domain controller (`<DC_HOST>`) for the `<DOMAIN>` domain, exposing DNS, Kerberos, LDAP, SMB, and RPC.
 - **Starting position:** unauthenticated network access, with no provided credentials.
 - **Objective:** enumerate anonymously readable directory data, validate any recovered account access, and establish whether the resulting permissions lead to administrative control.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** all activity stayed inside the Hack The Box lab environment.
 
 ## Evidence: anonymous LDAP to Recycle Bin disclosure
 
@@ -85,7 +85,7 @@ nxc smb <DOMAIN> -u '<LAB_USER>' -p '<LDAP_PASSWORD>'
 [+] <DOMAIN>\<LAB_USER>:<LDAP_PASSWORD>
 ```
 
-Significance: pre-Windows 2000 compatible access permitted anonymous directory reads, and the password was stored as Base64 — an encoding, not a protection — so it was trivially recoverable.
+Significance: pre-Windows 2000 compatible access permitted anonymous directory reads, and the password was stored as Base64, an encoding with no protection, so it was trivially recoverable.
 
 Result: the recovered credential authenticates over SMB as a low-privileged domain user.
 
@@ -105,7 +105,7 @@ The share is readable:
 Data   READ
 ```
 
-The download includes the critical artifact:
+The download includes the registry export:
 
 ```text
 ./IT/Temp/<SMB_USER>/VNC Install.reg
@@ -188,7 +188,7 @@ evil-winrm -i <TARGET_IP> -u '<SERVICE_ACCOUNT>' -p '<SERVICE_PASSWORD>'
 
 Significance: embedding the decryption key beside the ciphertext in the same application removes the protection the encryption provides; anyone who can read the binaries and database can recover the secret.
 
-Result: the service account's credentials are recovered and validated. The source records a WinRM session opened as that account, which belongs to the AD Recycle Bin group.
+Result: the service account's credentials are recovered and validated. The source records a WinRM session opened as that account, which belongs to the AD Recycle Bin group; I could not verify that session from the material available.
 
 ### 5. AD Recycle Bin Abuse
 
@@ -216,13 +216,13 @@ nxc smb <DOMAIN> -u '<ADMIN_ACCOUNT>' -p '<RECOVERED_PASSWORD>'
 [+] <DOMAIN>\<ADMIN_ACCOUNT>:<RECOVERED_PASSWORD> (Pwn3d!)
 ```
 
-Significance: the deleted temporary administrator had been created with the same password as the domain Administrator, which was never rotated, so the retained attribute was a live administrative secret rather than stale data.
+Significance: the deleted temporary administrator had been created with the same password as the domain Administrator, which was never rotated, so the retained attribute was still a live administrative secret.
 
 Result: the recovered password authenticates as the domain Administrator.
 
 ## Correlating the deleted object and Recycle Bin retention
 
-- **Linking the deleted object to the current Administrator.** The deleted object alone exposed only a legacy attribute; correlating the `ArkAdRecycleBin.log` with the meeting-notes file in the `Data` share established that the temporary administrator had been created with the same password as the normal administrator. That correlation, not a distinct exploit, connected the recovered value to administrative access.
+- **Linking the deleted object to the current Administrator.** The deleted object alone exposed only a legacy attribute; I checked the `ArkAdRecycleBin.log` against the meeting-notes file in the `Data` share, which established that the temporary administrator had been created with the same password as the normal administrator. That correlation, not a distinct exploit, connected the recovered value to administrative access.
 - **Recycle Bin retention.** Because the feature preserves all attributes of deleted objects until the tombstone lifetime expires, a credential-bearing attribute that should have been destroyed remained queryable.
 
 ## Outcome: administrative access from retained object data

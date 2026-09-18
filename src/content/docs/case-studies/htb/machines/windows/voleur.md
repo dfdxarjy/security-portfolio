@@ -49,13 +49,13 @@ Voleur is a Hard-rated Hack The Box Windows Active Directory lab. Starting from 
 - **Target:** A Windows Active Directory domain controller exposing Kerberos, LDAP, SMB, and WinRM, plus an SSH service provided by a co-hosted WSL instance on a non-default port.
 - **Starting position:** Provided low-privilege domain credentials for `<INITIAL_DOMAIN_USER>`.
 - **Objective:** Escalate from those credentials to administrative access and demonstrate what the recovered material exposes.
-- **Constraints:** Activity was confined to the Hack The Box lab environment. Kerberos service-ticket requests require the client and domain-controller clocks to agree, so time is synchronized against the domain controller and a Kerberos client configuration is in place before any ticket is requested.
+- **Constraints:** Activity stayed inside the Hack The Box lab environment. Kerberos service-ticket requests require the client and domain-controller clocks to agree, so time is synchronized against the domain controller and a Kerberos client configuration is in place before any ticket is requested.
 
 ## Evidence: share spreadsheet, Kerberoast, DPAPI, WSL backup extraction
 
 ### 1. Service Enumeration and Directory Reconnaissance
 
-Observation: a full TCP scan exposes the standard Active Directory surface together with an SSH service on a non-default port, and the provided account can read directory data and at least one operational share.
+Observation: I checked the standard Active Directory surface with a full TCP scan, which exposed an SSH service on a non-default port; the provided account can read directory data and at least one operational share.
 
 ```bash
 nmap -sC -sV -p- <TARGET_IP> -oA <OUTPUT_PREFIX>
@@ -92,7 +92,7 @@ nxc smb <DOMAIN_CONTROLLER> -u '<INITIAL_DOMAIN_USER>' -p '<INITIAL_DOMAIN_PASSW
 Readable share: <IT_SHARE>
 ```
 
-Significance: Kerberos, LDAP, and SMB support directory reconnaissance; the non-default SSH port marks the WSL pivot surface used later; a readable operational share may hold internal documents and credentials.
+Significance: Kerberos, LDAP, and SMB support directory reconnaissance; the non-default SSH port is the WSL pivot surface used later; a readable operational share may hold internal documents and credentials.
 
 Result: directory enumeration returns the domain's user and service accounts, and one operational share is readable with the provided account.
 
@@ -120,7 +120,7 @@ The decrypted workbook discloses service-account credentials:
 <IIS_SERVICE_ACCOUNT>  : <IIS_SERVICE_PASSWORD>
 ```
 
-Significance: an encrypted business document does not protect embedded credentials when its password is weak, and service-account credentials materially widen the available authentication paths.
+Significance: an encrypted business document does not protect embedded credentials when its password is weak, and service-account credentials widen the available authentication paths.
 
 Result: the workbook password is recovered, and distinct LDAP and IIS service-account credentials are disclosed.
 
@@ -158,7 +158,7 @@ Get-ADObject -Filter 'isDeleted -eq $true -and objectClass -eq "user"' -IncludeD
 Restore-ADObject -Identity <DELETED_OBJECT_GUID>
 ```
 
-The deleted object `<RESTORED_DOMAIN_USER>` is restored, and the access-review document already held the matching password for that account.
+The restore brings back `<RESTORED_DOMAIN_USER>`, and the access-review document already held the matching password for that account.
 
 Significance: a recycled object can retain a viable identity after deletion, and the ability to enumerate and restore deleted objects broadens the post-compromise surface.
 
@@ -172,7 +172,7 @@ Observation: the restored user's profile holds DPAPI-protected material; decrypt
 <DPAPI_RECOVERED_USER> : <DPAPI_RECOVERED_PASSWORD>
 ```
 
-That account authenticates over WinRM, then the key reaches the WSL service:
+That account authenticates over WinRM, then the key grants access to the WSL service:
 
 ```bash
 impacket-getTGT <DOMAIN>/<DPAPI_RECOVERED_USER>:'<DPAPI_RECOVERED_PASSWORD>'
@@ -216,11 +216,11 @@ The source records no failed attempts, dead ends, or reversed decisions; the cha
 
 ## Outcome: Administrator hash via offline ntds.dit and SYSTEM hive
 
-The evidence establishes administrative control of the domain: the offline directory database and its paired SYSTEM hive yielded the built-in Administrator NTLM hash, which authenticated over WinRM in the Administrator context. The chain is not reproducible from this writeup.
+The evidence establishes administrative control of the domain: the offline directory database and its paired SYSTEM hive yielded the built-in Administrator NTLM hash, which authenticated over WinRM in the Administrator context. The chain is not reproducible from this writeup, and was not reproduced here.
 
 ## Recommendations: service passwords, shared documents, recycled objects, DPAPI, and backups
 
-The actions below are recommendations; none was validated or re-tested in the lab. Each finding pairs an observed root cause with its demonstrated impact and a prioritized action.
+The actions below are recommendations; none was validated or re-tested in the lab.
 
 1. **Human-chosen service-account passwords.** The Kerberoastable `<WINRM_SERVICE_ACCOUNT>` password fell to offline cracking of its service ticket, yielding a WinRM foothold. *Recommendation:* assign long, random, or managed-service-account passwords to any account with a service principal name, and rotate any that have been Kerberoastable. *Detection:* monitor TGS requests for legacy encryption types and for service tickets requested against interactive accounts.
 2. **Credentials stored in shared documents.** An access-review workbook on a readable share held service-account passwords, and its own password was weak. *Recommendation:* keep secrets out of spreadsheets and shared documents, use a dedicated secrets manager, and restrict share permissions to named roles. *Detection:* alert on transfers of credential-bearing documents from operational shares.

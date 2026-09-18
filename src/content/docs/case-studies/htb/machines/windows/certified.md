@@ -39,7 +39,7 @@ outcome: "Administrative domain-controller execution via an ESC9-issued Administ
 
 ## ACL delegation chain and ESC9 escalation
 
-Certified is a Medium Hack The Box Active Directory lab that starts from provided low-privilege domain credentials. Directory relationship data exposes a chain of delegated permissions across a management group, a service account, and a certificate-operator account, which is closed by abusing AD CS ESC9 to obtain an Administrator certificate. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/). A small number of transitions are recorded by command only, without captured output.
+Certified is a Medium Hack The Box Active Directory lab that starts from provided low-privilege domain credentials. Directory relationship data exposes a chain of delegated permissions across a management group, a service account, and a certificate-operator account; abusing AD CS ESC9 closes the chain and yields an Administrator certificate. This writeup replaces target identifiers, credentials, and secret values with role-based placeholders and leaves command syntax intact. See [how evidence is handled](/method/). A small number of transitions appear as command only, with no captured output, so I could not verify their results.
 
 **Attack path:** **WriteOwner on `Management` → group membership → `GenericWrite` Shadow Credentials on the service account → `GenericAll` over the certificate-operator account → forced password reset → AD CS ESC9 UPN manipulation → Administrator certificate**
 
@@ -47,7 +47,7 @@ Certified is a Medium Hack The Box Active Directory lab that starts from provide
 
 Certified runs Active Directory on a Windows domain controller. The lab begins from a single provided low-privilege account and requires no initial foothold; Kerberos, LDAP, SMB, and WinRM are exposed. LDAP-backed directory collection produced the relationship graph used to plan the escalation. The objective was to move from the provided account to administrative control of the domain controller by following the permitted relationships rather than exploiting a remote-code-execution flaw.
 
-Activity was confined to the Hack The Box lab environment, and the provided credentials were the only starting point.
+All activity stayed inside the Hack The Box lab environment, and the provided credentials were the only starting point.
 
 ## Evidence: WriteOwner to ESC9 Administrator certificate
 
@@ -73,7 +73,7 @@ Truncated scan output:
 5985/tcp open  http          WinRM
 ```
 
-The collected directory data revealed this ACL path:
+I checked the collected directory data, which revealed this ACL path:
 
 ```text
 <LAB_USER>
@@ -89,11 +89,11 @@ The collected directory data revealed this ACL path:
 
 Significance: LDAP, SMB, and WinRM provide the directory paths needed for the later ACL and certificate operations, and the delegated permissions form a contiguous route from the starting account to a certificate authority.
 
-Result: the exposed services and the delegated-permission chain are identified, defining the escalation plan.
+Result: the scan and directory collection identify the exposed services and the delegated-permission chain, which together define the escalation plan.
 
 ### 2. Take ownership of `Management`
 
-Observation: `<LAB_USER>` holds `WriteOwner` on the `Management` group, so the object's owner can be rewritten.
+Observation: `<LAB_USER>` holds `WriteOwner` on the `Management` group, so the account can rewrite the object's owner.
 
 ```bash
 impacket-owneredit -dc-ip <TARGET_IP> -action write \
@@ -107,13 +107,13 @@ Output:
 [*] OwnerSid modified successfully!
 ```
 
-Significance: controlling an object's owner allows its DACL to be rewritten, so ownership is a stepping stone to effective rights.
+Significance: controlling an object's owner allows rewriting its DACL, so ownership leads to effective rights.
 
 Result: `<LAB_USER>` becomes owner of `Management`.
 
 ### 3. Rewrite the group DACL and join `Management`
 
-Observation: as owner, the group DACL can be modified to grant membership-write, after which the account can add itself to the group.
+Observation: as owner, the account can modify the group DACL to grant membership-write, after which it can add itself to the group.
 
 ```bash
 impacket-dacledit -action write -rights WriteMembers \
@@ -166,7 +166,7 @@ Result: a key credential and the NT hash for `<SERVICE_ACCOUNT>` are recovered a
 
 ### 5. Reset the operator account and identify ESC9
 
-Observation: `<SERVICE_ACCOUNT>` holds `GenericAll` over `<CA_OPERATOR>`, permitting a password reset; the operator can then enumerate the certificate authority.
+Observation: `<SERVICE_ACCOUNT>` holds `GenericAll` over `<CA_OPERATOR>`, which allows a password reset; the operator can then enumerate the certificate authority.
 
 ```bash
 bloodyAD --host <TARGET_IP> -d <DOMAIN> \
@@ -195,9 +195,9 @@ Vulnerability : ESC9 - Template has no security extension
 CA Name       : <CA_NAME>
 ```
 
-Significance: `GenericAll` allows a reset that grants full control of the operator account, and that account can enroll in a template missing the security extension — the ESC9 condition.
+Significance: `GenericAll` allows a reset that grants full control of the operator account, and that account can enroll in a template missing the security extension, which is the ESC9 condition.
 
-Result: the operator password is reset and a template vulnerable to ESC9 is identified.
+Result: the reset changes the operator password and the enumeration identifies a template vulnerable to ESC9.
 
 ### 6. ESC9 enrollment and administrative authentication
 
@@ -273,9 +273,9 @@ The evidence establishes administrative execution on the domain controller as `<
 
 None of the recommendations below was validated in the lab.
 
-1. **Excessive ownership and DACL delegation on privileged groups.** `<LAB_USER>` held `WriteOwner` over `Management`, so ownership could be taken and the group DACL rewritten. *Recommendation:* reduce `WriteOwner`/`WriteMembers` delegation on privileged groups and alert on owner and DACL changes.
+1. **Excessive ownership and DACL delegation on privileged groups.** `<LAB_USER>` held `WriteOwner` over `Management`, so the account could take ownership and rewrite the group DACL. *Recommendation:* reduce `WriteOwner`/`WriteMembers` delegation on privileged groups and alert on owner and DACL changes.
 2. **`GenericWrite` over a service account.** `Management` had `GenericWrite` over `<SERVICE_ACCOUNT>`, which a key credential turned into Kerberos authentication material and the account NT hash. *Recommendation:* restrict `GenericWrite` on service accounts and monitor key-credential (`msDS-KeyCredentialLink`) writes for unexpected entries.
-3. **`GenericAll` over the certificate-operator account.** `<SERVICE_ACCOUNT>` had `GenericAll` over `<CA_OPERATOR>`, enabling an unauthorized password reset. *Recommendation:* apply least privilege to CA operator and service-account permissions and alert on privileged password resets.
+3. **`GenericAll` over the certificate-operator account.** `<SERVICE_ACCOUNT>` had `GenericAll` over `<CA_OPERATOR>`, which allowed an unauthorized password reset. *Recommendation:* apply least privilege to CA operator and service-account permissions and alert on privileged password resets.
 4. **ESC9-vulnerable template with a mutable UPN.** `<VULNERABLE_TEMPLATE>` lacked the certificate security extension, and the enrolling account's UPN could be changed, so a certificate authenticated as `<ADMIN_ACCOUNT>`. *Recommendation:* configure templates with the security extension, enforce strong certificate binding, and audit UPN changes and certificate issuance for accounts that can enroll.
 
 ## References
