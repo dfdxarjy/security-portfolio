@@ -339,6 +339,23 @@ const searchableText = (study: (typeof studies)[number]) =>
                 padding-top: 1rem;
                 border-top: 1px solid var(--line);
             }
+            /* Scroll-linked drift: transform only, gated so engines without
+               scroll timelines never run the keyframes on the document
+               timeline, and motion-averse visitors keep the static rail.
+               `scroll(root block)` makes progress 0 at the page top. */
+            @supports (animation-timeline: scroll()) {
+                @media (prefers-reduced-motion: no-preference) and (min-width: 56.26rem) {
+                    .portfolio-hero-rail {
+                        animation: rail-drift linear both;
+                        animation-timeline: scroll(root block);
+                        animation-range: 0 60vh;
+                    }
+                    @keyframes rail-drift {
+                        from { transform: translateY(0); }
+                        to   { transform: translateY(1.5rem); }
+                    }
+                }
+            }
             .portfolio-rail-list {
                 display: grid;
                 gap: 0.9rem;
