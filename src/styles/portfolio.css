@@ -63,7 +63,8 @@
 	--portfolio-accent-strong: #5e2e1f;
 	--portfolio-accent-soft: #f0e4dc;
 	--portfolio-accent-contrast: #ffffff;
-	--portfolio-radius: 0.8rem;
+	--portfolio-radius: 0.875rem;
+	--portfolio-radius-sm: 0.375rem;
 	--portfolio-copy: 68ch;
 
 	/* Interactive control boundary — >=3:1 on both surfaces (WCAG 1.4.11). */
@@ -168,7 +169,7 @@ select {
    shadow banded visibly (#12.4 also calls for flat surfaces and hairlines).
    Expressive Code frames and Starlight pre/table already carry their own
    hairline borders, so removing the shadow loses no definition. */
-.sl-markdown-content :where(code:not(pre code)) { border: 1px solid var(--portfolio-line); border-radius: 0.3rem; padding: 0.1em 0.3em; }
+.sl-markdown-content :where(code:not(pre code)) { border: 1px solid var(--portfolio-line); border-radius: var(--portfolio-radius-sm); padding: 0.1em 0.3em; }
 .sl-markdown-content :where(th) { color: var(--portfolio-ink); }
 .sl-markdown-content :where(blockquote) { border-inline-start-color: var(--portfolio-accent); }
 .sidebar-content { border-inline-end-color: var(--portfolio-line); }
