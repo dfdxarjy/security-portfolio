@@ -150,10 +150,18 @@ const {
 		</script>
 		<script is:inline>
 			// Scroll reveal: transform + opacity only, one observer, no scroll
-			// listener. Reduced-motion users get the final state immediately and no
-			// observer runs. If the observer is unavailable or init throws, every
+			// listener. Static data-reveal targets and direct Markdown prose blocks
+			// are observed. Reduced-motion users get the final state immediately and
+			// no observer runs. If the observer is unavailable or init throws, every
 			// target is shown, so a failure can never leave content hidden.
 			(() => {
+				document.querySelectorAll(".portfolio-prose").forEach((prose) => {
+					prose
+						.querySelectorAll(
+							":scope > :is(h2, h3, p, ul, ol, blockquote, table, pre, figure, details, hr)",
+						)
+						.forEach((el) => el.setAttribute("data-reveal", ""));
+				});
 				const items = [...document.querySelectorAll("[data-reveal]")];
 				if (!items.length) return;
 				const showAll = () =>
