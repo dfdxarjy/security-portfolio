@@ -186,9 +186,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                 max-width: 76rem;
                 margin: auto;
                 padding: 1.25rem clamp(1.25rem, 4vw, 4rem) 4rem;
-                /* Single-sourced gap for the twelve-column base grid; the
-                   explorer's column inset derives from the same value so the
-                   two rails cannot drift apart. */
+                /* Single-sourced gap for the twelve-column base grid. */
                 --gap: clamp(1rem, 2.5vw, 2rem);
             }
             /* Twelve-column base grid; blocks place themselves on explicit
@@ -400,11 +398,11 @@ const searchableText = (study: (typeof studies)[number]) =>
                 padding-block: clamp(4rem, 10vw, 7rem)
                     clamp(2rem, 5vw, 3rem);
             }
-            /* Section heading is stacked and inset one column so its left edge
-               is on the same rail as the content it introduces; the two are
-               separated by the grid row gap rather than a trailing margin. */
+            /* Section heading is stacked flush with the content it introduces;
+               the two are separated by the grid row gap rather than a
+               trailing margin. */
             .portfolio-section-heading {
-                grid-column: 2 / 9;
+                grid-column: 1 / 8;
                 margin: 0;
             }
             .portfolio-section-heading h2 {
@@ -416,10 +414,10 @@ const searchableText = (study: (typeof studies)[number]) =>
                 margin-bottom: 0;
                 color: var(--muted);
             }
-            /* Focus cards share the heading's left rail: both start on column
-               two, and the cards run to the symmetric inset on the right. */
+            /* Focus cards run full width, sharing the heading's left edge and
+               the section's flush right edge. */
             .portfolio-category-grid {
-                grid-column: 2 / 12;
+                grid-column: 1 / 13;
                 display: grid;
                 grid-template-columns: repeat(4, minmax(0, 1fr));
                 gap: 1rem;
@@ -456,8 +454,8 @@ const searchableText = (study: (typeof studies)[number]) =>
             /* Lead case: one bordered surface so the trial spotlight ring has
                an edge to trace. Tinted shadow keeps it on the palette. */
             .portfolio-lead {
-                /* Inset one column from each gutter, matching the category grid. */
-                grid-column: 2 / 12;
+                /* Full width, matching the category grid's flush edges. */
+                grid-column: 1 / 13;
                 position: relative;
                 padding: clamp(1.5rem, 3vw, 1.75rem);
                 border: 1px solid var(--line);
@@ -540,15 +538,6 @@ const searchableText = (study: (typeof studies)[number]) =>
                    and the largest trailing space on the page. */
                 padding-block: clamp(2.5rem, 6vw, 4rem)
                     clamp(5rem, 12vw, 9rem);
-                /* True inset: the explorer is not a grid, so it re-creates
-                   grid line 2 with inline padding instead. The start inset is
-                   one column plus the gap that follows it; the end inset is
-                   one column, matching `grid-column: 2 / 12` exactly on both
-                   edges. One column is `(100% - 11 gaps) / 12`. */
-                padding-inline: calc(
-                        (100% - 11 * var(--gap)) / 12 + var(--gap)
-                    )
-                    calc((100% - 11 * var(--gap)) / 12);
                 border-top: 1px solid var(--line);
             }
             .portfolio-explorer-subtitle {
@@ -721,9 +710,9 @@ const searchableText = (study: (typeof studies)[number]) =>
                 color: var(--muted);
                 text-align: center;
             }
-            /* The asymmetric layout folds back to a single column once the
-               12 tracks get too narrow to hold the offsets; the category grid
-               steps down to two columns first, then one. */
+            /* The layout folds back to a single column once the 12 tracks get
+               too narrow; the category grid steps down to two columns first,
+               then one. */
             @media (max-width: 56.25rem) {
                 .portfolio-hero-copy,
                 .portfolio-hero-rail,
@@ -731,11 +720,6 @@ const searchableText = (study: (typeof studies)[number]) =>
                 .portfolio-category-grid,
                 .portfolio-lead {
                     grid-column: 1 / -1;
-                }
-                /* Fold back to full width: the explorer's column inset is a
-                   desktop-only device. */
-                .portfolio-explorer {
-                    padding-inline: 0;
                 }
                 .portfolio-hero-rail {
                     margin-top: 1.5rem;
