@@ -63,7 +63,6 @@
 	--portfolio-accent-strong: #5e2e1f;
 	--portfolio-accent-soft: #f0e4dc;
 	--portfolio-accent-contrast: #ffffff;
-	--portfolio-grid: rgba(122, 62, 42, 0.06);
 	--portfolio-radius: 0.8rem;
 	--portfolio-copy: 68ch;
 
@@ -81,7 +80,6 @@
 	--portfolio-accent-strong: #e0a57e;
 	--portfolio-accent-soft: #3a2a20;
 	--portfolio-accent-contrast: #1a1a17;
-	--portfolio-grid: rgba(201, 138, 99, 0.08);
 	--control-line: #6f675d;
 }
 
@@ -95,9 +93,7 @@ body {
 }
 
 /*
- * The decorative grid background is homepage-only and now lives in the
- * homepage's own <style> block (src/pages/index.astro). Documentation and
- * article pages keep this solid `--portfolio-surface` background.
+ * Documentation and article pages keep this solid `--portfolio-surface` background.
  */
 
 body,
