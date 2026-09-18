@@ -427,7 +427,6 @@ const searchableText = (study: (typeof studies)[number]) =>
             .portfolio-study {
                 border-radius: var(--portfolio-radius);
                 background: var(--card);
-                box-shadow: var(--surface-shadow);
             }
             /* Clickable card boundary uses the 3:1 interactive token. */
             .portfolio-category {
@@ -453,7 +452,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                 font-weight: 750;
             }
             /* Lead case: one bordered surface so the trial spotlight ring has
-               an edge to trace. Tinted shadow keeps it on the palette. */
+               an edge to trace. */
             .portfolio-lead {
                 /* Full width, matching the category grid's flush edges. */
                 grid-column: 1 / 13;
@@ -462,7 +461,6 @@ const searchableText = (study: (typeof studies)[number]) =>
                 border: 1px solid var(--line);
                 border-radius: var(--portfolio-radius);
                 background: var(--card);
-                box-shadow: var(--surface-shadow);
             }
             /* Trial spotlight border: the edge lights up under the cursor.
                Opacity only; the pointer-tracked custom properties are set by
