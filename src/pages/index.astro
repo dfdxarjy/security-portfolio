@@ -787,6 +787,33 @@ const searchableText = (study: (typeof studies)[number]) =>
                     transition: none;
                 }
             }
+            /* A reveal target reached by keyboard focus must be visible at
+               once, never a hidden-but-focusable control. */
+            .js-reveal [data-reveal]:focus-within {
+                opacity: 1;
+                transform: none;
+                transition: none;
+            }
+            /* Hover is gated to pointer devices: touch browsers emulate
+               `:hover` on tap, which would flash a target visible before the
+               observer reveals it. */
+            @media (hover: hover) {
+                .js-reveal [data-reveal]:hover {
+                    opacity: 1;
+                    transform: none;
+                    transition: none;
+                }
+            }
+            /* This route does not load Starlight's print stylesheet, so any
+               section never scrolled into view would otherwise print blank. */
+            @media print {
+                .js-reveal [data-reveal],
+                .js-reveal [data-reveal].is-visible {
+                    opacity: 1;
+                    transform: none;
+                    transition: none;
+                }
+            }
             .portfolio-skip-link {
                 position: absolute;
                 left: 1rem;
