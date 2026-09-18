@@ -9,7 +9,7 @@ export default function LeadCase({
 }) {
 	return (
 		<section className="py-12" aria-labelledby="lead-title">
-			<div className="max-w-[68ch]">
+			<div className="max-w-[68ch]" data-reveal>
 				<h2
 					id="lead-title"
 					className="text-3xl tracking-[-0.04em] sm:text-4xl"
@@ -21,7 +21,7 @@ export default function LeadCase({
 				</p>
 			</div>
 			{study && (
-				<article className="mt-6 rounded-xl border border-border bg-card p-6">
+				<article className="mt-6 rounded-xl border border-border bg-card p-6" data-reveal>
 					<p className="font-mono text-[0.72rem] uppercase tracking-[0.12em] text-muted-foreground">
 						{study.label} · latest addition
 					</p>

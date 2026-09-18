@@ -75,6 +75,10 @@ const {
 				}
 				document.documentElement.dataset.theme = theme;
 				document.documentElement.style.colorScheme = theme;
+				// Opt in to the scroll-reveal gate before first paint so reveal targets
+				// are never painted hidden; without JS the class is absent and all content
+				// stays visible.
+				document.documentElement.classList.add("js-reveal");
 			})();
 		</script>
 		<style is:global>
@@ -141,6 +145,41 @@ const {
 					new ResizeObserver(measure).observe(header);
 				} else {
 					window.addEventListener("resize", measure);
+				}
+			})();
+		</script>
+		<script is:inline>
+			// Scroll reveal: transform + opacity only, one observer, no scroll
+			// listener. Reduced-motion users get the final state immediately and no
+			// observer runs. If the observer is unavailable or init throws, every
+			// target is shown, so a failure can never leave content hidden.
+			(() => {
+				const items = [...document.querySelectorAll("[data-reveal]")];
+				if (!items.length) return;
+				const showAll = () =>
+					items.forEach((el) => el.classList.add("is-visible"));
+				try {
+					if (
+						window.matchMedia("(prefers-reduced-motion: reduce)").matches ||
+						typeof IntersectionObserver === "undefined"
+					) {
+						showAll();
+					} else {
+						const io = new IntersectionObserver(
+							(entries) => {
+								entries.forEach((entry) => {
+									if (entry.isIntersecting) {
+										entry.target.classList.add("is-visible");
+										io.unobserve(entry.target);
+									}
+								});
+							},
+							{ threshold: 0.15, rootMargin: "0px 0px -8% 0px" },
+						);
+						items.forEach((el) => io.observe(el));
+					}
+				} catch {
+					showAll();
 				}
 			})();
 		</script>

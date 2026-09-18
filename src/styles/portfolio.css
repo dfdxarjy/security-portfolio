@@ -181,3 +181,67 @@ select {
 @media (prefers-reduced-motion: reduce) {
 	*, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
 }
+
+/* Scroll reveal: transform + opacity only, opt in via the `js-reveal` class
+   the pre-paint head script adds, so no-JS visitors see all content. The
+   stagger index `--reveal-i` is set by nth-child below, never inline, and
+   capped at six steps so a long grid cannot drift. */
+.js-reveal [data-reveal] {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 420ms ease,
+    transform 420ms ease;
+  transition-delay: calc(min(var(--reveal-i, 0), 6) * 60ms);
+}
+.js-reveal [data-reveal].is-visible {
+  opacity: 1;
+  transform: none;
+}
+.js-reveal [data-reveal-group] > [data-reveal]:nth-child(2) {
+  --reveal-i: 1;
+}
+.js-reveal [data-reveal-group] > [data-reveal]:nth-child(3) {
+  --reveal-i: 2;
+}
+.js-reveal [data-reveal-group] > [data-reveal]:nth-child(4) {
+  --reveal-i: 3;
+}
+.js-reveal [data-reveal-group] > [data-reveal]:nth-child(5) {
+  --reveal-i: 4;
+}
+.js-reveal [data-reveal-group] > [data-reveal]:nth-child(6) {
+  --reveal-i: 5;
+}
+/* A reveal target reached by keyboard focus must be visible at once, never a
+   hidden-but-focusable control. */
+.js-reveal [data-reveal]:focus-within {
+  opacity: 1;
+  transform: none;
+  transition: none;
+}
+/* Hover is gated to pointer devices: touch browsers emulate :hover on tap,
+   which would flash a target visible before the observer reveals it. */
+@media (hover: hover) {
+  .js-reveal [data-reveal]:hover {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .js-reveal [data-reveal],
+  .js-reveal [data-reveal].is-visible {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+@media print {
+  .js-reveal [data-reveal],
+  .js-reveal [data-reveal].is-visible {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
