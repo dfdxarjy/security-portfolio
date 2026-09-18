@@ -25,7 +25,7 @@ export default defineConfig({
 				hashes: [
 					"sha256-Z2WcKnfs9E/VBx56jNyEzuBZIeaDNqH1mNg0E9qrv+8=",
 					"sha256-bvjZC3AnPb+ys9toP8kN5cg7sF3ndpwX9+AxzZ7FjZM=",
-					"sha256-DO6SvICiJfo60KQmiS2iL94rTHuNyuY0zfu+QPKoKCM=",
+					"sha256-EWQAuQoPjxwGAay8L8ESipYR2cOr5Ia64IbFu+XCyjA=",
 				],
 			},
 			styleDirective: {

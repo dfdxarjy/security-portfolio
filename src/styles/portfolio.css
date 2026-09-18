@@ -249,18 +249,19 @@ select {
   }
 }
 
-/* Lead-case cursor spotlight: a 1px pointer-tracked ring tracing the card
-   border. This is the portfolio's single approved gradient exception.
-   Gated so touch and reduced-motion visitors get the plain existing border:
-   opacity is the only animated property and nothing in the layout moves.
-   `isolation: isolate` keeps the ring above the card border without covering
-   content. `LeadCase.tsx` writes `--lead-mx` / `--lead-my` and sets
-   `--lead-spotlight` from the pointer; without JS the ring stays invisible. */
+/* Cursor spotlight: a 1px pointer-tracked ring tracing the card border, shared
+   by the latest-case card and the homepage category cards. This is the
+   portfolio's single approved gradient exception. Gated so touch and
+   reduced-motion visitors get the plain existing border: opacity is the only
+   animated property and nothing in the layout moves. `isolation: isolate` keeps
+   the ring above the card border without covering content. The BaseLayout
+   pointer script writes `--spotlight-mx` / `--spotlight-my` and sets
+   `--spotlight-active` from the pointer; without JS the ring stays invisible. */
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
-  .portfolio-lead {
+  .portfolio-spotlight {
     isolation: isolate;
   }
-  .portfolio-lead::before {
+  .portfolio-spotlight::before {
     content: "";
     position: absolute;
     inset: -1px;
@@ -269,7 +270,7 @@ select {
     pointer-events: none;
     z-index: 1;
     background: radial-gradient(
-      220px circle at var(--lead-mx, 50%) var(--lead-my, 50%),
+      360px circle at var(--spotlight-mx, 50%) var(--spotlight-my, 50%),
       var(--portfolio-accent),
       transparent 72%
     );
@@ -281,7 +282,7 @@ select {
       linear-gradient(#000 0 0) content-box,
       linear-gradient(#000 0 0);
     mask-composite: exclude;
-    opacity: var(--lead-spotlight, 0);
+    opacity: var(--spotlight-active, 0);
     transition: opacity 240ms ease;
   }
 }
