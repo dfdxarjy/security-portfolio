@@ -1242,27 +1242,36 @@ const searchableText = (study: (typeof studies)[number]) =>
             const empty = document.querySelector("#portfolio-empty");
             const loadMore = document.querySelector("#portfolio-load-more");
             const PAGE_SIZE = 12;
-            // Seed state from the URL so a filtered view can be linked/shared.
-            const urlParams = new URLSearchParams(window.location.search);
-            const focusParam = urlParams.get("focus");
-            let active = buttons.some(
-                (button) => button.dataset.filter === focusParam,
-            )
-                ? focusParam
-                : "all";
+            // Explorer state is the closure variables `active` and `shown` plus
+            // the two controls. Both the controls and the URL feed one apply
+            // path, so filter, sort, count, empty state and paging never diverge.
+            let active = "all";
             let shown = PAGE_SIZE;
-            const queryParam = urlParams.get("q");
-            if (queryParam) search.value = queryParam;
-            const sortParam = urlParams.get("sort");
-            if ([...sort.options].some((option) => option.value === sortParam)) {
-                sort.value = sortParam;
-            }
-            buttons.forEach((button) =>
-                button.setAttribute(
-                    "aria-pressed",
-                    String(button.dataset.filter === active),
-                ),
-            );
+            // Read the URL into state and the controls. Unknown or invalid
+            // values are ignored and fall back to defaults; nothing throws.
+            const readUrl = () => {
+                const params = new URLSearchParams(window.location.search);
+                const kindParam = params.get("kind");
+                active = buttons.some(
+                    (button) => button.dataset.filter === kindParam,
+                )
+                    ? kindParam
+                    : "all";
+                search.value = params.get("q") ?? "";
+                const sortParam = params.get("sort");
+                sort.value = [...sort.options].some(
+                    (option) => option.value === sortParam,
+                )
+                    ? sortParam
+                    : "newest";
+                shown = PAGE_SIZE;
+                buttons.forEach((button) =>
+                    button.setAttribute(
+                        "aria-pressed",
+                        String(button.dataset.filter === active),
+                    ),
+                );
+            };
 
             const collator = new Intl.Collator(undefined, {
                 sensitivity: "base",
@@ -1331,22 +1340,27 @@ const searchableText = (study: (typeof studies)[number]) =>
                 loadMore.hidden = hideLoadMore;
             };
 
+            // Single render path: sort the DOM order, then apply filter/count/
+            // paging. Both the controls and `readUrl` funnel through this.
+            const render = () => {
+                applySort();
+                update();
+            };
+
             // Mirror explorer state into the address bar so a view is shareable.
             // Defaults are omitted so the plain homepage URL stays plain.
-            const syncUrl = () => {
+            // `push` is true for filter/sort (a new Back entry) and false for
+            // typing (replaceState, so typing never fills history).
+            const syncUrl = (push) => {
                 const params = new URLSearchParams();
-                if (active !== "all") params.set("focus", active);
+                if (active !== "all") params.set("kind", active);
                 const query = search.value.trim();
                 if (query) params.set("q", query);
                 if (sort.value !== "newest") params.set("sort", sort.value);
                 const searchPart = params.toString();
                 const hash = searchPart ? "#explorer" : window.location.hash;
-                // `replaceState` (never `pushState`): typing must not fill history.
-                history.replaceState(
-                    null,
-                    "",
-                    `${window.location.pathname}${searchPart ? `?${searchPart}` : ""}${hash}`,
-                );
+                const url = `${window.location.pathname}${searchPart ? `?${searchPart}` : ""}${hash}`;
+                history[push ? "pushState" : "replaceState"](null, "", url);
             };
 
             buttons.forEach((button) =>
@@ -1360,26 +1374,30 @@ const searchableText = (study: (typeof studies)[number]) =>
                         ),
                     );
                     update();
-                    syncUrl();
+                    syncUrl(true);
                 }),
             );
             search.addEventListener("input", () => {
                 update();
-                syncUrl();
+                syncUrl(false);
             });
             sort.addEventListener("change", () => {
-                applySort();
-                update();
-                syncUrl();
+                render();
+                syncUrl(true);
             });
             loadMore.addEventListener("click", () => {
                 shown += PAGE_SIZE;
                 update();
             });
+            // Back/forward: rebuild state and results from the URL.
+            window.addEventListener("popstate", () => {
+                readUrl();
+                render();
+            });
 
-            applySort();
-            update();
-            syncUrl();
+            readUrl();
+            render();
+            syncUrl(false);
         </script>
         <script is:inline>
             // Scroll reveal: transform + opacity only. Reduced-motion users
