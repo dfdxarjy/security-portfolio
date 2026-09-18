@@ -36,17 +36,17 @@ outcome: "SYSTEM-level command execution via WAR deployment through the Tomcat M
 
 ## From Tomcat defaults to a SYSTEM shell
 
-Jerry is an Easy-rated Hack The Box Windows lab whose only exposed service is Apache Tomcat 7.0.88, with the Manager application reachable without IP restriction. The Manager authenticates with credentials shown in Tomcat's own sample configuration, and its legitimate WAR deployment feature executes a JSP reverse shell under the `NT AUTHORITY\SYSTEM` account that runs the service. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+Jerry is an Easy-rated Hack The Box Windows lab whose only exposed service is Apache Tomcat 7.0.88, with the Manager application reachable without IP restriction. The Manager authenticates with credentials shown in Tomcat's own sample configuration, and its legitimate WAR deployment feature executes a JSP reverse shell under the `NT AUTHORITY\SYSTEM` account that runs the service. This writeup replaces target identifiers, credentials, and secret values with role-based placeholders and leaves command syntax intact. See [how evidence is handled](/method/).
 
 **Attack path:** **Exposed Tomcat Manager → default credentials → authenticated WAR deployment → JSP reverse shell → SYSTEM command execution**
 
 ## A Tomcat 7 host with no provided credentials
 
-- **Target:** Windows Server 2012 R2 running Apache Tomcat 7.0.88 — an older release in the 7.x branch.
+- **Target:** Windows Server 2012 R2 running Apache Tomcat 7.0.88, an older release in the 7.x branch.
 - **Exposed service:** HTTP on TCP 8080, exposing the Manager and Host Manager applications.
 - **Starting position:** unauthenticated network access, with no provided credentials.
 - **Objective:** validate the documented default-credential attack path from Tomcat Manager access to OS-level control.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** activity stayed inside the Hack The Box lab environment.
 
 ## Evidence: default credentials to WAR deployment
 
@@ -98,7 +98,7 @@ Observation: cancelling the Basic Authentication prompt returns a Tomcat error p
 <user username="tomcat" password="<DEFAULT_PASSWORD>" roles="manager-gui"/>
 ```
 
-Action: the documented example credential pattern was tested against the Manager interface and then confirmed directly.
+Action: I checked the documented example credential pattern against the Manager interface and then confirmed it directly.
 
 ```bash
 hydra -L /usr/share/seclists/Passwords/Default-Credentials/tomcat-betterdefaultpasslist.txt \
@@ -124,7 +124,7 @@ Result: a default credential pair is recovered and subsequently validated throug
 
 ### 4. WAR Deployment to a SYSTEM Shell
 
-Observation: the Manager's `/manager/text/deploy` API accepts a WAR upload at an arbitrary context path, providing authenticated code execution.
+Observation: the Manager's `/manager/text/deploy` API accepts a WAR upload at an arbitrary context path, which provides authenticated code execution.
 
 Action: a JSP reverse-shell WAR was generated, uploaded through the Manager API, and triggered by requesting the embedded JSP.
 
@@ -204,7 +204,7 @@ The evidence establishes SYSTEM-level command execution obtained by deploying a 
 
 ## Recommendations: default accounts, Manager exposure, and service privilege
 
-Neither the compromise path's remediation nor any control below was validated in the lab; only the compromise itself was demonstrated. Each finding pairs the observed root cause with its demonstrated impact and a recommended action.
+The compromise itself was demonstrated; the remediation was not reproduced in the lab, and none of the controls below was validated.
 
 1. **Documented default credentials left active.** Tomcat's sample `tomcat-users.xml` ships example accounts for documentation, and a deployment that keeps them grants any network peer authenticated Manager access. *Recommendation:* remove the sample accounts and set unique credentials before the server is exposed. *Detection:* alert on Manager logins that use default or sample account names. *Validation:* confirm during deployment review that no sample accounts remain in `conf/tomcat-users.xml`.
 2. **Manager reachable without IP restriction.** Authenticated access to the Manager allows WAR deployment and therefore code execution. *Recommendation:* restrict the Manager and Host Manager to trusted hosts with a `RemoteAddrValve` in `conf/Catalina/localhost/manager.xml`.

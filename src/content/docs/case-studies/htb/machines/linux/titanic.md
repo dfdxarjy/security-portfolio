@@ -39,7 +39,7 @@ outcome: "SSH access as the recovered Gitea user and a root context via an Image
 
 ## Download traversal to ImageMagick library hijack
 
-Titanic is an Easy-rated Hack The Box Linux lab. An unsanitized `ticket` parameter in a download endpoint provides arbitrary file read, exposing Gitea's configuration and SQLite database and yielding password hashes that crack to an SSH login. A cron-driven image-identification script then runs a vulnerable ImageMagick build from a writable directory, where a planted shared library is loaded as root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+Titanic is an Easy-rated Hack The Box Linux lab. An unsanitized `ticket` parameter in a download endpoint provides arbitrary file read. The primitive exposes Gitea's configuration and its SQLite database, whose password hashes crack to an SSH login. A cron-driven image-identification script then runs a vulnerable ImageMagick build from a writable directory, where ImageMagick loads a planted shared library as root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Path-traversal file read → Gitea configuration and SQLite database exposure → offline hash cracking → SSH access → cron-driven ImageMagick shared-library hijack (CVE-2024-41817) → root**
 
@@ -99,7 +99,7 @@ daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
 ...
 ```
 
-Significance: returning arbitrary file content establishes a path-traversal file-read primitive and exposes system file content.
+Significance: the endpoint returns arbitrary file content, which establishes a path-traversal file-read primitive and exposes system file content.
 
 Result: the request confirms path traversal.
 
@@ -180,7 +180,7 @@ Result: the installed build (7.1.1-35) falls within the affected range for CVE-2
 
 Observation: ImageMagick loads `libxcb.so.1` at runtime, and the image-identification script runs with elevated privileges.
 
-Action: a malicious shared library is compiled and placed in the image directory so the scheduled process loads it in place of the system library. The constructor and reverse-shell specifics are summarized rather than reproduced; the representative listener pattern is retained.
+Action: a malicious shared library is compiled and placed in the image directory so the scheduled process loads it in place of the system library. I kept the representative listener pattern and summarized the constructor and reverse-shell specifics.
 
 ```bash
 gcc -x c -shared -fPIC -o ./libxcb.so.1 - << EOF
@@ -204,7 +204,7 @@ The source records no failed attempts, tradeoffs, or fixes for this machine.
 
 ## Outcome: SSH access and root via shared-library hijack
 
-The evidence establishes authenticated SSH access as the recovered Gitea user and a root context obtained through the scheduled ImageMagick process. Limitation: the malicious library source is summarized, so the payload is not reproducible from this writeup.
+The evidence establishes authenticated SSH access as the recovered Gitea user and a root context obtained through the scheduled ImageMagick process. Limitation: the malicious library source is summarized, so the payload is not reproduced here and is not reproducible from this writeup.
 
 ## Recommendations: the download parameter, exposed hashes, ImageMagick, and committed secrets
 

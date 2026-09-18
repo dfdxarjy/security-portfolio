@@ -40,7 +40,7 @@ outcome: "Command execution as the NiFi service account, operator SSH access fro
 
 ## NiFi RCE to OPC UA maintenance root
 
-Helix is a Medium-rated Hack The Box Linux lab in which an unauthenticated Apache NiFi instance on a virtual host is abused through CVE-2023-34468 — an H2-backed `DBCPConnectionPool` driving an `ExecuteSQL` processor that runs a remote SQL script — to gain command execution as the NiFi service account. Local file search recovers a backup operator SSH key, the operator home directory exposes an internal OPC UA control service and a password-protected operations guide, and the guide's process conditions open a maintenance window in which a privileged maintenance console grants temporary root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+Helix is a Medium-rated Hack The Box Linux lab in which an unauthenticated Apache NiFi instance on a virtual host is abused through CVE-2023-34468 (an H2-backed `DBCPConnectionPool` driving an `ExecuteSQL` processor that runs a remote SQL script) to gain command execution as the NiFi service account. Local file search recovers a backup operator SSH key, the operator home directory exposes an internal OPC UA control service and a password-protected operations guide, and the guide's process conditions open a maintenance window in which a privileged maintenance console grants temporary root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Unauthenticated Apache NiFi on `flow.<TARGET_HOSTNAME>` → CVE-2023-34468 H2 `RUNSCRIPT` command execution as the NiFi service account → backup operator SSH key in a NiFi support bundle → operator SSH access → control-system diagram and cracked operations guide identifying an internal OPC UA service and its unlock conditions → OPC UA maintenance window → privileged maintenance console root**
 
@@ -130,7 +130,7 @@ Result: command execution as `<NIFI_SERVICE_ACCOUNT>` is confirmed by the `id` o
 
 ### 3. Backup operator SSH key recovery
 
-Observation: the NiFi configuration stores the sensitive-properties key, and a filesystem search for key material locates a backup operator private key.
+Observation: the NiFi configuration stores the sensitive-properties key. I tried a filesystem search for key material and located a backup operator private key.
 
 ```text
 nifi.sensitive.props.key=<NIFI_SENSITIVE_PROPS_KEY>
@@ -157,7 +157,7 @@ The recovered backup key is copied locally and used as `<SSH_KEY>`:
 ssh -i <SSH_KEY> <OPERATOR_ACCOUNT>@<TARGET_HOSTNAME>
 ```
 
-Significance: service support bundles can carry high-impact artifacts, turning a service-level compromise into an interactive user account. The source records that the recovered backup key authenticated an SSH session as `<OPERATOR_ACCOUNT>`; no terminal excerpt of that login is retained.
+Significance: service support bundles can carry high-impact artifacts, so a service-level compromise can become an interactive user account. The source records that the recovered backup key authenticated an SSH session as `<OPERATOR_ACCOUNT>`; no terminal excerpt of that login is retained, so that login was not reproduced.
 
 Result: interactive SSH access to the operator account provides a stable work context.
 
@@ -196,7 +196,7 @@ The unlocked guide states the maintenance-window requirements:
 Maintenance window opens when temperature reaches approximately 295 C or pressure reaches 73 bar
 ```
 
-Significance: operational documentation is part of the escalation path — it names the internal control service and the exact process state required to unlock privileged access.
+Significance: operational documentation is part of the escalation path: it names the internal control service and the exact process state required to unlock privileged access.
 
 Result: the guide's process conditions and the internal OPC UA endpoint are recovered.
 
@@ -246,8 +246,6 @@ The evidence establishes service-account command execution, operator SSH access 
 ## Recommendations: NiFi auth, H2 driver, bundle keys, docs, wrapper
 
 The actions below are recommendations; none was validated in the lab.
-
-Each finding pairs the observed root cause with its demonstrated impact and a prioritized action.
 
 1. **Unauthenticated NiFi administration.** An unauthenticated workflow service let an external party configure controller services and processors. *Recommendation:* require authentication on NiFi, restrict who can create controller services and processors, and avoid exposing the administration interface beyond trusted networks. *Detection:* alert on new or modified controller services, processors, and database connection pools.
 2. **CVE-2023-34468 (dynamic H2 driver and `RUNSCRIPT`).** A supported H2 driver combined with an `ExecuteSQL` processor turned a SQL configuration into host command execution. *Recommendation:* patch NiFi to a fixed release and restrict scriptable database features and driver loading to trusted administrators. *Detection:* audit flow configuration for `RUNSCRIPT` usage and untrusted driver locations.

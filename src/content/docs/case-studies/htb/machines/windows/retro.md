@@ -43,7 +43,7 @@ Retro is an Easy-rated Hack The Box Windows Active Directory lab. Guest-accessib
 - **Exposed services:** DNS (53), Kerberos (88), SMB (445), LDAPS (636), RDP (3389), and WinRM (5985).
 - **Starting position:** unauthenticated network access, with no provided credentials.
 - **Objective:** move from unauthenticated guest file access to domain administrative control by abusing shared credentials, a stale pre-created computer account, and a certificate-services misconfiguration.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** activity stayed inside the Hack The Box lab environment.
 
 ## Evidence: guest shares, RID spray, computer account, ESC1
 
@@ -91,13 +91,13 @@ I know that some of you seemed to struggle with remembering strong and unique pa
 So we decided to bundle every one of you up into one account.
 ```
 
-Significance: an unauthenticated party can read internal notes through a guest-accessible share, and this note states that trainee accounts share a single weak credential — a direct hint that username-as-password reuse is likely.
+Significance: an unauthenticated party can read internal notes through a guest-accessible share, and this note states that trainee accounts share a single weak credential: a direct hint that username-as-password reuse is likely.
 
 Result: guest-readable share content identifies a shared-credential policy to target.
 
 ### 3. RID Brute Force and Credential Spray
 
-Observation: a guest session allows RID enumeration to collect domain usernames, which can then be tried as their own passwords.
+Observation: a guest session allows RID enumeration to collect domain usernames, which I then tried as their own passwords.
 
 ```bash
 nxc smb <TARGET_DOMAIN> -u 'Guest' -p '' --rid-brute \
@@ -275,11 +275,11 @@ Result: an administrative shell on the domain controller is obtained.
 
 ## Outcome: certificate impersonation and domain administrator
 
-The evidence establishes administrative control of the domain through a certificate that impersonates the Administrator identity, yielding that account's NTLM hash and an interactive WinRM session. No software vulnerability was exploited: the path rests on misconfigured authentication and credential governance rather than a patchable defect.
+The evidence establishes administrative control of the domain through a certificate that impersonates the Administrator identity, yielding that account's NTLM hash and an interactive WinRM session. No software vulnerability was exploited: the path rests on misconfigured authentication and credential governance rather than a patchable defect. Limitation: the recovered hash and credential values are not reproduced in this writeup.
 
 ## Recommendations: guest shares, stale machine account, and ESC1
 
-Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
+The actions are recommendations; none was validated in the lab.
 
 1. **Guest-readable shares and shared weak credentials.** A guest session could read internal notes, and one note disclosed that trainee accounts shared a single password, which made the username-as-password spray succeed. *Recommendation:* require authentication on file shares, keep operational or credential-related guidance out of guest-readable locations, and enforce unique, strong passwords per account. *Detection:* alert on anonymous or guest SMB sessions and on authentication sprays that try one password across many accounts.
 2. **Stale pre-created computer account with a predictable password.** A pre-created computer account retained its default password and was still enabled, so a single password reset produced an authenticated principal. *Recommendation:* inventory pre-created and unused computer accounts, disable or delete the ones no longer needed, and rotate any account still using a default password. *Detection:* monitor computer-account password changes and authentication attempts using default machine-account passwords.

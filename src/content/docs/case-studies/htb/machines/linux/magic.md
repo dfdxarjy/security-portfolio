@@ -37,7 +37,7 @@ outcome: "Command execution as `www-data` through upload evasion and a root cont
 
 ## From SQL injection to SUID PATH hijack
 
-Magic is a Medium-rated Hack The Box Linux lab whose PHP portfolio application exposes a SQL injection flaw in its login page, an upload panel that validates files by magic bytes, and a SUID binary that invokes system commands through `PATH`. Chaining these flaws turns unauthenticated web access into a root shell, without any software exploit beyond the injection and the local misconfiguration. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+Magic is a Medium-rated Hack The Box Linux lab whose PHP portfolio application exposes a SQL injection flaw in its login page, an upload panel that validates files by magic bytes, and a SUID binary that invokes system commands through `PATH`. Chaining these flaws turns unauthenticated web access into a root shell using only the injection and the local misconfiguration. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **SQL injection login bypass → admin upload panel → PNG magic-byte upload evasion → `www-data` reverse shell → plaintext database credentials → Chisel-tunneled MySQL → admin credential recovery → password reuse for `<LAB_USER>` → SUID `/bin/sysinfo` PATH hijack → root**
 
@@ -100,7 +100,7 @@ Action:
 ' OR '1'='1
 ```
 
-Significance: a tautology payload defeats the login check when input is concatenated into a query instead of parameterized. The source records access to the admin panel and its upload page at `/upload.php`.
+Significance: a tautology payload defeats the login check when input is concatenated into a query instead of parameterized. The notes record access to the admin panel and its upload page at `/upload.php`; the bypass response is not reproduced here.
 
 Result: the login check is bypassed and the upload page is reachable.
 
@@ -145,7 +145,7 @@ Result: a reverse shell as `www-data` is obtained.
 
 ### 6. Database Configuration Disclosure
 
-Observation: the application configuration file stores database credentials in plaintext.
+Observation: I checked the application configuration file and found the database credentials stored in plaintext.
 
 ```bash
 cat /var/www/Magic/db.php5
@@ -240,7 +240,7 @@ Password: <ADMIN_PASSWORD>
 <LAB_USER>@<TARGET_HOST>:~$
 ```
 
-Significance: reusing an application credential for a system account bridges database access and shell access, so a leaked application secret grants an interactive account.
+Significance: reusing an application credential for a system account turns database access into shell access, so a leaked application secret grants an interactive account.
 
 Result: a shell as `<LAB_USER>` is obtained.
 
@@ -259,7 +259,7 @@ python3 suid3num.py
 ------------------------------
 ```
 
-Significance: a custom setuid binary runs with elevated privileges and is the most promising local escalation target.
+Significance: a custom setuid binary runs with elevated privileges and is the local escalation target.
 
 Result: `/bin/sysinfo` is identified as a custom SUID binary.
 
@@ -311,7 +311,7 @@ The evidence establishes a root context on the target, reached from unauthentica
 
 ## Recommendations: injection, upload validation, secrets, reuse, and SUID PATH
 
-Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. These actions are recommendations; none was validated in the lab.
+These actions are recommendations; none was validated in the lab.
 
 1. **SQL injection in the login form.** User input reached the authentication query without parameterization, so a tautology payload authenticated as an administrator. *Recommendation:* use parameterized queries or prepared statements. *Detection:* alert on authentication requests containing SQL metacharacters.
 2. **Upload validation by magic bytes only.** The upload panel accepted a file based on its leading signature, so a PHP payload wrapped with a PNG header executed from the upload directory. *Recommendation:* validate extension and content together, store uploads outside the web root, and disable script execution in upload directories. *Detection:* monitor upload directories for newly written executable files.

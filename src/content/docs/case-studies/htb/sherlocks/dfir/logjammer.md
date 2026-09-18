@@ -24,7 +24,7 @@ outcome: "Confirmed single-host defense-evasion chain: interactive logon, discov
 | Field | Value |
 |---|---|
 | Target environment | Single Windows endpoint; supplied evidence limited to Windows event logs |
-| Starting position | Provided evidence — Security, System, Windows Firewall, Windows Defender-Operational, and PowerShell-Operational event logs |
+| Starting position | Provided evidence: Security, System, Windows Firewall, Windows Defender-Operational, and PowerShell-Operational event logs |
 | Objective | Reconstruct a defensible single-host incident timeline from Windows event-log artifacts and identify initial access, persistence, command-and-control, and defense-evasion activity |
 | Outcome | Confirmed single-host chain from interactive logon to Firewall log clearing |
 
@@ -63,7 +63,7 @@ LogonProcessName: 'User32 '
 
 Significance: logon type 2 identifies an interactive session and `User32` a local-console logon, anchoring the start of the incident so later activity can be correlated to that session.
 
-Result: the first successful interactive logon occurred at `2023-03-27 14:37:09 UTC`. The filter returned four records — two logons, each logged twice — at `14:37:09` and `14:38:32`.
+Result: the first successful interactive logon occurred at `2023-03-27 14:37:09 UTC`. The filter returned four records, two logons each logged twice, at `14:37:09` and `14:38:32`.
 
 ### 2. Discovery-Tool Detection and Quarantine
 
@@ -136,7 +136,7 @@ SubcategoryId: '%%12804'
 AuditPolicyChanges: '%%8449'
 ```
 
-Significance: the subcategory code `%%12804` maps to Other Object Access Events in Microsoft's audit configuration protocol documentation, so the change modified auditing for that subcategory rather than leaving the policy intact.
+Significance: the subcategory code `%%12804` maps to Other Object Access Events in Microsoft's audit configuration protocol documentation, so the change modified auditing for that subcategory.
 
 Result: the audit policy was changed at `2023-03-27 14:50:03 UTC` for the Other Object Access Events subcategory.
 
@@ -231,19 +231,19 @@ Result: the supplied artifacts support a single ordered incident sequence on `20
 
 ## Noise, detection versus remediation, and a pre-logon clear
 
-- Module-generated PowerShell script blocks produced substantial noise, so known module noise was excluded before reviewing the incident window.
+- Module-generated PowerShell script blocks produced substantial noise, so I dropped known module noise before reviewing the incident window.
 - Defender event ID 1116 was treated as detection only; the separate 1117 event supplied the recorded quarantine action, avoiding a false remediation claim.
-- A Security log-clear event (ID 1102) at `14:36` preceded the first logon and was excluded from the incident chain as pre-logon noise.
+- A Security log-clear event (ID 1102) at `14:36` preceded the first logon, so I excluded it from the incident chain as pre-logon noise.
 
 ## Outcome: a confirmed defense-evasion chain
 
-The evidence establishes a confirmed single-host defense-evasion sequence on `2023-03-27`. Limitations: the artifacts do not establish the SharpHound output or any exfiltration, the effects of the scheduled-task script, or whether other channels were cleared.
+The evidence establishes a confirmed single-host defense-evasion sequence on `2023-03-27`. Limitations: I could not verify the SharpHound output or any exfiltration, the effects of the scheduled-task script, or whether other channels were cleared.
 
 ## Recommendations: user-path tooling, firewall changes, audit tampering, persistence, and response
 
-Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated.
+The actions are recommendations; none was validated.
 
-1. **Untrusted tooling executed from a user profile.** A SharpHound package was executed from the account's Downloads folder, and Defender quarantined it 14 seconds after detection. *Recommendation:* restrict execution from user download and desktop paths through application control. *Detection:* alert on Defender detections paired with execution from user-writable paths. *Validation:* confirm the archive, executable, and script are all quarantined.
+1. **Untrusted tooling executed from a user profile.** A SharpHound package ran from the account's Downloads folder, and Defender quarantined it 14 seconds after detection. *Recommendation:* restrict execution from user download and desktop paths through application control. *Detection:* alert on Defender detections paired with execution from user-writable paths. *Validation:* confirm the archive, executable, and script are all quarantined.
 2. **Unmonitored local firewall changes.** An outbound rule for port 4444 was added through `mmc.exe` from an interactive session. *Recommendation:* restrict local firewall-rule creation and remove the added rule. *Detection:* alert on event 2004 rules with outbound direction and external ports, and hunt egress on that port.
 3. **Audit-policy and log tampering.** An audit subcategory was changed and the Firewall channel was cleared, degrading the available evidence. *Recommendation:* protect audit policy through Group Policy and restrict channel clearing. *Detection:* correlate event 4719 with channel-clear events 104 and 1102. *Validation:* recover cleared telemetry from centralized logging or backups.
 4. **Durable scheduled-task persistence.** A scheduled task invoked a PowerShell script from a user-desktop path. *Recommendation:* restrict task creation and review existing tasks. *Detection:* monitor event 4698 for tasks that reference user-profile scripts.

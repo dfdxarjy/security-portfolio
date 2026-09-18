@@ -37,7 +37,7 @@ outcome: "Unauthenticated code execution as the XWiki service user, SSH access a
 
 ## XWiki SolrSearch RCE to PATH hijack
 
-Editor is a Medium-rated Hack The Box Linux lab hosting XWiki behind an nginx virtual host. Enumeration exposes the wiki vhost running XWiki Debian 15.10.8, vulnerable to CVE-2025-24893 — unauthenticated Groovy code execution through the `SolrSearch` endpoint. The foothold exposes XWiki database credentials that a local account reuses for SSH, and privilege escalation abuses a SUID Netdata `ndsudo` helper whose `PATH`-based dependency resolution permits binary hijacking to obtain root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+Editor is a Medium-rated Hack The Box Linux lab hosting XWiki behind an nginx virtual host. Enumeration exposes the wiki vhost running XWiki Debian 15.10.8, vulnerable to CVE-2025-24893: unauthenticated Groovy code execution through the `SolrSearch` endpoint. The foothold exposes XWiki database credentials that a local account reuses for SSH, and privilege escalation abuses a SUID Netdata `ndsudo` helper whose `PATH`-based dependency resolution permits binary hijacking to obtain root. This writeup replaces target identifiers, credentials, and secret values with role-based placeholders and preserves command syntax. See [how evidence is handled](/method/).
 
 **Attack path:** **unauthenticated XWiki `SolrSearch` RCE (CVE-2025-24893) → `hibernate.cfg.xml` database credential recovery → SSH access via credential reuse → SUID Netdata `ndsudo` `PATH` hijack → root**
 
@@ -47,7 +47,7 @@ Editor is a Medium-rated Hack The Box Linux lab hosting XWiki behind an nginx vi
 - **Application:** nginx routes `<WIKI_HOST>` to an XWiki Debian 15.10.8 instance served by Jetty 10.0.20.
 - **Starting position:** unauthenticated network access, with no provided credentials.
 - **Objective:** move from the exposed web application to user and root control, and demonstrate the impact of an unpatched macro-injection flaw, credential reuse, and an unsafe privileged helper.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** I kept activity inside the Hack The Box lab environment.
 
 ## Evidence: SolrSearch RCE to SUID PATH hijack
 
@@ -89,7 +89,7 @@ Significance: the port-80 service redirects to the base virtual host, while the 
 
 Result: the wiki vhost (`<WIKI_HOST>`) is identified and resolves to an XWiki Debian 15.10.8 instance.
 
-### 2. CVE-2025-24893 — Unauthenticated XWiki Groovy Code Execution
+### 2. CVE-2025-24893: Unauthenticated XWiki Groovy Code Execution
 
 Observation: the XWiki `SolrSearch` endpoint evaluates request input as wiki syntax, and CVE-2025-24893 lets an unauthenticated guest chain that evaluation into Groovy execution.
 
@@ -105,9 +105,9 @@ curl -G 'http://<WIKI_HOST>/xwiki/bin/get/Main/SolrSearch' \
   --data-urlencode 'text=}}}{{async async=false}}{{groovy}}<GROOVY_COMMAND_WRAPPER>.execute(){{/groovy}}{{/async}}'
 ```
 
-The source records a shell as the XWiki service user; no terminal output for this step was retained.
+The source records a shell as the XWiki service user; I could not verify this step from terminal output because none was retained.
 
-Significance: the flaw executes in the XWiki service context without authentication, exposing the application's configuration and the database credentials it holds.
+Significance: the flaw executes in the XWiki service context without authentication, so the service user can read the application's configuration and the database credentials it holds.
 
 Result: unauthenticated code execution is obtained as the XWiki service user.
 
@@ -169,7 +169,7 @@ id
 uid=1000(<LOCAL_USER>) gid=1000(<LOCAL_USER>) groups=1000(<LOCAL_USER>),999(netdata)
 ```
 
-Significance: membership in `netdata` lets the low-privileged account execute the SUID helpers, and `ndsudo` resolves its `nvme` dependency through the caller-controlled `PATH` — the documented untrusted-search-path issue CVE-2024-32019.
+Significance: membership in `netdata` lets the low-privileged account execute the SUID helpers, and `ndsudo` resolves its `nvme` dependency through the caller-controlled `PATH`, the documented untrusted-search-path issue CVE-2024-32019.
 
 Action: place a malicious `nvme` binary in a controlled directory, prepend it to `PATH`, and invoke the helper's `nvme-list` action.
 
@@ -183,7 +183,7 @@ root@<TARGET_HOST>:/home/<LOCAL_USER># id
 uid=0(root) gid=0(root) groups=0(root),999(netdata),1000(<LOCAL_USER>)
 ```
 
-Significance: the helper runs as root and trusts `PATH`, so the caller-controlled binary executes with root privileges — a direct privilege-boundary failure in a legitimate monitoring component.
+Significance: the helper runs as root and trusts `PATH`, so the caller-controlled binary executes with root privileges, a privilege-boundary failure in a legitimate monitoring component.
 
 Result: root command execution is confirmed by the root `id` output.
 
@@ -200,7 +200,7 @@ The evidence establishes root-level command execution on the host, reached throu
 
 ## Recommendations: XWiki patch, credential reuse, SUID PATH, group scope
 
-Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
+The actions are recommendations; none was validated in the lab.
 
 1. **Unpatched XWiki macro injection (CVE-2025-24893).** A guest could reach code execution through `SolrSearch` on the exposed instance. *Recommendation:* upgrade to a fixed release (15.10.11, 16.4.1, or 16.5.0RC1) and restrict access to macro-execution endpoints. *Detection:* monitor requests to `SolrSearch` and unexpected `groovy`/`async` macro content in request parameters.
 2. **Database password reused as an interactive credential.** The XWiki database password authenticated SSH for `<LOCAL_USER>`. *Recommendation:* issue unique, least-privilege credentials per service, never reuse application secrets for interactive accounts, and rotate any secret exposed in configuration. *Detection:* scan configuration and secret stores for credentials reused across services.

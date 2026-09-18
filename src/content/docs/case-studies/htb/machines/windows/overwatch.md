@@ -42,7 +42,7 @@ outcome: "SYSTEM-level command execution on the domain controller"
 
 ## ADIDNS poisoning to WCF injection
 
-Overwatch is a Medium-rated Hack The Box Windows Active Directory lab. A guest-readable `software$` SMB share exposes a .NET monitoring executable whose decompiled source contains hardcoded MSSQL credentials. The database holds a linked server entry with no DNS record; registering a spoofed ADIDNS A record redirects the name to an attacker host, and triggering the linked server query makes the database transmit credentials that Responder captures in cleartext. Those credentials authenticate over WinRM, and an internal-only WCF service — reachable through a Ligolo-ng tunnel — exposes a `KillProcess` operation whose unsanitised `processName` parameter yields command execution as `NT AUTHORITY\SYSTEM`. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/). Where the working session retained no console excerpt, the result is stated as recorded.
+Overwatch is a Medium-rated Hack The Box Windows Active Directory lab. A guest-readable `software$` SMB share exposes a .NET monitoring executable whose decompiled source contains hardcoded MSSQL credentials. The database holds a linked server entry with no DNS record; registering a spoofed ADIDNS A record redirects the name to an attacker host, and triggering the linked server query makes the database transmit credentials that Responder captures in cleartext. Those credentials authenticate over WinRM, and an internal-only WCF service reachable through a Ligolo-ng tunnel exposes a `KillProcess` operation whose unsanitised `processName` parameter yields command execution as `NT AUTHORITY\SYSTEM`. This writeup replaces target identifiers, credentials, and secret values with role-based placeholders and leaves command syntax intact. See [how evidence is handled](/method/). Where the working session retained no console excerpt, I could not verify the result against captured output, so it is stated as recorded.
 
 **Attack path:** **Guest-readable `software$` share → hardcoded MSSQL credentials → ADIDNS-poisoned linked server → cleartext credential capture → WinRM access → Ligolo-ng tunnel → WCF SOAP `KillProcess` injection → SYSTEM**
 
@@ -51,7 +51,7 @@ Overwatch is a Medium-rated Hack The Box Windows Active Directory lab. A guest-r
 - **Target:** Windows Server 2022 domain controller on `<TARGET_DOMAIN>`, exposing DNS (53), Kerberos (88), LDAP (389/3268), RDP (3389), SMB (445), MSSQL on non-standard port 6520, and .NET Message Framing (9389).
 - **Starting position:** unauthenticated network access; no credentials provided.
 - **Objective:** enumerate the exposed services, obtain an initial foothold, pivot to the internal WCF service, and escalate to SYSTEM.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** all activity stayed inside the Hack The Box lab environment.
 
 ## Evidence: guest share to ADIDNS to SOAP injection
 
@@ -80,7 +80,7 @@ Significance: the RDP banner identifies Server build 10.0.20348 (Windows Server 
 
 Result: an Active Directory domain controller is exposed with MSSQL on port 6520.
 
-### 2. SMB Enumeration — Guest-Readable Share
+### 2. SMB Enumeration: Guest-Readable Share
 
 Observation: SMB permits an unauthenticated session, and a non-standard `software$` share is readable.
 
@@ -99,7 +99,7 @@ Significance: a read-only non-standard share on a domain controller is unusual a
 
 Result: a guest-readable share holding monitoring binaries and configuration is identified and retrieved.
 
-### 3. Static Analysis — Hardcoded Credentials
+### 3. Static Analysis: Hardcoded Credentials
 
 Observation: decompiling `overwatch.exe` with ILSpy exposes a hardcoded SQL connection string.
 
@@ -109,11 +109,11 @@ SqlConnection val = new SqlConnection(
 );
 ```
 
-Significance: credentials embedded in a distributed binary are recoverable by any .NET decompiler, and because the share is guest-readable, anonymous SMB access immediately yields database credentials.
+Significance: any .NET decompiler can recover credentials embedded in a distributed binary, and because the share is guest-readable, anonymous SMB access immediately yields database credentials.
 
 Result: MSSQL service account credentials are recovered from the binary.
 
-### 4. Static Analysis — WCF Service Configuration
+### 4. Static Analysis: WCF Service Configuration
 
 Observation: `overwatch.exe.config` declares an internal WCF service on port 8000.
 
@@ -131,7 +131,7 @@ Significance: port 8000 did not appear in the external scan, so the endpoint is 
 
 Result: an internal-only WCF endpoint is identified on port 8000.
 
-### 5. MSSQL Access — Linked Server Discovery
+### 5. MSSQL Access: Linked Server Discovery
 
 Observation: the recovered service account authenticates to MSSQL, and enumerating linked servers reveals `<LINKED_SERVER_NAME>`, a name that does not resolve in DNS.
 
@@ -160,11 +160,11 @@ A network-related or instance-specific error has occurred while establishing a
 connection to SQL Server. Server is not found or not accessible.
 ```
 
-Significance: an unresolvable linked server name is a poisoning opportunity — if the name resolves to an attacker host when the query is triggered, the database will attempt to authenticate there.
+Significance: an unresolvable linked server name is a poisoning opportunity: if the name resolves to an attacker host when the query is triggered, the database will attempt to authenticate there.
 
 Result: a linked server entry is present and its name has no DNS record.
 
-### 6. ADIDNS Poisoning — Credential Capture
+### 6. ADIDNS Poisoning: Credential Capture
 
 Observation: AD-integrated DNS stores records as AD objects, and by default a domain-authenticated user can create new records. The recovered service account is such a user, so it can register a spoofed A record for `<LINKED_SERVER_NAME>`.
 
@@ -194,7 +194,7 @@ Significance: linked-server connections that use the SQLNCLI provider with SQL S
 
 Result: cleartext credentials for a second MSSQL account are captured.
 
-### 7. WinRM Access — Initial Foothold
+### 7. WinRM Access: Initial Foothold
 
 Observation: the captured account authenticates over WinRM.
 
@@ -202,13 +202,13 @@ Observation: the captured account authenticates over WinRM.
 evil-winrm -i <TARGET_IP> -u '<SQL_MANAGEMENT_ACCOUNT>' -p '<SQL_MGMT_PASSWORD>'
 ```
 
-Significance: WinRM provides an interactive PowerShell session, moving from a captured credential to host-level command execution.
+Significance: WinRM provides an interactive PowerShell session, so a captured credential becomes host-level command execution.
 
 Result: an authenticated user-level shell is obtained on the target.
 
-### 8. Internal Service Discovery — WCF on Port 8000
+### 8. Internal Service Discovery: WCF on Port 8000
 
-Observation: `netstat` confirms port 8000 listening internally, owned by process ID 4.
+Observation: I checked the listening ports with `netstat` and found port 8000 listening internally, owned by process ID 4.
 
 ```powershell
 netstat -ano | findstr LISTEN
@@ -265,7 +265,7 @@ Significance: a SYSTEM-level service that accepts an unsanitised string and uses
 
 Result: an injectable string parameter is identified in the WSDL.
 
-### 11. Command Injection — Proof of Concept
+### 11. Command Injection: Proof of Concept
 
 Observation: a semicolon-delimited command placed in `processName` executes in the service's SYSTEM context.
 
@@ -322,12 +322,12 @@ The evidence establishes SYSTEM-level command execution on the domain controller
 
 ## Recommendations: hardcoded secrets, ADIDNS writes, linked servers, and SOAP input
 
-Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. These actions are recommendations; none was validated in the lab.
+These actions are recommendations; none was validated in the lab.
 
-1. **Hardcoded credentials in a distributed binary.** `overwatch.exe` embedded a SQL connection string and sat in a guest-readable share, so anonymous access immediately yielded database credentials. *Recommendation:* keep secrets out of compiled artifacts — use protected configuration stores, DPAPI-protected files, or managed service accounts, and require authentication on shares holding application software. *Detection:* scan build artifacts and shares for embedded secrets.
+1. **Hardcoded credentials in a distributed binary.** `overwatch.exe` embedded a SQL connection string and sat in a guest-readable share, so anonymous access immediately yielded database credentials. *Recommendation:* keep secrets out of compiled artifacts. Use protected configuration stores, DPAPI-protected files, or managed service accounts, and require authentication on shares holding application software. *Detection:* scan build artifacts and shares for embedded secrets.
 2. **Default ADIDNS write permissions.** Any authenticated account could register the spoofed record that redirected the linked server. *Recommendation:* restrict DNS record creation with DNS-specific ACLs and review which principals can create records in AD-integrated zones. *Detection:* monitor for unexpected A-record creation, especially names matching configured linked servers.
 3. **Linked servers using SQL authentication.** The SQLNCLI linked-server connection transmitted credentials that Responder parsed as cleartext against a non-SQL endpoint. *Recommendation:* use Windows (Kerberos) authentication for linked servers, and restrict who may create them. *Detection:* alert on SQL authentication to unexpected hosts from database servers.
-4. **Unsanitised input in a SYSTEM-level service.** The `KillProcess` operation passed `processName` to an OS shell, yielding SYSTEM command execution. *Recommendation:* validate the parameter against a whitelist, never pass external input to a shell, and run the service under a least-privilege account instead of SYSTEM. *Detection:* monitor the service for process names containing shell metacharacters.
+4. **Unsanitised input in a SYSTEM-level service.** The `KillProcess` operation passed `processName` to an OS shell, which yielded SYSTEM command execution. *Recommendation:* validate the parameter against a whitelist, never pass external input to a shell, and run the service under a least-privilege account instead of SYSTEM. *Detection:* monitor the service for process names containing shell metacharacters.
 
 ## References
 

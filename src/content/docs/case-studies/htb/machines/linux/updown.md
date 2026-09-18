@@ -40,7 +40,7 @@ outcome: "Web-service shell via a `proc_open` payload, application-user access v
 
 ## Exposed git to SUID interpreter root
 
-UpDown is a Medium-rated Hack The Box Linux lab built around a website availability checker. The path opens with an exposed Git directory that leaks the development source and its weak header-based access control, continues through a `.phar` upload that bypasses an extension blocklist and races the checker's delayed cleanup, and finishes with a SUID Python 2 `input()` helper and an over-broad `easy_install` sudo rule. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+UpDown is a Medium-rated Hack The Box Linux lab built around a website availability checker. The path opens with an exposed Git directory that leaks the development source and its weak header-based access control, continues through a `.phar` upload that bypasses an extension blocklist and races the checker's delayed cleanup, and finishes with a SUID Python 2 `input()` helper and an over-broad `easy_install` sudo rule. This writeup replaces target identifiers, credentials, and secret values with role-based placeholders and preserves the command syntax. See [how evidence is handled](/method/).
 
 **Attack path:** **Exposed `.git` metadata → header-gated development vhost → `.phar` upload blocklist bypass → delayed-cleanup race → `proc_open` web-service shell → SUID Python 2 `input()` → application-user access → `NOPASSWD` `easy_install` sudo → root**
 
@@ -56,7 +56,7 @@ UpDown is a Medium-rated Hack The Box Linux lab built around a website availabil
 
 ### 1. Enumeration and Exposed Version-Control Metadata
 
-Observation: the initial attack surface is small — SSH and Apache — and directory brute-forcing exposes a development path and its version-control metadata.
+Observation: the initial attack surface is small (SSH and Apache), and directory brute-forcing exposes a development path and its version-control metadata.
 
 ```bash
 rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV -oN nmap/UpDown-TCP
@@ -78,7 +78,7 @@ feroxbuster --url http://<TARGET_DOMAIN>/ --wordlist /usr/share/seclists/Discove
 301  GET  http://<TARGET_DOMAIN>/<DEVELOPMENT_PATH>/<VCS_METADATA> => http://<TARGET_DOMAIN>/<DEVELOPMENT_PATH>/<VCS_METADATA>/
 ```
 
-The exposed repository was dumped locally, and the recovered `.htaccess` gated the development area behind a static header:
+I dumped the exposed repository locally, and the recovered `.htaccess` gated the development area behind a static header:
 
 ```bash
 git-dumper http://<TARGET_DOMAIN>/<DEVELOPMENT_PATH>/<VCS_METADATA>/ git
@@ -91,7 +91,7 @@ Deny from All
 Allow from env=Required-Header
 ```
 
-Significance: a served Git directory exposes full application source, and header-based gating is weak access control — anyone who recovers or guesses the values reaches the protected development application.
+Significance: a served Git directory exposes full application source, and header-based gating is weak access control: anyone who recovers or guesses the values reaches the protected development application.
 
 Result: the development source is recovered, and access to it depends on a single static request header.
 
@@ -113,11 +113,11 @@ curl -i -H '<DEVELOPMENT_HEADER>: <DEVELOPMENT_HEADER_VALUE>' http://<DEVELOPMEN
 
 The source records the development checker loading once the header was supplied; the `403` above is the only captured output for this transition. With the header applied, the virtual host exposes a development version of the checker that accepts an uploaded list of URLs, and content discovery finds a browsable `/uploads/` directory.
 
-Significance: the protected application accepts uploads, and its reachability hinges entirely on a header value leaked in source.
+Significance: the protected application accepts uploads, and its reachability depends on a header value leaked in source.
 
 Result: the development upload interface and a browsable upload directory are identified.
 
-### 3. Source Review — Upload Path, Blocklist, and Cleanup
+### 3. Source Review: Upload Path, Blocklist, and Cleanup
 
 Observation: the leaked PHP source defines an upload handler with three exploitable properties.
 
@@ -147,11 +147,11 @@ Significance: `md5(time())` produces a guessable directory name; the blocklist o
 
 Result: a payload format (`.phar`), a guessable path, and a race window are all identified from source.
 
-### 4. Initial Access — Upload Race and `proc_open`
+### 4. Initial Access: Upload Race and `proc_open`
 
 Observation: the checker fetches every supplied URL, so pointing it at a controlled listener stalls the request and delays cleanup.
 
-Action: hold a connection open while the `.phar` is uploaded.
+Action: I kept a connection open while the `.phar` was uploaded.
 
 ```bash
 nc -lvnp <LISTENER_PORT>
@@ -190,7 +190,7 @@ Significance: an incomplete extension blocklist plus a delayed-cleanup race conv
 
 Result: command execution as the web-service account is obtained and confirmed.
 
-### 5. Privilege Escalation — SUID Python 2 Helper
+### 5. Privilege Escalation: SUID Python 2 Helper
 
 Observation: an application-user home directory contains a SUID binary and its Python source, executable by the web-service group.
 
@@ -216,7 +216,7 @@ else:
 
 Significance: the `print "..."` syntax confirms Python 2, where `input()` evaluates its argument as Python code. Combined with the SUID bit, the helper executes attacker-supplied Python in the application-user context.
 
-Action: run the helper and supply a Python expression as the "URL" input. The source records the resulting shell as an awkward, non-interactive context, so this transition is narrative-only and no output from the helper itself was captured.
+Action: run the helper and supply a Python expression as the "URL" input. The source records the resulting shell as an awkward, non-interactive context, so this transition is narrative-only: no output from the helper itself was captured, and I could not verify the shell directly.
 
 ```bash
 ./<SUID_HELPER>
@@ -236,7 +236,7 @@ Significance: a SUID wrapper around an interpreter turns ordinary input handling
 
 Result: an application-user shell is obtained and confirmed.
 
-### 6. Root — Package-Installer Sudo Rule
+### 6. Root: Package-Installer Sudo Rule
 
 Observation: the application-user account holds an unrestricted `NOPASSWD` sudo rule for a package installer.
 
@@ -251,7 +251,7 @@ User <APPLICATION_USER> may run the following commands on <TARGET_HOST>:
 
 Significance: the legacy Python package installer processes and executes package setup logic, so permitting it through sudo is equivalent to permitting arbitrary Python execution as root.
 
-Action: a local package whose `setup.py` spawns a shell was prepared.
+Action: I prepared a local package whose `setup.py` spawns a shell.
 
 ```bash
 sudo <PACKAGE_INSTALLER_PATH> <LOCAL_PACKAGE_PATH>
@@ -268,7 +268,7 @@ Result: a root shell is obtained and confirmed.
 
 ## The delayed-cleanup race window
 
-- **Race-condition timing:** the uploaded file was deleted only after the URL check completed, so the outbound check was deliberately stalled against a controlled listener to hold the upload reachable long enough to be used.
+- **Race-condition timing:** the uploaded file was deleted only after the URL check completed, so I stalled the outbound check against a controlled listener to hold the upload reachable long enough to be used.
 
 ## Outcome: web shell, SUID interpreter, and easy_install root
 

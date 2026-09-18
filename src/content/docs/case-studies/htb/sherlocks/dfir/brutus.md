@@ -29,7 +29,7 @@ outcome: "Confirmed compromise with a bounded incident timeline: SSH password br
 | Field | Value |
 |---|---|
 | Target environment | Linux host; supplied evidence limited to authentication logs and session-accounting data |
-| Starting position | Provided evidence — `auth.log` and a legacy session record (`wtmp.legacy`) |
+| Starting position | Provided evidence: `auth.log` and a legacy session record (`wtmp.legacy`) |
 | Objective | Reconstruct a defensible incident timeline from SSH authentication and session-accounting artifacts and identify persistence and post-compromise activity |
 | Outcome | Interactive root access followed by a sudo-enabled local account; confirmed compromise |
 
@@ -71,13 +71,13 @@ awk '{print $5}' auth.log | cut -d'[' -f1 | cut -d: -f1 | sort | uniq -c | sort 
   1 chfn
 ```
 
-Significance: `sshd` accounts for most events in a 385-line log; a distribution this skewed points to automated authentication attempts rather than normal interactive use.
+Significance: `sshd` accounts for most events in a 385-line log; a distribution this skewed points to automated authentication attempts.
 
 Result: SSH authentication activity is the anomaly to investigate.
 
 ### 2. Source Attribution
 
-Observation: if the activity is a brute-force campaign, one external address should dominate the authentication events.
+Observation: I expected one external address to dominate the authentication events if the activity was a brute-force campaign.
 
 Action: extract and rank source addresses.
 
@@ -91,7 +91,7 @@ grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' auth.log | sort | uniq -c | sort -nr
   1 <INTERNAL_SOURCE>
 ```
 
-Significance: a single address produced 214 references against one each from the others, consistent with one automated source rather than ordinary traffic.
+Significance: a single address produced 214 references against one each from the others, consistent with one automated source.
 
 Result: `<EXTERNAL_SOURCE>` is the source of the authentication volume.
 
@@ -127,11 +127,11 @@ grep '06:32:44.*New session' auth.log
 <DATE> 06:32:44 ... New session <SESSION_ID> of user <PRIVILEGED_ACCOUNT>.
 ```
 
-Significance: the first accepted event (`06:31:40`) has no matching terminal session, while the second (`06:32:44`) is followed one second later by a session start and a recorded session identifier — separating a transient authentication from sustained interactive access.
+Significance: the first accepted event (`06:31:40`) has no matching terminal session, while the second (`06:32:44`) is followed one second later by a session start and a recorded session identifier, separating a transient authentication from sustained interactive access.
 
 Result: interactive privileged access began at `2024-03-06 06:32:45` in session `<SESSION_ID>`, authenticated from `<EXTERNAL_SOURCE>`.
 
-### 4. Persistence — Local Account Creation
+### 4. Persistence: Local Account Creation
 
 Observation: account-management events appear within the same window as the compromise.
 
@@ -146,7 +146,7 @@ useradd[<PID>]: new user: name=<PERSISTENCE_ACCOUNT>, UID=<UID>, ...
 usermod[<PID>]: add '<PERSISTENCE_ACCOUNT>' to group 'sudo'
 ```
 
-Significance: a freshly created local account added to the `sudo` group is durable persistence — it survives the original session and can regain root at will. This matches MITRE ATT&CK T1136.001, Create Account: Local Account.
+Significance: a freshly created local account added to the `sudo` group is durable persistence: it survives the original session and can regain root at will. This matches MITRE ATT&CK T1136.001, Create Account: Local Account.
 
 Result: `<PERSISTENCE_ACCOUNT>` was created and granted administrative-group membership.
 
@@ -194,17 +194,17 @@ grep 'Removed session' auth.log
 | after 06:37:24 | auth.log | `useradd <PERSISTENCE_ACCOUNT>`, `usermod → sudo`, `/etc/shadow` read, enumeration-script fetch |
 | 2024-03-06 06:37:34 | auth.log | `Accepted password` for `<PERSISTENCE_ACCOUNT>` (persistence login) |
 
-Significance: the authenticated login, terminal start, and session identifier align within one second, and the session close agrees across both artifacts — cross-artifact agreement strengthens the timeline.
+Significance: the authenticated login, terminal start, and session identifier align within one second, and the session close agrees across both artifacts; cross-artifact agreement strengthens the timeline.
 
 Result: the evidence supports a single, ordered compromise sequence on `2024-03-06`; the ordering of the post-session account and command events follows the full log sort.
 
 ## A legacy session file and no evasion stage
 
-The legacy session file was not directly readable: `last -f ./wtmp.legacy` returned `file is not a database`, because the artifact is a legacy binary `wtmp` while the `wtmpdb` reader expects SQLite. Converting it once with `wtmpdb import` produced a queryable database while the original artifact was preserved. No audit-policy change or log-clearing activity was observed in the supplied artifacts, so no defense-evasion stage is included.
+The legacy session file was not directly readable: `last -f ./wtmp.legacy` returned `file is not a database`, because the artifact is a legacy binary `wtmp` while the `wtmpdb` reader expects SQLite. Converting it once with `wtmpdb import` produced a queryable database while the original artifact was preserved. The supplied artifacts show no audit-policy change or log-clearing activity, so no defense-evasion stage is included.
 
 ## Outcome: a confirmed compromise on 2024-03-06
 
-The evidence establishes a confirmed compromise on the target host. Limitations: the artifacts do not show the enumeration script's execution or output, additional persistence mechanisms, credential reuse, or activity on other hosts.
+The evidence establishes a confirmed compromise on the target host. Limitations: I could not verify the enumeration script's execution or output, additional persistence mechanisms, credential reuse, or activity on other hosts.
 
 ## Recommendations: SSH password auth, local accounts, /etc/shadow reads, and response
 

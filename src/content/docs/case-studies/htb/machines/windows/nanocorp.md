@@ -52,7 +52,7 @@ NanoCorp is a Hack The Box Windows Active Directory lab that starts at an unauth
 - **Exposed services:** DNS (53), HTTP (80), Kerberos (88), MSRPC (135), NetBIOS (139), LDAP (389/3268), SMB (445), WinRM (5986), and others.
 - **Starting position:** unauthenticated network access, with no provided credentials.
 - **Objective:** chain the exposed web upload, AD delegation, and a vulnerable monitoring agent into domain administrator access.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** activity stayed inside the Hack The Box lab environment.
 
 ## Evidence: ZIP SSRF to delegation to MSI repair
 
@@ -128,7 +128,7 @@ Significance: a dictionary-foundable password on a service account means anyone 
 
 Result: a credential pair is recovered and subsequently validated through Active Directory authentication.
 
-### 5. BloodHound Enumeration — AD Attack Path
+### 5. BloodHound Enumeration: AD Attack Path
 
 Observation: with the recovered credentials, AD data collection exposes a two-hop delegation path.
 
@@ -145,7 +145,7 @@ Significance: `<WEB_SVC_ACCOUNT>` can add itself to `<IT_SUPPORT_GROUP>` through
 
 Result: a two-hop escalation path from the service account to domain-controller access is identified, confirming the cracked credential authenticates.
 
-### 6. AD Privilege Abuse — Group Membership and Password Reset
+### 6. AD Privilege Abuse: Group Membership and Password Reset
 
 Observation: `<WEB_SVC_ACCOUNT>` exercises its `AddSelf` right, then the group's `ForceChangePassword` right.
 
@@ -167,7 +167,7 @@ bloodyAD -H <TARGET_IP> -d <DOMAIN> -u '<WEB_SVC_ACCOUNT>' -p '<CRACKED_PASSWORD
 [+] Password changed successfully!
 ```
 
-Significance: AD delegation lets the service account manage both the group and the target account without administrative involvement — the trust misconfiguration that bridges the two hops.
+Significance: AD delegation lets the service account manage both the group and the target account without administrative involvement; that trust misconfiguration bridges the two hops.
 
 Result: `<WEB_SVC_ACCOUNT>` is added to `<IT_SUPPORT_GROUP>`, and `<MONITORING_ACCOUNT>`'s password is reset.
 
@@ -188,9 +188,9 @@ Significance: WinRM gives a full PowerShell remoting session on the domain contr
 
 Result: an authenticated, user-level PowerShell session on the domain controller.
 
-### 8. CVE-2024-0670 — CheckMK MSI Repair Privilege Escalation
+### 8. CVE-2024-0670: CheckMK MSI Repair Privilege Escalation
 
-Observation: the CheckMK monitoring agent on the domain controller is affected by CVE-2024-0670; its MSI repair flow executes batch scripts from the installer staging directory as SYSTEM.
+Observation: the CheckMK monitoring agent's MSI repair flow executes batch scripts from the installer staging directory as SYSTEM.
 
 Action: fetch the exploit script and run it in the `<WEB_SVC_ACCOUNT>` context with `RunasCs`; the script locates the CheckMK package in the registry, writes payload batch files matching the installer's expected naming convention, and forces a repair.
 
@@ -210,11 +210,11 @@ Start-Process "msiexec.exe" -ArgumentList "/fa `"<MSI_PATH>`" /qn /l*vx <LOG_PAT
 
 Significance: the repair reinstalls the package as SYSTEM and runs the staged batch files, so a low-privileged service-account process can create a new domain account and add it to the local Administrators group.
 
-Result: the source records this stage as successful — the repair executed in SYSTEM context and created a privileged domain account — but captures no repair-console output; the new account's later authentication (next stage) confirms execution.
+Result: the source records the repair as successful and the privileged domain account as created, but captures no repair-console output. I could not verify the repair directly; the next stage's authentication of the new account confirms execution.
 
 ### 9. Domain Administrator Access
 
-Observation: the created account is a member of the local Administrators group.
+Observation: I checked the created account's local group membership and it showed the Administrators group.
 
 ```bash
 nxc smb <DOMAIN> -u '<NEW_ADMIN_ACCOUNT>' -p '<NEW_ADMIN_PASSWORD>' -k
@@ -238,15 +238,15 @@ Result: domain administrator access is obtained through the newly created accoun
 
 ## Challenges and Decisions
 
-The source documents no failed attempts, alternate approaches, or troubleshooting; the recorded chain advances in a single successful sequence, so no decision tradeoffs are recovered.
+No failed attempts, alternate approaches, or troubleshooting are recorded; the chain advanced in a single successful sequence.
 
 ## Outcome: domain administrator via a created account
 
-The evidence establishes domain administrator access obtained entirely through misconfiguration rather than a Windows vulnerability: an upload handler that initiates outbound connections, a crackable service-account password, permissive AD delegation (`AddSelf` and `ForceChangePassword`), and an unpatched third-party monitoring agent whose MSI repair runs staged payloads as SYSTEM. The only CVE required was in the CheckMK agent (CVE-2024-0670); the operating system and directory services were used through their legitimate, misconfigured features. The final access level is supported by the `Pwn3d!` authentication result and the Administrators group membership.
+The evidence establishes domain administrator access obtained entirely through misconfiguration, with no Windows vulnerability required: an upload handler that initiates outbound connections, a crackable service-account password, permissive AD delegation (`AddSelf` and `ForceChangePassword`), and an unpatched third-party monitoring agent whose MSI repair runs staged payloads as SYSTEM. The only CVE required was in the CheckMK agent (CVE-2024-0670); the operating system and directory services were used through their legitimate, misconfigured features. The final access level is supported by the `Pwn3d!` authentication result and the Administrators group membership.
 
 ## Recommendations: upload egress, service passwords, delegation, and the agent
 
-The actions below are recommendations; none was validated in the lab. Each pairs the observed root cause with its demonstrated impact and a prioritized action.
+The actions below are recommendations; none was validated in the lab.
 
 1. **Upload handlers that initiate outbound connections.** The ZIP handler opened SMB to a supplied archive's target and leaked the service account's NTLMv2 challenge-response. *Recommendation:* block server-initiated SMB from web hosts, validate archive contents and outbound targets, and apply network egress filtering. *Detection:* alert on web-server processes opening SMB to non-allowlisted hosts.
 2. **Crackable service-account password.** A dictionary-foundable password made the captured challenge-response usable against the directory. *Recommendation:* move service identities to group Managed Service Accounts (gMSA) and enforce long, random passwords. *Detection:* audit service-account password strength and age on a schedule.

@@ -73,7 +73,7 @@ Significance: a domain-readable logon script stores a reusable credential in cle
 
 Result: `<CLEARTEXT_PASSWORD>` was recovered and subsequently validated through LDAP authentication as `<INITIAL_DOMAIN_USER>` in the next stage.
 
-### 2. Directory Analysis — GenericWrite Edge
+### 2. Directory Analysis: GenericWrite Edge
 
 Observation: collecting directory data with `rusthound-ce` and analysing it in BloodHound reveals that `<INITIAL_DOMAIN_USER>` holds `GenericWrite` over `<DELEGATION_USER>`.
 
@@ -111,7 +111,7 @@ Recovered password:
 
 Significance: an SPN written through `GenericWrite` turns a normal user account into a Kerberoastable service identity, and the resulting service ticket can be cracked offline with no further interaction against the target.
 
-Result: the `<DELEGATION_USER>` password was recovered and subsequently validated through WinRM using `evil-winrm`, giving a user-level shell.
+Result: `evil-winrm` validated the recovered `<DELEGATION_USER>` password over WinRM and returned a user-level shell.
 
 ### 4. Unconstrained Delegation Chain
 
@@ -149,9 +149,9 @@ Capture marker from the relay:
 # Got <DOMAIN_CONTROLLER_MACHINE>$ TGT
 ```
 
-Significance: unconstrained delegation makes the relay collect the TGT of any principal that authenticates to it; spoofed DNS plus authentication coercion forces the domain controller to connect, capturing a reusable TGT for the domain controller machine account.
+Significance: unconstrained delegation makes the relay collect the TGT of any principal that authenticates to it; spoofed DNS plus authentication coercion forces the domain controller to connect, and the relay captures a reusable TGT for the domain controller machine account.
 
-Result: the domain controller's TGT was captured in a credential cache file and carried forward to replication.
+Result: I kept the captured domain controller TGT in a credential cache file and carried it forward to replication.
 
 ### 5. DCSync and Domain Compromise
 
@@ -178,7 +178,7 @@ No failed attempts, blockers, or mid-chain corrections are documented for this c
 
 The evidence establishes domain administrator access on the target domain controller.
 
-Limitation: apart from the logon-script and recovered-password excerpts, the source presents each stage as a narrative result rather than captured tool output, so intermediate proof rests on the recorded descriptions rather than raw transcripts.
+Limitation: apart from the logon-script and recovered-password excerpts, the source records each stage as a narrative result rather than captured tool output, so I could not verify the intermediate stages against raw transcripts.
 
 ## Recommendations: script credentials, GenericWrite, delegation, and coercion
 

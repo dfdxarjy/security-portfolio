@@ -36,17 +36,17 @@ outcome: "User-level SSH access via a leaked Wi-Fi PSK, then root SSH access via
 
 ## Backup key reuse and WPS recovery
 
-Wifinetic is an Easy-rated Hack The Box Linux lab that turns configuration exposure and credential reuse into full compromise. Anonymous FTP serves an OpenWrt configuration backup whose wireless stanza stores the Wi-Fi pre-shared key in plaintext, and that same value is reused as the network-administrator SSH password. On the host, the wireless audit tool `reaver` carries `cap_net_raw+ep`, so an unprivileged user can run a WPS attack against the local access point, recover a second WPA key from a factory-default PIN, and reuse it to log in as root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+Wifinetic is an Easy-rated Hack The Box Linux lab that reaches full compromise through configuration exposure and credential reuse. Anonymous FTP serves an OpenWrt configuration backup whose wireless stanza stores the Wi-Fi pre-shared key in plaintext, and that same value is also the network-administrator SSH password. On the host, the wireless audit tool `reaver` carries `cap_net_raw+ep`, so an unprivileged user can run a WPS attack against the local access point, recover a second WPA key from a factory-default PIN, and reuse it to log in as root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Anonymous FTP → OpenWrt backup disclosure → Wi-Fi PSK reused for user SSH → raw-packet-capable `reaver` → default-PIN WPS attack → WPA PSK recovered → reused for root SSH**
 
 ## Linux host with an emulated wireless stack, anonymous FTP start
 
 - **Target:** an Easy-rated Linux lab host exposing FTP (21), SSH (22), and DNS (53).
-- **Environment:** the host runs an emulated wireless stack (`mac80211_hwsim`) presenting an access-point interface, a managed client, and a monitor interface.
+- **Environment:** the host runs an emulated wireless stack (`mac80211_hwsim`) that presents an access-point interface, a managed client, and a monitor interface.
 - **Starting position:** unauthenticated network access; the FTP service allows anonymous login and is the entry point, while SSH is the interactive service the recovered keys target.
 - **Objective:** follow the exposed backup and wireless path from anonymous access to user- and root-level SSH access.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** all activity stayed inside the Hack The Box lab environment.
 
 ## Evidence: anonymous FTP backup, reused PSK, and WPS
 
@@ -65,9 +65,9 @@ PORT   STATE SERVICE    VERSION
 53/tcp open  dns        tcpwrapped
 ```
 
-Significance: FTP with anonymous access is the only unauthenticated data service, making it the natural entry point, and SSH is the shell endpoint the recovered keys will target.
+Significance: FTP allows anonymous access and is the only unauthenticated data service, so it is the natural entry point. SSH is the shell endpoint the recovered keys target.
 
-Result: three services are exposed, with FTP as the initial access surface.
+Result: the target exposes three services, with FTP as the initial access surface.
 
 ### 2. Anonymous FTP Backup Disclosure
 
@@ -94,7 +94,7 @@ Result: a plaintext Wi-Fi PSK is recovered from the anonymous backup.
 
 ### 3. SSH Credential Reuse
 
-Observation: the same value that protects the wireless network is also the account's SSH password.
+Observation: I checked the value recovered from the backup against the account's SSH login, and it authenticated.
 
 ```bash
 sshpass -p '<ARCHIVE_WIFI_PSK>' ssh <LAB_USER>@<TARGET_IP>
@@ -120,9 +120,9 @@ getcap /usr/bin/reaver
 /usr/bin/reaver = cap_net_raw+ep
 ```
 
-Significance: `cap_net_raw+ep` grants raw packet access without SUID or root, so any local user can inject and capture 802.11 frames with `reaver` — a privilege grant that overlaps conventional SUID auditing.
+Significance: `cap_net_raw+ep` grants raw packet access without SUID or root, so any local user can inject and capture 802.11 frames with `reaver`. This is a privilege grant that overlaps conventional SUID auditing.
 
-Result: `reaver` is confirmed usable by the unprivileged user with raw-socket capability.
+Result: the unprivileged user can use `reaver` with raw-socket capability.
 
 ### 5. WPS Recovery and Root SSH Reuse
 
@@ -144,7 +144,7 @@ Significance: a default WPS PIN reduces the WPA2 handshake to a single known gue
 
 Result: the WPA PSK is recovered.
 
-The recovered key is then reused as root's password:
+The recovered key then logs in as root:
 
 ```bash
 sshpass -p '<RECOVERED_WPA_PSK>' ssh root@<TARGET_IP>
@@ -164,7 +164,7 @@ No failed attempts, obstacles, or tradeoffs are documented for this path.
 
 ## Outcome: user SSH from leaked key and WPS root
 
-The evidence establishes user-level SSH access from the Wi-Fi key leaked by the anonymous OpenWrt backup, and root-level SSH access from the WPA key recovered through the WPS attack. Both access levels are supported by recorded session identity output. DNS was enumeration-only.
+The evidence establishes user-level SSH access from the Wi-Fi key leaked by the anonymous OpenWrt backup, and root-level SSH access from the WPA key recovered through the WPS attack. Recorded session identity output supports both access levels. DNS stayed enumeration-only; I could not verify any exploitation path through it.
 
 ## Recommendations: anonymous backups, credential reuse, raw-packet capability, and default WPS
 
@@ -172,10 +172,10 @@ The actions below are recommendations; none was validated in the lab.
 
 Each finding below pairs the observed root cause with its demonstrated impact and a prioritized action.
 
-1. **Anonymous exposure of configuration backups.** The backup stored the Wi-Fi pre-shared key in plaintext and was reachable without authentication, turning a routine backup into a credential leak. *Recommendation:* require authentication for file services, keep configuration and backup archives off anonymously reachable paths, and encrypt credential-bearing backups. *Detection:* alert on anonymous logins and on transfers of backup or configuration artifacts.
-2. **Cross-service credential reuse.** The wireless pre-shared key and the WPA key each also served as SSH passwords, for the network-administrator and root accounts respectively, so a single wireless secret became full host control. *Recommendation:* never reuse wireless keys as account passwords, and store infrastructure and account secrets separately in a managed secret store.
-3. **Raw-packet file capability.** `reaver` carried `cap_net_raw+ep`, letting an unprivileged user inject and capture 802.11 frames without SUID or root. *Recommendation:* audit file capabilities alongside SUID/SGID permissions, and restrict wireless tooling that needs raw sockets to privileged or dedicated accounts. *Detection:* alert on `cap_net_raw` and `cap_net_admin` grants to user-invokable binaries.
-4. **WPS enabled with a default PIN.** The access point accepted its factory-default WPS PIN, collapsing WPA2 to a single known guess. *Recommendation:* disable WPS where it is not required; where it must remain, enforce a unique PIN and monitor for repeated WPS attempts.
+1. **Anonymous exposure of configuration backups.** The backup stored the Wi-Fi pre-shared key in plaintext and was reachable without authentication, so a routine backup became a credential leak. *Recommendation:* require authentication for file services, keep configuration and backup archives off anonymously reachable paths, and encrypt credential-bearing backups. *Detection:* alert on anonymous logins and on transfers of backup or configuration artifacts.
+2. **Cross-service credential reuse.** The wireless pre-shared key and the WPA key each also doubled as an SSH password, for the network-administrator and root accounts respectively, so a single wireless secret became full host control. *Recommendation:* never reuse wireless keys as account passwords, and store infrastructure and account secrets separately in a managed secret store.
+3. **Raw-packet file capability.** `reaver` carried `cap_net_raw+ep`, so an unprivileged user could inject and capture 802.11 frames without SUID or root. *Recommendation:* audit file capabilities alongside SUID/SGID permissions, and restrict wireless tooling that needs raw sockets to privileged or dedicated accounts. *Detection:* alert on `cap_net_raw` and `cap_net_admin` grants to user-invokable binaries.
+4. **WPS enabled with a default PIN.** The access point accepted its factory-default WPS PIN, which reduced WPA2 to a single known guess. *Recommendation:* disable WPS where it is not required; where it must remain, enforce a unique PIN and monitor for repeated WPS attempts.
 
 ## References
 

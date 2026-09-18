@@ -45,7 +45,7 @@ Return is an Easy-rated Hack The Box Windows Active Directory lab in which a mis
 - **Exposed services:** DNS (53), HTTP/IIS 10.0 (80), Kerberos (88), LDAP (389), SMB (445), and WinRM (5985).
 - **Starting position:** unauthenticated network access, with no provided credentials.
 - **Objective:** obtain user access and escalate to local Administrator through the printer admin panel's attack surface and the domain's group configuration.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** all activity stayed inside the Hack The Box lab environment.
 
 ## Evidence: printer panel bind capture to service reconfiguration
 
@@ -112,7 +112,7 @@ nxc winrm <TARGET_DOMAIN> -u '<SERVICE_ACCOUNT>' -p '<SERVICE_ACCOUNT_PASSWORD>'
 evil-winrm -i <TARGET_DOMAIN> -u '<SERVICE_ACCOUNT>' -p '<SERVICE_ACCOUNT_PASSWORD>'
 ```
 
-Significance: the `(Pwn3d!)` marker confirms the account can authenticate and execute over WinRM. The same credential recovered from the LDAP bind opens the interactive session; no other secret is reused.
+Significance: the `(Pwn3d!)` marker confirms the account can authenticate and execute over WinRM. The same credential recovered from the LDAP bind opens the interactive session, and no other secret is reused.
 
 Result: an interactive WinRM session is established as the service account.
 
@@ -120,7 +120,7 @@ Result: an interactive WinRM session is established as the service account.
 
 Observation: the service account is a member of the built-in `Server Operators` group, which can stop, start, and reconfigure services on the host.
 
-Action: confirm group membership, repoint an existing service's binary path to add the account to local Administrators, restart the service, and reconnect to obtain a fresh token.
+Action: I checked the account's group membership, repointed an existing service's binary path to add the account to local Administrators, restarted the service, and reconnected to obtain a fresh token.
 
 ```powershell
 whoami /groups
@@ -151,26 +151,26 @@ Enterprise Admins
 <SERVICE_ACCOUNT>
 ```
 
-Significance: `Server Operators` can rewrite service definitions, so changing the `vss` binary path turns service control into code execution as SYSTEM, adding the account to local Administrators. WinRM tokens capture group membership at session creation, so the reconnection is required to reflect the new rights.
+Significance: `Server Operators` can rewrite service definitions, so changing the `vss` binary path turns service control into code execution as SYSTEM and adds the account to local Administrators. WinRM tokens capture group membership at session creation, so a new session is required to reflect the new rights.
 
-Result: the service account appears in local Administrators, confirming Administrator-level access on the host.
+Result: the service account appears in local Administrators, which confirms Administrator-level access on the host.
 
 ## Two decisions: repoint vss and reconnect WinRM
 
 | Decision | Rationale |
 |---|---|
-| Repointed the existing `vss` service rather than creating one | `Server Operators` can reconfigure existing service definitions, so no new service was needed. |
+| Repointed the existing `vss` service for the escalation | `Server Operators` can reconfigure existing service definitions, so no new service was needed. |
 | Reconnected over WinRM after the group change | Existing tokens reflect the group membership captured when the session was created. |
 
 ## Outcome: cleartext LDAP capture and local Administrator
 
-The evidence establishes local Administrator access on the host, reached without exploiting a CVE: every step used legitimate Active Directory and Windows service functionality. The limiting factors were cleartext LDAP transport, reusable credentials stored by the printer panel, and excessive `Server Operators` membership on the service account. HTTP exposure was limited to reaching the administrative panel.
+The evidence establishes local Administrator access on the host, reached without exploiting a CVE: every step used legitimate Active Directory and Windows service functionality. The limiting factors were cleartext LDAP transport, reusable credentials stored by the printer panel, and excessive `Server Operators` membership on the service account. HTTP exposure was limited to reaching the administrative panel. The LDAP server address was redirected from the panel's settings; I could not verify that change from retained output, only from the authentication it produced.
 
 ## Recommendations: LDAP transport, service-account privilege, and panel secrets
 
 The actions below are recommendations; only the abuse chain itself was exercised in the lab.
 
-1. **Cleartext LDAP transport.** The printer panel stored and reused an LDAP bind credential, and the bind was sent unencrypted to a configurable server address, so redirecting that address disclosed the credential. *Recommendation:* enforce LDAPS and enable LDAP server signing and channel binding, and require authentication on appliance management interfaces. *Detection:* alert on LDAP binds from service hosts to unexpected destinations.
+1. **Cleartext LDAP transport.** The printer panel stored and reused an LDAP bind credential, and the bind travels unencrypted to a configurable server address, so redirecting that address disclosed the credential. *Recommendation:* enforce LDAPS and enable LDAP server signing and channel binding, and require authentication on appliance management interfaces. *Detection:* alert on LDAP binds from service hosts to unexpected destinations.
 2. **Excessive service-account privilege.** The service account held `Server Operators` membership, which let it rewrite a service binary path and obtain SYSTEM-level execution to join local Administrators. *Recommendation:* apply least privilege and remove interactive service accounts from privileged built-in groups. *Detection:* audit membership of `Server Operators` and other privileged groups, and alert on service `binPath` changes.
 3. **Credential-bearing appliance panels.** The admin panel was reachable and stored a reusable LDAP credential. *Recommendation:* network-restrict management interfaces, rotate any credential a panel caches, and keep credential material out of web-facing configuration.
 

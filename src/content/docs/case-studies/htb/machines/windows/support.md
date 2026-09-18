@@ -37,7 +37,7 @@ outcome: "Authenticated WinRM access via a directory-disclosed credential, then 
 
 ## Guest tooling to RBCD impersonation
 
-Support is an Easy-rated Hack The Box Windows Active Directory lab. A guest-readable SMB share exposes a .NET utility whose LDAP service credential is hidden behind a reversible transformation; the recovered credential enables full directory enumeration, which discloses a second plaintext password in a user's `info` attribute. That password yields WinRM access, and a group membership granting `GenericAll` over the domain-controller computer object opens a resource-based constrained delegation (RBCD) path to `Administrator`. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+Support is an Easy-rated Hack The Box Windows Active Directory lab. A guest-readable SMB share exposes a .NET utility that hides its LDAP service credential behind a reversible transformation; the recovered credential enables full directory enumeration, which discloses a second plaintext password in a user's `info` attribute. That password yields WinRM access, and a group membership granting `GenericAll` over the domain-controller computer object opens a resource-based constrained delegation (RBCD) path to `Administrator`. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Guest SMB share → embedded credential recovery from a .NET binary → LDAP enumeration → plaintext `info` attribute password → WinRM access → `GenericAll` on the domain-controller object → RBCD impersonation of `Administrator` → `nt authority\system`**
 
@@ -47,7 +47,7 @@ Support is an Easy-rated Hack The Box Windows Active Directory lab. A guest-read
 - **Exposed services:** standard Active Directory services, including SMB, LDAP, and WinRM.
 - **Starting position:** unauthenticated network access with a guest-readable SMB share.
 - **Objective:** assess how a leaked client utility, weak credential protection, directory-data exposure, and delegated computer-object permissions combine into domain compromise.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** activity stayed inside the Hack The Box lab environment.
 
 ## Evidence: guest share binary, directory disclosure, RBCD impersonation
 
@@ -108,9 +108,9 @@ nxc ldap <DOMAIN> -u '<LDAP_USER>' -p '<LDAP_PASSWORD>'
 [+] <DOMAIN>\<LDAP_USER>:<LDAP_PASSWORD>
 ```
 
-Significance: a static algorithm and an embedded key provide no meaningful protection — any user who can read the binary can reverse it. The `^ 0xDF` constant against a repeating key is trivially reproducible.
+Significance: a static algorithm and an embedded key provide no meaningful protection: any user who can read the binary can reverse it. The `^ 0xDF` constant against a repeating key is trivially reproducible.
 
-Result: the LDAP service credential is recovered and validated, granting full directory enumeration.
+Result: the LDAP service credential is recovered and validated, and it grants full directory enumeration.
 
 ### 3. LDAP Enumeration Discloses a Directory-Stored Password
 
@@ -139,7 +139,7 @@ nxc smb <DOMAIN> -u '<LAB_USER>' -p '<LAB_USER_PASSWORD>'
 [+] <DOMAIN>\<LAB_USER>:<LAB_USER_PASSWORD>
 ```
 
-Significance: the `info` attribute is readable by any authenticated domain user by default, so a password placed there is exposed to every account in the domain.
+Significance: any authenticated domain user can read the `info` attribute by default, so a password placed there is exposed to every account in the domain.
 
 Result: a plaintext account password is recovered from the directory and validates over SMB.
 
@@ -147,7 +147,7 @@ Result: a plaintext account password is recovered from the directory and validat
 
 Observation: the recovered account has remote-management access.
 
-Action: confirm WinRM access, then open an interactive shell.
+Action: I checked WinRM access, then opened an interactive shell.
 
 ```bash
 nxc winrm <DOMAIN> -u '<LAB_USER>' -p '<LAB_USER_PASSWORD>'
@@ -165,7 +165,7 @@ Significance: WinRM provides an authenticated interactive shell and the first fo
 
 Result: WinRM access is confirmed as `<LAB_USER>`.
 
-### 5. Domain Privilege Escalation — RBCD
+### 5. Domain Privilege Escalation: RBCD
 
 Observation: `<LAB_USER>` belongs to a group with `GenericAll` over the domain-controller computer object. `GenericAll` includes write access to `msDS-AllowedToActOnBehalfOfOtherIdentity`, the attribute that governs resource-based constrained delegation.
 
@@ -228,7 +228,7 @@ C:\Windows\system32> whoami
 nt authority\system
 ```
 
-Significance: write access to `msDS-AllowedToActOnBehalfOfOtherIdentity` lets an attacker configure RBCD and impersonate arbitrary users — including `Administrator` — on the target computer without exploiting any software vulnerability.
+Significance: write access to `msDS-AllowedToActOnBehalfOfOtherIdentity` lets an attacker configure RBCD and impersonate arbitrary users, including `Administrator`, on the target computer without exploiting any software vulnerability.
 
 Result: the delegated ticket yields `nt authority\system` on the domain controller.
 
@@ -241,11 +241,11 @@ Result: the delegated ticket yields `nt authority\system` on the domain controll
 
 ## Outcome: WinRM foothold and SYSTEM via RBCD
 
-The evidence establishes authenticated WinRM access as `<LAB_USER>` and `nt authority\system` on the domain controller through resource-based constrained delegation. The directory relationship was recorded without reproducing tool output.
+The evidence establishes authenticated WinRM access as `<LAB_USER>` and `nt authority\system` on the domain controller through resource-based constrained delegation. The directory relationship is recorded from the source notes and not reproduced here.
 
 ## Recommendations: embedded credentials, info attributes, computer ACLs, and guest shares
 
-Each finding pairs an observed root cause with its demonstrated impact and a prioritized action. None of the actions below was re-tested in the lab.
+None of the actions below was re-tested in the lab.
 
 1. **Do not embed credentials in client binaries.** The LDAP service credential sat behind a static algorithm and an embedded key, so anyone who could read the utility could recover it. *Recommendation:* store service credentials in a secrets manager or Windows Credential Manager, or move to certificate-based LDAP binding.
 2. **Never store passwords in directory attributes.** A plaintext password in the `info` attribute was readable by every authenticated domain user and yielded WinRM access. *Recommendation:* keep secrets out of `info`, `description`, and `comment`, and restrict read access with the attribute's security descriptor.

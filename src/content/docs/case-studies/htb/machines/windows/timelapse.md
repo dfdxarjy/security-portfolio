@@ -39,7 +39,7 @@ outcome: "Certificate-based WinRM user access and local Administrator control of
 
 ## Certificate archive cracking to LAPS disclosure
 
-Timelapse is an Easy-rated Hack The Box Windows Active Directory lab in which a world-readable SMB share, an exported WinRM certificate, and a service-account password left in shell history combine to give full control of the domain controller. The share exposes a password-protected ZIP archive containing a PKCS#12 (`.pfx`) certificate; the archive password and the certificate passphrase are both recovered offline with `john`. The certificate authenticates to WinRM as a standard user, whose PowerShell history discloses a service-account password. That account holds read access to the LAPS `ms-Mcs-AdmPwd` attribute, and the local Administrator password it yields completes the compromise. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+Timelapse is an Easy-rated Hack The Box Windows Active Directory lab in which a world-readable SMB share, an exported WinRM certificate, and a service-account password left in shell history combine to give full control of the domain controller. The share exposes a password-protected ZIP archive containing a PKCS#12 (`.pfx`) certificate; the archive password and the certificate passphrase are both recovered offline with `john`. The certificate authenticates to WinRM as a standard user, whose PowerShell history discloses a service-account password. That account holds read access to the LAPS `ms-Mcs-AdmPwd` attribute, and the local Administrator password it yields grants control of the domain controller. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Anonymous-readable SMB share → password-protected ZIP holding a PFX certificate → offline cracking of archive and certificate passphrases → certificate-based WinRM authentication → PowerShell history credential disclosure → LAPS read access → local Administrator password → directory-level control**
 
@@ -106,13 +106,13 @@ smbclient //<TARGET_IP>/<READABLE_SHARE> -U '%' -c 'recurse ON; prompt OFF; mget
 <DOCUMENTATION_DIRECTORY>/LAPS_TechnicalSpecification.docx
 ```
 
-Significance: the archive is the primary target, and the LAPS installer and documentation indicate that LAPS is deployed in the domain — context for later enumeration.
+Significance: the archive is the primary target, and I inferred from the LAPS installer and documentation that LAPS is deployed in the domain, which is context for later enumeration.
 
 Result: an unauthenticated user retrieves a WinRM backup archive and LAPS material from a readable share.
 
 ### 3. Archive and Certificate Cracking
 
-Observation: `<WINRM_ARCHIVE>` is protected with ZipCrypto Deflate, and the certificate it contains is protected by its own passphrase.
+Observation: I checked `<WINRM_ARCHIVE>` and found it protected with ZipCrypto Deflate; the certificate it contains is protected by its own passphrase.
 
 Action:
 
@@ -145,11 +145,11 @@ openssl pkcs12 -in <CERTIFICATE_BUNDLE> -clcerts -nokeys -passin pass:<PFX_PASSP
 openssl pkcs12 -in <CERTIFICATE_BUNDLE> -nocerts -nodes -passin pass:<PFX_PASSPHRASE> -out <PRIVATE_KEY_FILE>
 ```
 
-Significance: a PKCS#12 file is itself a credential — it carries a certificate and private key accepted for WinRM authentication — so recovering its passphrase grants authentication without a password.
+Significance: a PKCS#12 file is itself a credential, because it carries a certificate and private key accepted for WinRM authentication; recovering its passphrase grants authentication without a password.
 
 Result: both passphrases are recovered offline, and the certificate's public and private components are exported.
 
-### 4. Certificate-Based WinRM Authentication — User Access
+### 4. Certificate-Based WinRM Authentication: User Access
 
 Observation: the exported certificate and key can authenticate to the WinRM HTTPS endpoint.
 
@@ -163,11 +163,11 @@ evil-winrm -i <TARGET_IP> --cert-pem <CERTIFICATE_FILE> --priv-key-pem <PRIVATE_
 *Evil-WinRM* PS C:\Users\<INITIAL_USER>\Documents>
 ```
 
-Significance: the recovered certificate provides an interactive session as `<INITIAL_USER>` without a password, confirming the certificate is accepted as a credential.
+Significance: the recovered certificate provides an interactive session as `<INITIAL_USER>` without a password, and that session proves the certificate is accepted as a credential.
 
-Result: authenticated user-level access is obtained over WinRM.
+Result: the certificate yields an authenticated user-level session over WinRM.
 
-### 5. PowerShell History Forensics — Service-Account Credential
+### 5. PowerShell History Forensics: Service-Account Credential
 
 Observation: the interactive shell's PSReadLine history retains earlier command text, including credentials passed as arguments.
 
@@ -198,7 +198,7 @@ Significance: PSReadLine logs interactive command text by default, so a `Convert
 
 Result: the `<SERVICE_ACCOUNT>` credential is recovered from shell history and confirmed valid over WinRM.
 
-### 6. LAPS Password Disclosure — Local Administrator
+### 6. LAPS Password Disclosure: Local Administrator
 
 Observation: `<SERVICE_ACCOUNT>` can read the LAPS password attribute on computer objects.
 
@@ -248,7 +248,7 @@ The evidence establishes certificate-based WinRM authentication as the standard 
 The actions below are recommendations; none was validated in the lab.
 
 1. **Sensitive archives on a readable share.** An unauthenticated user retrieved a WinRM backup archive from the share, and both of its layers fell to offline cracking. *Recommendation:* restrict share ACLs, keep credential-bearing archives off network shares, and protect PKCS#12 files with high-entropy passphrases or a certificate store rather than files on disk. *Detection:* alert on anonymous or unexpected share access and on transfers of backup archives.
-2. **Plaintext credentials in shell history.** PSReadLine recorded the service-account password in cleartext, enabling the WinRM access and the subsequent LAPS read. *Recommendation:* never pass secrets as command-line arguments; use `Get-Credential` for interactive authentication or Windows Credential Manager for programmatic access, and clear or restrict history files. *Detection:* monitor for credential-bearing command lines through transcription or process auditing.
+2. **Plaintext credentials in shell history.** PSReadLine recorded the service-account password in cleartext; the credential gave the WinRM access and the subsequent LAPS read. *Recommendation:* never pass secrets as command-line arguments; use `Get-Credential` for interactive authentication or Windows Credential Manager for programmatic access, and clear or restrict history files. *Detection:* monitor for credential-bearing command lines through transcription or process auditing.
 3. **Over-broad LAPS read delegation.** Because the service account could read `ms-Mcs-AdmPwd`, a routine account exposed the domain controller's local Administrator password. *Recommendation:* grant read access to that attribute only to a minimal break-glass operations group, audit the delegations regularly, and plan a migration to Windows LAPS, which supports encrypted password storage. *Detection:* monitor directory reads of confidential password attributes.
 
 ## References

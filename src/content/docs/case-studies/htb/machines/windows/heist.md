@@ -42,7 +42,7 @@ Heist is a retired Easy Hack The Box Windows machine that reaches administrative
 
 ## IIS support portal, SMB, and WinRM surfaces
 
-The machine exposes a Microsoft IIS support portal on port 80, SMB on port 445, and WinRM on port 5985. The portal offers a guest login and an issues tracker, where an attachment links a Cisco router configuration file. The objective is to trace an attack path from guest-level portal access to full administrative control of the host.
+The machine exposes a Microsoft IIS support portal on port 80, SMB on port 445, and WinRM on port 5985. The portal has a guest login and an issues tracker, where an attachment links a Cisco router configuration file. The objective is to trace an attack path from guest-level portal access to full administrative control of the host.
 
 ## Evidence: leaked router config to browser memory
 
@@ -100,7 +100,7 @@ username <ROUTER_USER> password 7 <TYPE7_HASH_ROUTER>
 username <ROUTER_ADMIN> privilege 15 password 7 <TYPE7_HASH_ADMIN>
 ```
 
-Significance: the portal leaks a network-device configuration containing three reusable credential artifacts—an MD5-crypt (type 5) enable secret and two reversible (type 7) account passwords.
+Significance: the portal leaks a network-device configuration containing three reusable credential artifacts: an MD5-crypt (type 5) enable secret and two reversible (type 7) account passwords.
 
 Result: guest access alone exposes the full router configuration, with no authenticated portal session required.
 
@@ -129,9 +129,9 @@ john --wordlist=<WORDLIST> --format=md5crypt <HASH_FILE>
 <ENABLE_SECRET>    (?)
 ```
 
-Significance: the type 7 passwords recover instantly by decoding, and the enable secret falls to a dictionary attack on a common wordlist—no cryptographic weakness in MD5 is needed.
+Significance: the type 7 passwords recover instantly by decoding, and the enable secret falls to a dictionary attack on a common wordlist; no cryptographic weakness in MD5 is needed.
 
-Result: three credentials are recovered—`<ROUTER_USER_PASSWORD>` for `<ROUTER_USER>`, `<ROUTER_ADMIN_PASSWORD>` for `<ROUTER_ADMIN>`, and `<ENABLE_SECRET>` from the enable secret.
+Result: three credentials are recovered: `<ROUTER_USER_PASSWORD>` for `<ROUTER_USER>`, `<ROUTER_ADMIN_PASSWORD>` for `<ROUTER_ADMIN>`, and `<ENABLE_SECRET>` from the enable secret.
 
 ### 4. SMB Authentication and RID Brute Force
 
@@ -162,7 +162,7 @@ nxc smb <TARGET_IP> -u <LOW_PRIVILEGE_USER> -p '<ENABLE_SECRET>' --rid-brute
 <RID_8>: <TARGET_HOST>\<ADDITIONAL_USER> (SidTypeUser)
 ```
 
-Result: authenticated SMB access is obtained, and the local user list—including `<SUPPORT_USER>`, `<WINRM_USER>`, and `<ADDITIONAL_USER>`—is enumerated.
+Result: authenticated SMB access is obtained, and the local user list (including `<SUPPORT_USER>`, `<WINRM_USER>`, and `<ADDITIONAL_USER>`) is enumerated.
 
 ### 5. Password Spray to WinRM
 
@@ -208,7 +208,7 @@ Id    ProcessName  Path
 6476  firefox      C:\Program Files\Mozilla Firefox\firefox.exe
 ```
 
-Significance: a browser session actively used against the portal is a likely home for a submitted credential, so browser memory becomes the most direct target rather than a blind process dump.
+Significance: a browser session actively used against the portal is a likely home for a submitted credential, so browser memory is the direct target instead of a blind process dump.
 
 Result: Firefox processes running under `<WINRM_USER>` are identified as the likely credential source.
 
@@ -243,7 +243,7 @@ strings -el firefox.dmp | grep -i 'login_password'
 localhost/login.php?login_username=<ADMIN_USER>@<TARGET_DOMAIN>&login_password=<ADMIN_PASSWORD>&login=
 ```
 
-Significance: the submitted login URL persists in process memory as cleartext, exposing the password without guessing or brute force.
+Significance: the submitted login URL persists in process memory as cleartext, so the password is recovered directly, with no guessing or brute force.
 
 Result: the recovered credential authenticates as the Windows Administrator over WinRM.
 
@@ -257,8 +257,8 @@ WINRM  <TARGET_IP>  5985  <TARGET_HOST>  [+] <TARGET_HOST>\administrator:<ADMIN_
 
 ## Challenges: rejected creds, sparse usernames, and dump targeting
 
-- The recovered router credentials did not authenticate against the web login form directly, so the path pivoted to SMB and WinRM rather than the portal itself.
-- Only the issue author's username was visible initially, so the RID brute-force result was needed to supply usernames for the password spray; the spray then revealed the reuse on `<WINRM_USER>`.
+- The recovered router credentials were wrong for the web login form, so the path pivoted away from the portal to SMB and WinRM.
+- Only the issue author's username was visible initially, so I checked the RID brute-force result to supply usernames for the password spray; the spray then revealed the reuse on `<WINRM_USER>`.
 - Correlating the todo note with the process listing made the dump targeted: both pointed to active browser use, so dumping a single `firefox.exe` process was the most direct route to a stored credential.
 
 ## Outcome: local Administrator WinRM from browser memory

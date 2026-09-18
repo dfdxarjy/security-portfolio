@@ -45,7 +45,7 @@ outcome: "Administrative WinRM access after the managed service account is added
 
 ## Leaked log credential to rogue WSUS
 
-Logging is a Hard-rated Hack The Box Windows Active Directory lab that chains a diagnostic log credential leak, Shadow Credentials abuse against a managed service account, a DLL hijack in an update monitor, AD CS certificate abuse, AD-integrated DNS record manipulation, and a rogue WSUS server that executes a trusted binary as SYSTEM. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/). Where no output was captured, the documented result is given instead.
+Logging is a Hard-rated Hack The Box Windows Active Directory lab that chains a diagnostic log credential leak, Shadow Credentials abuse against a managed service account, a DLL hijack in an update monitor, AD CS certificate abuse, AD-integrated DNS record manipulation, and a rogue WSUS server that executes a trusted binary as SYSTEM. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/). Where no output was captured, I could not verify the result directly, so the documented result is given instead.
 
 **Attack path:** **Provided domain credential → leaked service credential → year-rotated password → Shadow Credentials → NT hash → DLL hijack → AD CS certificate → AD DNS record → rogue WSUS → local Administrators**
 
@@ -54,7 +54,7 @@ Logging is a Hard-rated Hack The Box Windows Active Directory lab that chains a 
 - **Target:** a Windows Active Directory domain (`<DOMAIN>`, domain controller `<DC_HOSTNAME>`) exposing DNS (53), IIS (80), Kerberos (88), LDAP/LDAPS (389/636), SMB (445), WinRM (5985), and WSUS (8530/8531).
 - **Starting position:** provided low-privilege domain credentials for `<LAB_USER>`.
 - **Objective:** move from the provided account to administrative access on the domain controller through the observed weaknesses.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** activity stayed inside the Hack The Box lab environment.
 
 ## Evidence: log leak to rogue WSUS SYSTEM
 
@@ -92,7 +92,7 @@ BindUser: "<DOMAIN>\<SERVICE_ACCOUNT>"
 BindPass: "<SERVICE_PASSWORD_2025>"
 ```
 
-The leaked value carries a year suffix; the current-year variant authenticates over Kerberos:
+The leaked value carries a year suffix, so I tried the current-year variant, which authenticates over Kerberos:
 
 ```bash
 nxc smb <DOMAIN> -u '<SERVICE_ACCOUNT>' -p '<SERVICE_PASSWORD_2026>' -d <DOMAIN> -k
@@ -294,7 +294,7 @@ Result: the account is now a local administrator, and its refreshed session yiel
 
 ## Outcome: local Administrators and privileged WinRM
 
-The evidence establishes a path from the provided domain credential to administrative access on the domain controller: recovered credentials and hashes are shown by tool output, the DLL hijack is proven by an authenticated `whoami`, and the privilege change is proven by the local-Administrators listing. The demonstrated privilege is local-Administrator membership on the domain controller, exercised through privileged WinRM.
+The evidence establishes a path from the provided domain credential to administrative access on the domain controller. Tool output shows the recovered credentials and hashes, an authenticated `whoami` proves the DLL hijack, and the local-Administrators listing proves the privilege change. The demonstrated privilege is local-Administrator membership on the domain controller, exercised through privileged WinRM.
 
 ## Recommendations: log secrets, MSA ACLs, AD CS templates, DNS records, DLL loading, and WSUS trust
 

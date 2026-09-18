@@ -34,7 +34,7 @@ outcome: "User-level shell via the ThemeBleed theme upload, then SYSTEM command 
 
 ## ThemeBleed upload and CLFS escalation
 
-Aero is a Medium-rated Hack The Box Windows machine built around two public vulnerabilities. Initial access abuses CVE-2023-38146 (ThemeBleed) by uploading a malicious Windows theme that causes the host to load an attacker-controlled DLL, returning a shell as `<LAB_USER>`. Privilege escalation then applies CVE-2023-28252, a Windows Common Log File System (CLFS) driver flaw, to reach `NT AUTHORITY\SYSTEM`. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+Aero is a Medium-rated Hack The Box Windows machine built around two public vulnerabilities. Initial access abuses CVE-2023-38146 (ThemeBleed) by uploading a malicious Windows theme that causes the host to load an attacker-controlled DLL, which returns a shell as `<LAB_USER>`. Privilege escalation then applies CVE-2023-28252, a Windows Common Log File System (CLFS) driver flaw, to reach `NT AUTHORITY\SYSTEM`. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Malicious theme upload → ThemeBleed DLL load → shell as `<LAB_USER>` → local enumeration → CLFS driver abuse → `NT AUTHORITY\SYSTEM`**
 
@@ -44,7 +44,7 @@ Aero is a Medium-rated Hack The Box Windows machine built around two public vuln
 - **Application:** a Windows theme-sharing portal with a theme-file upload feature.
 - **Starting position:** unauthenticated network access, with no credentials provided.
 - **Objective:** gain a foothold through the theme-processing workflow, then escalate local privileges to SYSTEM.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** all activity stayed inside the Hack The Box lab environment.
 
 ## Evidence: theme upload to CLFS SYSTEM execution
 
@@ -61,7 +61,7 @@ rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV -oN nmap/Aero-TCP
 |_http-title: Aero Theme Hub
 ```
 
-Significance: HTTP is the entire external attack surface, and the portal's purpose — accepting Windows theme files — points at theme processing rather than a conventional web flaw, mapping directly to CVE-2023-38146.
+Significance: HTTP is the entire external attack surface, and the portal accepts Windows theme files. Theme processing is the path here, not a conventional web flaw, and it maps to CVE-2023-38146.
 
 Result: HTTP on port 80 (Microsoft IIS 10.0) is the only exposed service.
 
@@ -100,23 +100,23 @@ C:\Windows\system32>whoami
 <LAB_USER>
 ```
 
-Significance: processing a user-supplied theme loads attacker-controlled code, converting a file upload into remote code execution, and the staged-request sequence shows the DLL loaded through the expected theme callback.
+Significance: processing a user-supplied theme loads attacker-controlled code, so a file upload becomes remote code execution, and the staged-request sequence shows the DLL loaded through the expected theme callback.
 
-Result: a reverse shell as `<LAB_USER>` is obtained.
+Result: the callback returns a reverse shell as `<LAB_USER>`.
 
 ### 3. Local Enumeration
 
-Observation: after the foothold, the user profile is searched for files of interest.
+Observation: after the foothold, I checked the user profile for files of interest.
 
 ```powershell
 Get-ChildItem "$env:USERPROFILE" -Recurse -File -Exclude desktop.ini
 ```
 
-The recorded search identified a file named `CVE-2023-28252_Summary.pdf` in the user's Documents folder; no directory-listing output was captured, so this finding is reported from the recorded session rather than a shown result. The filename is the intended privilege-escalation hint and points directly at CVE-2023-28252.
+The recorded search identified a file named `CVE-2023-28252_Summary.pdf` in the user's Documents folder; no directory-listing output was captured, so I could not verify this from a shown result and report it from the recorded session. The filename is the intended privilege-escalation hint and points directly at CVE-2023-28252.
 
 Significance: a vulnerability note sitting in a user-writable profile pointed straight at the local flaw to exploit next; in lab and CTF environments, patch notes, filenames, and metadata can disclose which weaknesses remain.
 
-Result: a hint identifying the CLFS driver vulnerability is found in the user's profile.
+Result: the user's profile contains a hint identifying the CLFS driver vulnerability.
 
 ### 4. CLFS Privilege Escalation (CVE-2023-28252)
 
@@ -149,23 +149,23 @@ PS C:\Users\<LAB_USER>\Documents> whoami
 nt authority\system
 ```
 
-Significance: the CLFS driver flaw was the boundary crossed here, and the exploit crosses it to run the callback in the SYSTEM context.
+Significance: the CLFS driver flaw is the privilege boundary crossed here; the exploit crosses it to run the callback in the SYSTEM context.
 
 Result: the `whoami` output confirms execution as `nt authority\system`.
 
 ## Modifying the CLFS proof of concept to callback
 
-The recorded work contains no failed attempts, blocked steps, or troubleshooting. The one documented adaptation — modifying a working CVE-2023-28252 proof of concept so its SYSTEM branch launches the callback instead of a benign process — is described in Stage 4; no other decisions were recorded.
+The recorded work contains no failed attempts, blocked steps, or troubleshooting. The one documented adaptation is described in Stage 4: modifying a working CVE-2023-28252 proof of concept so its SYSTEM branch launches the callback instead of a benign process. No other decisions were recorded.
 
 ## Outcome: user shell and SYSTEM execution
 
-The evidence establishes authenticated code execution as `<LAB_USER>` through the theme-processing flaw and, after local privilege escalation, command execution as `NT AUTHORITY\SYSTEM`, with the SYSTEM identity confirmed by `whoami`. Limitations: the exploit payload is summarized rather than reproduced, and both intended flag captures are omitted.
+The evidence establishes authenticated code execution as `<LAB_USER>` through the theme-processing flaw and, after local privilege escalation, command execution as `NT AUTHORITY\SYSTEM`, with the SYSTEM identity confirmed by `whoami`. Limitations: the exploit payload is summarized and not reproduced, and both intended flag captures are omitted.
 
 ## Recommendations: theme uploads, the CLFS driver, and profile notes
 
 Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
 
-1. **Theme-file processing reaches code execution (CVE-2023-38146).** Root cause: the portal accepts `.theme` uploads that the host processes, allowing a crafted theme to load attacker-referenced content. Impact: an uploaded theme became remote code execution as `<LAB_USER>`. *Recommendation:* apply the CVE-2023-38146 fix and treat theme files as untrusted input — reject or sandbox them rather than letting the host process them. *Detection:* alert on theme-file uploads and on DLL loads originating from user-writable or download directories.
+1. **Theme-file processing reaches code execution (CVE-2023-38146).** Root cause: the portal accepts `.theme` uploads that the host processes, so a crafted theme can load attacker-referenced content. Impact: an uploaded theme became remote code execution as `<LAB_USER>`. *Recommendation:* apply the CVE-2023-38146 fix and treat theme files as untrusted input; reject or sandbox them instead of letting the host process them. *Detection:* alert on theme-file uploads and on DLL loads originating from user-writable or download directories.
 2. **Unpatched kernel-mode driver (CVE-2023-28252).** Root cause: the Common Log File System driver carried a local elevation-of-privilege flaw. Impact: a standard user reached SYSTEM code execution. *Recommendation:* apply the Windows cumulative updates that contain the CLFS fix and keep driver-level patches within the normal update cycle. *Detection:* monitor for CLFS log-file manipulation and for unexpected SYSTEM-context child processes.
 3. **Vulnerability notes left in a user-accessible location.** Root cause: a PDF named for the elevation CVE sat in the user's profile. Impact: the filename indicated which local flaw to exploit next. *Recommendation:* keep patch and vulnerability notes out of end-user profile directories and accessible shares. *Detection:* include user profile directories in reviews for sensitive security or patch documentation.
 

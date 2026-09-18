@@ -41,7 +41,7 @@ outcome: "SSH user access from a cracked application password hash, then root vi
 
 ## Backup endpoint leaks its AES key
 
-Snapped is a Hard-rated Hack The Box Linux lab exposing SSH and an Nginx-hosted web service. Virtual-host enumeration uncovers an administrative subdomain running Nginx UI, whose exact version is disclosed by client-side JavaScript. A backup endpoint reachable without authentication returns the AES key and IV needed to decrypt its own backup in a response header; decrypting the application database yields bcrypt password hashes, and cracking one provides SSH access as a low-privileged user. Local CVE enumeration then identifies a kernel vulnerability that provides root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+Snapped is a Hard-rated Hack The Box Linux lab exposing SSH and an Nginx-hosted web service. Virtual-host enumeration uncovers an administrative subdomain running Nginx UI, whose exact version is disclosed by client-side JavaScript. A backup endpoint reachable without authentication returns the AES key and IV needed to decrypt its own backup in a response header; decrypting the application database yields bcrypt password hashes, and cracking one provides SSH access as a low-privileged user. Local CVE enumeration then identifies a kernel vulnerability that provides root. This writeup replaces target identifiers, credentials, and secret values with role-based placeholders and leaves command syntax intact. See [how evidence is handled](/method/).
 
 **Attack path:** **Virtual-host discovery → Nginx UI version disclosure → unauthenticated backup endpoint leaking AES key/IV → database decryption → bcrypt hash cracking → SSH user access → local kernel CVE → root**
 
@@ -50,7 +50,7 @@ Snapped is a Hard-rated Hack The Box Linux lab exposing SSH and an Nginx-hosted 
 - **Target:** an Ubuntu host exposing OpenSSH 9.6p1 and nginx 1.24.0.
 - **Starting position:** unauthenticated network access, with no provided credentials.
 - **Objective:** discover the real administrative surface, recover application-authentication material from an unauthenticated backup feature, turn it into system access, and assess local privilege escalation.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** all activity stayed inside the Hack The Box lab environment.
 
 ## Evidence: vhost discovery, backup decrypt, and kernel CVE
 
@@ -195,9 +195,9 @@ Significance: the application-stored verifier matches the host account's passwor
 
 Result: SSH authentication succeeds and yields a user-level shell as `<LAB_USER>`.
 
-### 5. Local Privilege Escalation — Kernel CVE
+### 5. Local Privilege Escalation: Kernel CVE
 
-Observation: local enumeration checks the host for known kernel vulnerabilities.
+Observation: I checked the host for known kernel vulnerabilities.
 
 A hosted enumeration script is retrieved and run; the URL is summarized rather than shown:
 
@@ -233,15 +233,15 @@ Result: the proof-of-concept returns a root shell, confirmed by `whoami`.
 
 ## Outcome: SSH user and root via kernel CVE
 
-The evidence establishes unauthenticated access to an application backup endpoint, recovery of an SSH credential, and SSH access as `<LAB_USER>`, plus a root shell from a local kernel proof-of-concept. The privilege-escalation exploit is summarized rather than reproduced.
+The evidence establishes unauthenticated access to an application backup endpoint, recovery of an SSH credential, and SSH access as `<LAB_USER>`, plus a root shell from a local kernel proof-of-concept. The privilege-escalation exploit is summarized; its source is not reproduced.
 
 ## Recommendations: the backup endpoint, credential reuse, version disclosure, and the kernel CVE
 
-Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
+The actions are recommendations; none was validated in the lab.
 
 1. **Unauthenticated backup endpoint exposing key material.** The backup endpoint required no authentication and returned the AES key and IV in the `X-Backup-Security` header, so an unauthenticated party could decrypt a full system backup. *Recommendation:* require authentication and authorization on backup endpoints, deliver encryption keys out-of-band rather than in the response, and treat backups as sensitive data. *Detection:* alert on unauthenticated access to backup endpoints and on backup downloads.
 2. **Application-stored credential reused for system access.** The database stored a bcrypt password verifier whose cleartext also authenticated over SSH, so one crack crossed the application/system boundary. *Recommendation:* enforce strong, unique passwords and never reuse application credentials for host accounts; prefer key-based SSH. *Detection:* flag shared credentials across services and monitor for authentication from unexpected sources.
-3. **Version disclosure easing CVE mapping.** Client-side JavaScript exposed the exact application version, making vulnerability identification straightforward once the interface was found. *Recommendation:* apply security patches promptly and minimize exposed version and build detail. *Detection:* inventory externally reachable application versions and compare them against vendor advisories.
+3. **Version disclosure easing CVE mapping.** Client-side JavaScript exposed the exact application version, so vulnerability identification was straightforward once the interface was found. *Recommendation:* apply security patches promptly and minimize exposed version and build detail. *Detection:* inventory externally reachable application versions and compare them against vendor advisories.
 4. **Unpatched local kernel vulnerability.** CVE-2026-31431 allowed a local user to escalate to root. *Recommendation:* track and apply kernel security updates. *Detection:* run periodic local vulnerability checks and correlate the results with patch status.
 
 ## References

@@ -37,7 +37,7 @@ outcome: "Domain user access over WinRM followed by recovery of the Administrato
 
 ## From MSSQL impersonation to badsuccessor delegation
 
-Eighteen is a Windows Active Directory lab whose domain controller also runs Microsoft SQL Server. A provided `<MSSQL_USER>` login can impersonate the `<DATABASE_USER>` login, exposing an application database whose stored PBKDF2-SHA256 password hash cracks to a weak value; that same value is reused by the domain account `<DOMAIN_USER>`, granting WinRM access. Loopback LDAP enumeration then finds a misconfigured organizational unit, and the badsuccessor technique creates a delegated Managed Service Account whose S4U delegation rights enable DCSync of the `<PRIVILEGED_USER>` NTLM hash. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/). Results not accompanied by captured command output are presented from the recorded narrative.
+Eighteen is a Windows Active Directory lab whose domain controller also runs Microsoft SQL Server. A provided `<MSSQL_USER>` login can impersonate the `<DATABASE_USER>` login, which exposes an application database whose stored PBKDF2-SHA256 password hash cracks to a weak value; that same value authenticates the domain account `<DOMAIN_USER>` over WinRM. Loopback LDAP enumeration then finds a misconfigured organizational unit, and the badsuccessor technique creates a delegated Managed Service Account whose S4U delegation rights enable DCSync of the `<PRIVILEGED_USER>` NTLM hash. This writeup replaces target identifiers, credentials, and secret values with role-based placeholders and preserves command syntax. See [how evidence is handled](/method/). Results not accompanied by captured command output are presented from the recorded narrative.
 
 **Attack path:** **Provided MSSQL credentials → `IMPERSONATE` over `<DATABASE_USER>` → application database hash cracking → password reuse on `<DOMAIN_USER>` over WinRM → loopback LDAP discovery → badsuccessor dMSA creation → S4U delegation abuse → DCSync → `<PRIVILEGED_USER>`**
 
@@ -52,7 +52,7 @@ Eighteen is a Windows Active Directory lab whose domain controller also runs Mic
 
 ### 1. Service Enumeration
 
-Observation: a fast TCP scan exposes three services on the target host — IIS on 80, Microsoft SQL Server 2022 on 1433, and WinRM on 5985.
+Observation: a fast TCP scan exposes three services on the target host: IIS on 80, Microsoft SQL Server 2022 on 1433, and WinRM on 5985.
 
 ```bash
 rustscan -a <TARGET_IP> --ulimit 5000 -- -Pn -sC -sV -oN nmap/target-TCP
@@ -155,7 +155,7 @@ Result: `<DOMAIN_USER>` reuses the recovered password, and the authenticated Win
 
 ### 5. Loopback LDAP Discovery
 
-Observation: from the `<DOMAIN_USER>` shell, local listening sockets show directory services bound to all interfaces, indicating the target is the domain controller itself.
+Observation: from the `<DOMAIN_USER>` shell, local listening sockets show directory services bound to all interfaces, so the target is the domain controller itself.
 
 ```powershell
 netstat -ano
@@ -206,7 +206,7 @@ execute-assembly Rubeus.exe -- 'asktgt /user:<DOMAIN_USER> /password:<CRACKED_PA
 execute-assembly Rubeus.exe -- 'asktgs /targetuser:<DMSA_ACCOUNT>$ /service:krbtgt/<LAB_DOMAIN> /opsec /dmsa /nowrap /ptt /ticket:<DOMAIN_USER>.kirbi /outfile:<DMSA_TGS>'
 ```
 
-Kerberos authentication requires the attacker's clock to match the domain controller, so the DC time is read over LDAP and applied locally:
+Kerberos authentication requires the attacker's clock to match the domain controller, so I checked the DC time over LDAP and set the local clock from it:
 
 ```bash
 set DC_TIME (proxychains ldapsearch -x -H ldap://<DOMAIN_CONTROLLER>.<LAB_DOMAIN> -s base -b "" currentTime \
@@ -228,7 +228,7 @@ proxychains netexec ldap <DOMAIN_CONTROLLER>.<LAB_DOMAIN> \
 
 Significance: S4U2self/S4U2proxy with the dMSA's delegation rights produces a service ticket that acts as `<PRIVILEGED_USER>` for services such as `krbtgt`.
 
-Result: a delegated Kerberos ticket impersonating `<PRIVILEGED_USER>` is obtained.
+Result: a delegated Kerberos ticket impersonating `<PRIVILEGED_USER>` is obtained; I could not verify the step from captured output, so the result comes from the recorded narrative.
 
 ### 8. DCSync and Domain Administrative Access
 
@@ -266,7 +266,7 @@ The evidence establishes authenticated `<DOMAIN_USER>` access over WinRM and rec
 
 ## Recommendations: impersonation, weak hashing, reuse, dMSA, and DCSync
 
-None of the recommendations below was validated in the lab; each pairs an observed root cause with its demonstrated impact and an action.
+None of the recommendations below was validated in the lab.
 
 1. **MSSQL impersonation and least privilege.** `<MSSQL_USER>` could impersonate `<DATABASE_USER>`, which exposed the application database and its credentials. *Prevent:* remove unnecessary `IMPERSONATE` grants and review them regularly.
 2. **Weak stored application credential.** A PBKDF2-SHA256 hash with 600,000 iterations was cracked against rockyou. *Prevent:* raise iteration counts, enforce length and complexity, and keep credentials out of queryable tables; *detect:* alert on access to credential-bearing tables.

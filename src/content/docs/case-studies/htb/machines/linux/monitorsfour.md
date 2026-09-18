@@ -35,7 +35,7 @@ outcome: "Authenticated Cacti code execution as www-data inside the container an
 
 ## From token bypass to privileged Docker escape
 
-MonitorsFour is a Medium-rated Hack The Box Linux lab that runs Cacti network monitoring inside a Docker container. A broken access-control check on the Cacti API accepts `token=0` and returns account records with raw MD5 password hashes to unauthenticated callers. One hash is cracked offline, and username permutations generated from the full names returned by the same API yield a working Cacti login. With authenticated access, CVE-2025-24367 provides code execution as `www-data` inside the container. From there an unauthenticated Docker daemon API on an internal address allows a privileged container with the host filesystem mounted, returning root on the host. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/). Flag values are omitted.
+MonitorsFour is a Medium-rated Hack The Box Linux lab that runs Cacti network monitoring inside a Docker container. A broken access-control check on the Cacti API accepts `token=0` and returns account records with raw MD5 password hashes to unauthenticated callers. That disclosure gave me four hashes to attack offline; one cracked. Username permutations generated from the full names returned by the same API then yielded a working Cacti login. With authenticated access, CVE-2025-24367 provides code execution as `www-data` inside the container. From there an unauthenticated Docker daemon API on an internal address allows a privileged container with the host filesystem mounted, returning root on the host. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/). Flag values are omitted.
 
 **Attack path:** **API access-control bypass (`token=0`) → MD5 hash disclosure → offline cracking → username generation → Cacti authentication → CVE-2025-24367 container RCE → unauthenticated Docker daemon → privileged container with host mount → host root**
 
@@ -51,7 +51,7 @@ MonitorsFour is a Medium-rated Hack The Box Linux lab that runs Cacti network mo
 
 ### 1. API access-control bypass and hash disclosure
 
-Observation: the Cacti API exposes an `/api/v1/user` endpoint that takes a `token` parameter; supplying `token=0` is accepted and returns user records without valid credentials.
+Observation: the Cacti API exposes an `/api/v1/user` endpoint that takes a `token` parameter. I checked the parameter first: `token=0` is accepted without credentials and returns user records.
 
 ```bash
 for i in $(seq 1 1000); do
@@ -77,7 +77,7 @@ Result: four account records, including MD5 password hashes, are retrieved witho
 
 ### 2. Offline hash cracking
 
-Observation: the disclosed hashes are raw MD5, which is fast to attack offline against a wordlist.
+Observation: the disclosed hashes are raw MD5, so a wordlist attack offline is fast.
 
 ```bash
 hashcat -m 0 hashes.txt <WORDLIST> -D2 -w4
@@ -107,7 +107,7 @@ Significance: application login names differ from API account names, so the reco
 
 Result: authenticated access to the Cacti application is obtained as `<VALID_APPLICATION_USER>` using the recovered password.
 
-### 4. Cacti authenticated RCE — CVE-2025-24367
+### 4. Cacti authenticated RCE: CVE-2025-24367
 
 Observation: Cacti 1.2.28 is affected by CVE-2025-24367, in which an authenticated user abuses graph and template functionality to write arbitrary PHP into the application web root.
 
@@ -136,7 +136,7 @@ curl -s http://<DOCKER_API_HOST>:2375/version | python3 -m json.tool
 
 Significance: an unauthenticated Docker daemon is effectively root on the host, because any caller that can reach it can direct the daemon to run workloads.
 
-Result: The daemon answered without authentication and reported Docker 28.3.2.
+Result: the daemon answered without authentication and reported Docker 28.3.2.
 
 ### 6. Privileged container escape
 
@@ -160,7 +160,7 @@ The container spec selects an image already present on the host, enables privile
 
 Significance: privileged mode combined with a host-filesystem bind removes the container boundary entirely, so code running in the new container runs on the host.
 
-Result: the documentation records a root shell on the host with the host filesystem mounted at `/host`.
+Result: the documentation records a root shell on the host with the host filesystem mounted at `/host`; the shell output was not retained, so I could not verify it directly.
 
 ## One obstacle: the rejected account name
 

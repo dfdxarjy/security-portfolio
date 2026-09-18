@@ -37,7 +37,7 @@ outcome: "SSH user access via a cracked ZoneMinder credential hash, followed by 
 
 ## Blind SQL injection to motionEye root
 
-CCTV is an Easy-rated Hack The Box Linux lab built around IP-camera management software. A blind SQL injection in ZoneMinder's `tid` parameter recovers credential hashes from the `Users` table; one cracks offline to an SSH login. From that context an internal motionEye instance, running as root and bound to the loopback interface, accepts a filename configuration value that is validated only in client-side JavaScript, and processing that value yields root command execution. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+CCTV is an Easy-rated Hack The Box Linux lab built around IP-camera management software. A blind SQL injection in ZoneMinder's `tid` parameter recovers credential hashes from the `Users` table; one cracks offline to an SSH login. An internal motionEye instance, running as root and bound to the loopback interface, accepts a filename configuration value that is validated only in client-side JavaScript, and processing that value yields root command execution. This writeup replaces target identifiers, credentials, and secret values with role-based placeholders and leaves command syntax intact. See [how evidence is handled](/method/).
 
 **Attack path:** **ZoneMinder blind SQL injection (`tid`) → credential hash recovery → offline crack → SSH user access → loopback motionEye service → client-side validation bypass → filename command injection → root**
 
@@ -47,7 +47,7 @@ CCTV is an Easy-rated Hack The Box Linux lab built around IP-camera management s
 - **Exposed services:** SSH (22) and HTTP (80).
 - **Starting position:** unauthenticated network access.
 - **Objective:** establish user access through the camera-management web application, then assess the internal motionEye service for a privilege-escalation path.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** all activity stayed inside the Hack The Box lab environment.
 
 ## Evidence: SQL injection to filename command injection
 
@@ -74,13 +74,13 @@ feroxbuster --url http://<TARGET_HOST> --wordlist <WEB_CONTENT_WORDLIST>
 /zm/ — ZoneMinder 1.37.63
 ```
 
-Significance: the only external surface is SSH and the ZoneMinder web application, and the specific version is disclosed in the application path — enough to target a known vulnerability in the request handling.
+Significance: the only external surface is SSH and the ZoneMinder web application, and the specific version is disclosed in the application path, enough to target a known vulnerability in the request handling.
 
 Result: SSH and a ZoneMinder 1.37.63 web application are the exposed services.
 
 ### 2. Credential Recovery via Blind SQL Injection
 
-Observation: ZoneMinder 1.37.63 is affected by CVE-2024-51482, a blind SQL injection in the `tid` request parameter, so an authenticated request can be used to read the `Users` table.
+Observation: ZoneMinder 1.37.63 is affected by CVE-2024-51482, a blind SQL injection in the `tid` request parameter, so an authenticated request can read the `Users` table.
 
 Action: authenticate with documented default credentials to obtain a session cookie, then point `sqlmap` at the vulnerable parameter.
 
@@ -115,7 +115,7 @@ Result: three account password hashes are recovered from the ZoneMinder `Users` 
 
 Observation: the recovered values are bcrypt hashes, which can be attacked offline without further interaction with the target.
 
-Action: crack the hash file offline, then use the recovered plaintext against SSH.
+Action: I cracked the hash file offline, then I checked the recovered plaintext against SSH.
 
 ```bash
 hashcat -m 3200 hashes.txt <WORDLIST>
@@ -131,7 +131,7 @@ ssh <LAB_USER_1>@<TARGET_HOST>
 
 Significance: offline cracking removes any rate limit or lockout the live service might apply, so a hash disclosure becomes a usable login even without online authentication attempts.
 
-Result: a credential pair was recovered and subsequently validated through SSH. The source records user-level access but retains no separate SSH session transcript.
+Result: a credential pair was recovered and subsequently validated through SSH. I could not verify a separate SSH session transcript; the notes record user-level access only.
 
 ### 4. Internal Service Discovery
 
@@ -155,7 +155,7 @@ systemctl status motioneye
 User=root
 ```
 
-Significance: the camera service is reachable only from the host itself, so it is invisible to the external scan, and it runs with root privileges — any flaw in how it handles configuration input would yield root rather than a service account.
+Significance: the camera service is reachable only from the host itself, so it is invisible to the external scan, and it runs with root privileges; any flaw in how it handles configuration input would yield root rather than a service account.
 
 Result: a root-run motionEye 0.43.1b4 service is identified on an internal loopback port.
 
@@ -169,13 +169,13 @@ Action: forward the internal interface over the existing SSH session, override t
 ssh -L 8765:127.0.0.1:8765 <LAB_USER_1>@<TARGET_HOST> -N
 ```
 
-The motionEye UI was accessed with the administrative credential stored in its configuration file.
+I accessed the motionEye UI with the administrative credential stored in its configuration file.
 
 ```javascript
 configUiValid = function() { return true; };
 ```
 
-The injected filename is shown as a placeholder pattern:
+The injected filename appears as a placeholder pattern:
 
 ```text
 $(<INJECTED_COMMAND>).%Y-%m-%d-%H-%M-%S
@@ -199,7 +199,7 @@ root@<TARGET_HOST>:/etc/motioneye#
 
 Significance: browser-side validation cannot protect a value that is ultimately consumed by a server-side process, and because motion runs as root, a filename containing shell metacharacters escalates from the low-privileged SSH user to root in a single step.
 
-Result: root-level command execution is obtained through the unvalidated filename configuration.
+Result: the unvalidated filename configuration yields root-level command execution.
 
 ## Two decisions: loopback forwarding and bypassed validation
 
@@ -214,9 +214,9 @@ The evidence establishes root-level command execution on the target through a co
 
 ## Recommendations: blind SQLi, client-side validation, and a root daemon
 
-Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions are recommendations; none was validated in the lab.
+The actions are recommendations; none was validated in the lab.
 
-1. **Blind SQL injection in a request parameter.** The `tid` parameter of `/zm/index.php` reached a SQL query without adequate handling, allowing the `Users` table and its bcrypt hashes to be dumped. *Recommendation:* update ZoneMinder past the fixed release and use prepared statements or parameterized queries for every database-backed request parameter. *Detection:* monitor for slow, repetitive requests to a single endpoint consistent with time-based extraction.
+1. **Blind SQL injection in a request parameter.** The `tid` parameter of `/zm/index.php` reached a SQL query without adequate handling, so the `Users` table and its bcrypt hashes could be dumped. *Recommendation:* update ZoneMinder past the fixed release and use prepared statements or parameterized queries for every database-backed request parameter. *Detection:* monitor for slow, repetitive requests to a single endpoint consistent with time-based extraction.
 2. **Client-side-only input validation.** The Image File Name field was validated only in browser JavaScript, so the value reached the server unchanged and was written into motion's configuration. *Recommendation:* validate all configuration input on the server and reject shell metacharacters before a value is written to configuration. *Detection:* alert on configuration changes whose values contain shell metacharacters.
 3. **Privileged surveillance daemon.** motionEye and motion ran as root, so a filename-handling flaw produced root code execution instead of access limited to a service account. *Recommendation:* run the camera services under a dedicated least-privilege `motioneye` account that holds only the device access it needs, such as membership in the `video` group. *Detection:* audit long-running services for unnecessary root execution.
 

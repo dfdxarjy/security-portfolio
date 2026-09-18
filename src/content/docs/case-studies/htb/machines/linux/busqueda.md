@@ -44,7 +44,7 @@ Busqueda is an Easy Hack The Box Linux lab whose web front end runs a Flask sear
 - **Application:** a Flask search service whose footer identifies the Searchor library, presented as a search-engine selector and a `query` field; the site requires a virtual host mapping to reach.
 - **Starting position:** unauthenticated network access; directory enumeration returned little of interest.
 - **Objective:** assess unsafe expression evaluation in the search request, credential exposure in the deployment repository, and the privilege boundary created by the allowed maintenance script.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** all activity stayed inside the Hack The Box lab environment.
 
 ## Evidence: query injection to relative-path helper
 
@@ -67,7 +67,7 @@ Result: SSH and Apache HTTP are exposed, and the Searchor-backed search applicat
 
 ### 2. Search Request Injection and Command Execution
 
-Observation: the `query` parameter is passed into a Python expression — `'` and `/` characters change the response — and a crafted value breaks out of the expected string context to invoke an operating-system command.
+Observation: the `query` parameter is passed into a Python expression. I checked `'` and `/`, which change the response, and a crafted value breaks out of the expected string context to invoke an operating-system command.
 
 ```http
 POST /search HTTP/1.1
@@ -85,7 +85,7 @@ The executed command returns a shell in the application directory:
 
 Significance: because the request value reaches `eval()`, search input becomes arbitrary code execution under the application service account. The defect is the Searchor `eval()` issue tracked as CVE-2023-43364, fixed in 2.4.2.
 
-Result: a command channel as `<SERVICE_USER>` is established in the application directory.
+Result: the returned shell establishes a command channel as `<SERVICE_USER>` in the application directory.
 
 ### 3. Git Configuration Credential Exposure
 
@@ -99,7 +99,7 @@ cat <APPLICATION_DIRECTORY>/.git/config
 url = http://<GIT_USER>:<GIT_PASSWORD>@<GITEA_HOST>/<OWNER>/<REPOSITORY>.git
 ```
 
-The internal services are bound to loopback, so the Gitea instance is not directly reachable:
+The internal services bind to loopback, so the Gitea instance is not directly reachable:
 
 ```bash
 ss -tulpn 2>/dev/null
@@ -112,7 +112,7 @@ ss -tulpn 2>/dev/null
 
 Significance: a repository remote carries a credential pair for the internal Gitea service, and the loopback bindings show that service is reachable only through a tunnel.
 
-Result: a Gitea credential pair is recovered from the repository configuration, and the internal services are identified.
+Result: the repository configuration yields a Gitea credential pair, and the loopback bindings identify the internal services.
 
 ### 4. Restricted Sudo Maintenance Script
 
@@ -126,7 +126,7 @@ sudo -l
 (root) /usr/bin/python3 <MAINTENANCE_SCRIPT> *
 ```
 
-Significance: the delegation is scoped to a single interpreter and script but accepts any argument, and the script exposes `docker-ps`, `docker-inspect`, and `full-checkup` actions — a root context offered through a constrained interface.
+Significance: the delegation covers a single interpreter and script but accepts any argument, and the script exposes `docker-ps`, `docker-inspect`, and `full-checkup` actions, a root context offered through a constrained interface.
 
 Result: a root-run maintenance script is reachable through the delegated sudo rule.
 
@@ -153,7 +153,7 @@ MYSQL_PASSWORD=<DATABASE_PASSWORD>
 MYSQL_DATABASE=<DATABASE_NAME>
 ```
 
-Significance: the maintenance script returns raw container environment variables, disclosing the database credentials in cleartext — the application's backend secret handed over through a permitted root action.
+Significance: the maintenance script returns raw container environment variables, disclosing the database credentials in cleartext: the application's backend secret handed over through a permitted root action.
 
 Result: Gitea database credentials are recovered from the container environment.
 
@@ -167,7 +167,7 @@ elif action == 'full-checkup':
     print(run_command(arg_list))
 ```
 
-Action — plant the named helper in the working directory and invoke the root sudo action from there:
+Action: plant the named helper in the working directory and invoke the root sudo action from there:
 
 ```bash
 nc -nlvp <LISTEN_PORT>
@@ -186,7 +186,7 @@ root
 
 Significance: because root runs `./full-checkup.sh` from a caller-controlled working directory, a constrained sudo rule becomes arbitrary root code execution.
 
-Result: root command execution is confirmed by the privileged `whoami` output.
+Result: the privileged `whoami` output confirms root command execution.
 
 ## One decision: base64-encode the injected shell
 
@@ -196,11 +196,11 @@ Result: root command execution is confirmed by the privileged `whoami` output.
 
 ## Outcome: service shell and root via a relative path
 
-The lab ends with root command execution, established by the privileged `whoami` output. Two transitions are recorded without retained command output: the leaked Git password also authenticated the service account locally, and the disclosed database password granted Administrator access to the internal Gitea instance that held the maintenance script source.
+The lab ends with root command execution, established by the privileged `whoami` output. Two transitions are recorded without retained command output, so I could not verify them directly: the leaked Git password also authenticated the service account locally, and the disclosed database password granted Administrator access to the internal Gitea instance that held the maintenance script source.
 
 ## Recommendations: eval(), Git credentials, container env, and relative paths
 
-1. **User input evaluated as code.** The search `query` reached `eval()`, turning search input into command execution as the application account. *Recommendation:* remove dynamic evaluation of request data and use an allowlisted lookup, as Searchor 2.4.2 did. *Detection:* review application code for `eval()`/`exec()` on user input and monitor web processes for unexpected child processes.
+1. **User input evaluated as code.** The search `query` reached `eval()`, which turned search input into command execution as the application account. *Recommendation:* remove dynamic evaluation of request data and use an allowlisted lookup, as Searchor 2.4.2 did. *Detection:* review application code for `eval()`/`exec()` on user input and monitor web processes for unexpected child processes.
 2. **Credentials in Git remote configuration.** A deployment `.git/config` embedded a credential pair for an internal repository host. *Recommendation:* use deploy keys or a credential helper instead of embedding secrets in remote URLs, and rotate any credential that has been exposed. *Detection:* scan working directories and repository configuration for credentials in remote URLs.
 3. **Secrets in container environment variables.** `docker-inspect` returned the Gitea database password in cleartext. *Recommendation:* deliver secrets through a secret manager or mounted files rather than environment variables, and restrict who may inspect container configuration. *Detection:* alert on inspection of environment variables and configuration of production containers.
 4. **Relative-path execution in a root-run script.** The `full-checkup` branch ran `./full-checkup.sh` from the caller's directory, so a delegated sudo rule became arbitrary root code execution. *Recommendation:* reference helper executables by absolute, root-owned paths and validate accepted arguments; avoid wildcard sudo rules that reach an interpreter. *Detection:* audit sudo policy for interpreter or wildcard delegations and alert on changes to scripts in privileged working directories.

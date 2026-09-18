@@ -35,13 +35,13 @@ outcome: "www-data command execution, a passwordless sudo transition to scriptma
 
 ## From exposed phpbash to scheduled-script root
 
-Bashed is an Easy Hack The Box Linux lab in which web enumeration exposes `phpbash`, an interactive PHP shell left in the document root, giving command execution as `www-data`. Privilege escalation follows two documented steps: a permit-any passwordless `sudo` rule to the `scriptmanager` account, and a Python script in `/scripts` that `scriptmanager` can overwrite but root runs on a schedule. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+Bashed is an Easy Hack The Box Linux lab in which web enumeration exposes `phpbash`, an interactive PHP shell left in the document root, which gives command execution as `www-data`. Privilege escalation follows two documented steps: a permit-any passwordless `sudo` rule to the `scriptmanager` account, and a Python script in `/scripts` that `scriptmanager` can overwrite but root runs on a schedule. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** `Apache enumeration → exposed phpbash web shell → www-data command execution → hosted-script reverse shell → passwordless sudo to scriptmanager → writable root-scheduled script → root`
 
 ## Target, development host, and objective
 
-- **Target:** an Ubuntu Linux host exposing a single web service — Apache httpd 2.4.18.
+- **Target:** an Ubuntu Linux host exposing a single web service, Apache httpd 2.4.18.
 - **Starting position:** unauthenticated network access.
 - **Objective:** turn an exposed web development artifact into a stable shell, then follow local authorization and scheduled-execution clues to root.
 - **Constraints:** activity was confined to the Hack The Box lab environment.
@@ -105,13 +105,13 @@ www-data@bashed:/var/www/html/dev# whoami
 www-data
 ```
 
-Significance: the shell executes arbitrary commands in the context of `www-data`, the Apache service account, giving unauthenticated code execution on the host.
+Significance: the shell executes arbitrary commands in the context of `www-data`, the Apache service account, which gives unauthenticated code execution on the host.
 
 Result: command execution as `www-data` is established.
 
 ### 4. Shell Stabilization
 
-Observation: the browser shell is unsuitable for sustained interactive work, and direct reverse-shell one-liners launched from it are unreliable.
+Observation: the browser shell is unsuitable for sustained interactive work, and I tried direct reverse-shell one-liners launched from it that proved unreliable.
 
 Action: host a small shell script on the attacker host, download it to a temporary path on the target, and execute it to receive a reverse shell.
 
@@ -153,7 +153,7 @@ User www-data may run the following commands on bashed:
     (scriptmanager : scriptmanager) NOPASSWD: ALL
 ```
 
-Action — switch to the permitted account:
+Action: switch to the permitted account:
 
 ```bash
 sudo -u scriptmanager /bin/bash
@@ -165,7 +165,7 @@ Result: control moves to the `scriptmanager` account.
 
 ### 6. Writable Scheduled Script to Root
 
-Observation: `/scripts` holds a Python script owned by `scriptmanager` beside an output file owned by root that is rewritten repeatedly — evidence that root executes the script on a schedule.
+Observation: `/scripts` holds a Python script owned by `scriptmanager` beside an output file owned by root that is rewritten repeatedly, evidence that root executes the script on a schedule.
 
 ```bash
 ls -la /scripts
@@ -176,7 +176,7 @@ ls -la /scripts
 -rw-r--r-- 1 root          root          12 test.txt
 ```
 
-Action — replace the writable script with callback logic and catch the root execution:
+Action: replace the writable script with callback logic and catch the root execution:
 
 ```python
 # /scripts/test.py (replaced by scriptmanager)
@@ -207,7 +207,7 @@ After the scheduled task runs:
 root
 ```
 
-Significance: root executes a script that a lower-privileged account can overwrite, so whatever is written into `test.py` runs with root privileges — a direct privilege-boundary failure.
+Significance: root executes a script that a lower-privileged account can overwrite, so whatever is written into `test.py` runs with root privileges, a direct privilege-boundary failure.
 
 Result: the callback returns as root, confirmed by `whoami`.
 
@@ -227,7 +227,7 @@ Each finding pairs the observed root cause with its demonstrated impact and a pr
 
 1. **Development shell left in the web root.** `phpbash.php` was reachable without authentication and gave code execution as `www-data`. *Recommendation:* remove administrative and diagnostic tooling from web-accessible directories and deploy only required application files. *Detection:* alert on shell-like files and on requests that execute them.
 2. **Overly permissive sudo delegation.** A `NOPASSWD: ALL` rule let the web-service account run arbitrary commands as `scriptmanager`. *Recommendation:* scope `sudoers` to specific binaries and arguments instead of unrestricted command execution as another account. *Detection:* review `sudo -l` output and audit `sudoers` for blanket `NOPASSWD: ALL` grants.
-3. **Root-executed script writable by a lower-privileged account.** `scriptmanager` could overwrite `test.py`, which root ran on a schedule, yielding root code execution. *Recommendation:* keep privileged scheduled scripts and their directories writable only by root, and run non-root schedulers without privilege. *Detection:* monitor scheduled-task scripts and directories for unexpected content changes.
+3. **Root-executed script writable by a lower-privileged account.** `scriptmanager` could overwrite `test.py`, which root ran on a schedule; the overwrite yielded root code execution. *Recommendation:* keep privileged scheduled scripts and their directories writable only by root, and run non-root schedulers without privilege. *Detection:* monitor scheduled-task scripts and directories for unexpected content changes.
 
 ## References
 

