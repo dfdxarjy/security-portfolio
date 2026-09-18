@@ -213,6 +213,9 @@ select {
 .js-reveal [data-reveal-group] > [data-reveal]:nth-child(6) {
   --reveal-i: 5;
 }
+.js-reveal [data-reveal-group] > [data-reveal]:nth-child(n + 7) {
+  --reveal-i: 6;
+}
 /* A reveal target reached by keyboard focus must be visible at once, never a
    hidden-but-focusable control. */
 .js-reveal [data-reveal]:focus-within {

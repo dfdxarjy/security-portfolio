@@ -312,15 +312,14 @@ const panelProps = {
 						isIndex && descendantGroups.length > 0 && (
 							<nav
 								class="portfolio-index"
-								data-reveal
 								aria-label={`Case studies in ${entry.data.title}`}
 							>
 								{descendantGroups.map((group) => (
 									<>
 										{descendantGroups.length > 1 && <h2>{group.label}</h2>}
-										<ul>
+										<ul data-reveal-group>
 											{group.items.map((item) => (
-												<li>
+												<li data-reveal>
 													<a href={item.href}>{item.title}</a>
 													{item.description && (
 														<span class="portfolio-index__description">
