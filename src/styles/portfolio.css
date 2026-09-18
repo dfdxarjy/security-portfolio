@@ -127,6 +127,11 @@ body {
 	.surface-grain { display: none; }
 }
 
+/* Print: printed output should not carry decorative layers. */
+@media print {
+	.surface-grain { display: none; }
+}
+
 /*
  * Documentation and article pages keep this solid `--portfolio-surface` background.
  */
