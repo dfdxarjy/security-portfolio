@@ -303,15 +303,33 @@ const searchableText = (study: (typeof studies)[number]) =>
             .portfolio-nav a:focus-visible {
                 color: var(--accent);
             }
-            /* Three-state theme control: one native select matching the
-               Starlight case-page idiom — bare monospace text in muted grey
-               with a caret, no filled box. A single --control-line bottom
-               hairline supplies the 3:1 interactive boundary the site's rule
-               asks for without reintroducing a boxed, segmented look. */
+            /* Three-state theme control matching the Starlight case-page idiom:
+               a leading icon for the selected state, the label, then a caret —
+               bare monospace text in muted grey, no filled box and no
+               underline. The --control-line rule governs borders that exist;
+               Starlight's control is borderless, so this one is too, and the
+               hover colour shift plus the global focus ring carry the
+               affordances instead. */
             .portfolio-theme {
                 position: relative;
                 display: inline-flex;
                 align-items: center;
+            }
+            /* Decorative vertical hairline between the nav links and the
+               control. Mirrors Starlight's header divider — a 2rem
+               `border-inline-end` hairline after the preceding header group —
+               and uses the decorative --line token, never --control-line.
+               Absolutely positioned so it adds no layout width and cannot
+               shift the control. */
+            .portfolio-theme::before {
+                content: "";
+                position: absolute;
+                left: -1rem;
+                top: 50%;
+                height: 2rem;
+                transform: translateY(-50%);
+                border-inline-end: 1px solid var(--line);
+                pointer-events: none;
             }
             /* Visually hidden; the wrapping label names the select. */
             .portfolio-theme-label {
@@ -328,34 +346,59 @@ const searchableText = (study: (typeof studies)[number]) =>
             .portfolio-theme-select {
                 appearance: none;
                 -webkit-appearance: none;
-                /* Wide enough for the longest option so the header width does
-                   not shift when the selection changes. */
-                min-width: 3.6rem;
+                /* Matches Starlight's --sl-select-width: 6.25em so the header
+                   width does not shift between Auto / Light / Dark. */
+                min-width: 6.25em;
                 min-height: 1.5rem;
                 border: 0;
-                border-bottom: 1px solid var(--control-line);
                 border-radius: 0;
-                padding: 0.25rem 1.15rem 0.25rem 0;
+                /* Reserve room for the leading state icon (~0.875rem) and the
+                   caret (~1.25rem), as Starlight's own Select does. */
+                padding: 0.25rem 2rem 0.25rem 1.625rem;
                 background: transparent;
                 color: var(--muted);
                 font-family: var(--font-mono), ui-monospace, monospace;
-                font-size: 0.8rem;
+                /* Starlight's effective --sl-text-sm size for this control. */
+                font-size: 0.875rem;
                 cursor: pointer;
             }
             .portfolio-theme-select:hover,
             .portfolio-theme-select:focus-visible {
                 color: var(--accent);
             }
+            /* All three state glyphs stack at the leading edge; the theme
+               script writes data-theme-choice and CSS reveals exactly one. */
+            .portfolio-theme-icon {
+                position: absolute;
+                left: 0;
+                top: 50%;
+                width: 0.875rem;
+                height: 0.875rem;
+                transform: translateY(-50%);
+                color: var(--muted);
+                pointer-events: none;
+                opacity: 0;
+            }
+            .portfolio-theme-select[data-theme-choice="auto"]
+                ~ .portfolio-theme-icon--auto,
+            .portfolio-theme-select[data-theme-choice="light"]
+                ~ .portfolio-theme-icon--light,
+            .portfolio-theme-select[data-theme-choice="dark"]
+                ~ .portfolio-theme-icon--dark {
+                opacity: 1;
+            }
             .portfolio-theme-caret {
                 position: absolute;
-                right: 0.15rem;
-                width: 0.65rem;
-                height: 0.65rem;
+                right: 0;
+                width: 1.25rem;
+                height: 1.25rem;
                 color: var(--muted);
                 pointer-events: none;
             }
             .portfolio-theme-select:hover ~ .portfolio-theme-caret,
-            .portfolio-theme-select:focus-visible ~ .portfolio-theme-caret {
+            .portfolio-theme-select:focus-visible ~ .portfolio-theme-caret,
+            .portfolio-theme-select:hover ~ .portfolio-theme-icon,
+            .portfolio-theme-select:focus-visible ~ .portfolio-theme-icon {
                 color: var(--accent);
             }
             :global(html) {
@@ -952,7 +995,6 @@ const searchableText = (study: (typeof studies)[number]) =>
             /* Forced-colours: keep control boundaries, pressed state and focus
                visible using system colours (background colours are overridden). */
             @media (forced-colors: active) {
-                .portfolio-theme-select,
                 .portfolio-filter,
                 .portfolio-search,
                 .portfolio-sort,
@@ -1021,12 +1063,66 @@ const searchableText = (study: (typeof studies)[number]) =>
                         <select
                             class="portfolio-theme-select"
                             id="portfolio-theme-select"
+                            data-theme-choice="auto"
                             autocomplete="off"
                         >
                             <option value="dark">Dark</option>
                             <option value="light">Light</option>
                             <option value="auto" selected>Auto</option>
                         </select>
+                        {/* Leading state icon: exactly one is visible, picked
+                            from data-theme-choice. Starlight swaps these three
+                            glyphs for its own picker; this keeps the anatomy
+                            without importing from @astrojs/starlight. */}
+                        <svg
+                            class="portfolio-theme-icon portfolio-theme-icon--auto"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.5"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                            focusable="false"
+                        >
+                            <path
+                                d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16"
+                            />
+                        </svg>
+                        <svg
+                            class="portfolio-theme-icon portfolio-theme-icon--light"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.5"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                            focusable="false"
+                        >
+                            <circle cx="12" cy="12" r="4" />
+                            <path d="M12 2v2" />
+                            <path d="M12 20v2" />
+                            <path d="m4.93 4.93 1.41 1.41" />
+                            <path d="m17.66 17.66 1.41 1.41" />
+                            <path d="M2 12h2" />
+                            <path d="M20 12h2" />
+                            <path d="m6.34 17.66-1.41 1.41" />
+                            <path d="m19.07 4.93-1.41 1.41" />
+                        </svg>
+                        <svg
+                            class="portfolio-theme-icon portfolio-theme-icon--dark"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.5"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                            focusable="false"
+                        >
+                            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+                        </svg>
                         <svg
                             class="portfolio-theme-caret"
                             viewBox="0 0 16 16"
@@ -1058,6 +1154,12 @@ const searchableText = (study: (typeof studies)[number]) =>
                                     localStorage.getItem("starlight-theme");
                             } catch {}
                             select.value =
+                                stored === "light" || stored === "dark"
+                                    ? stored
+                                    : "auto";
+                            // Drives the leading-icon swap in CSS; same value as
+                            // the select, no extra state, no listener.
+                            select.dataset.themeChoice =
                                 stored === "light" || stored === "dark"
                                     ? stored
                                     : "auto";
@@ -1660,7 +1762,10 @@ const searchableText = (study: (typeof studies)[number]) =>
                     root.dataset.theme = theme;
                     root.style.colorScheme = theme;
                     // Auto is the select's own value; the key stays absent.
-                    select.value = isExplicit(stored) ? stored : "auto";
+                    const choice = isExplicit(stored) ? stored : "auto";
+                    select.value = choice;
+                    // Same value drives the leading-icon swap; no new state.
+                    select.dataset.themeChoice = choice;
                 };
                 // Only listens while no explicit preference is stored.
                 const onSystemChange = () => {
