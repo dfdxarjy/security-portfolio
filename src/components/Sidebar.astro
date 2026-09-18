@@ -125,25 +125,40 @@ const categoryHref = `/${dirKey}/`;
 				for (const { heading } of targets) observer.observe(heading);
 			};
 
-			// Inert sentinel at the document end. It is positioned absolutely with
-			// no offsets, so it keeps its static spot without adding layout, and
-			// it is never focusable. Intersecting the viewport bottom edge means
-			// the reader has reached the end.
-			const sentinel = document.createElement('div');
-			sentinel.setAttribute('aria-hidden', 'true');
-			sentinel.style.cssText = 'position: absolute; height: 0; width: 0; pointer-events: none;';
-			document.body.append(sentinel);
-			new IntersectionObserver(
-				(entries) => {
-					const reachedEnd =
-						entries.some((entry) => entry.isIntersecting) &&
-						document.documentElement.scrollHeight > window.innerHeight;
-					if (reachedEnd === atEnd) return;
-					atEnd = reachedEnd;
-					recompute();
-				},
-				{ rootMargin: '0px 0px 2px 0px', threshold: 0 }
-			).observe(sentinel);
+			// Inert sentinel at the document end. A real 1px box: a zero-area
+			// target is not guaranteed to report `isIntersecting`, which would
+			// leave the final section unmarked. Absolutely positioned with no
+			// offsets, so it stays out of flow at its static spot at the document
+			// end and adds no layout; it is never focusable.
+			const existing = document.querySelector('[data-case-rail-sentinel]');
+			const sentinel =
+				existing instanceof HTMLElement ? existing : document.createElement('div');
+			if (!existing) {
+				sentinel.dataset.caseRailSentinel = '';
+				sentinel.setAttribute('aria-hidden', 'true');
+				sentinel.style.cssText =
+					'position: absolute; height: 1px; width: 1px; pointer-events: none;';
+				document.body.append(sentinel);
+			}
+			// Guard the observer too, so a re-executed script cannot stack them.
+			if (!sentinel.dataset.caseRailObserved) {
+				sentinel.dataset.caseRailObserved = '';
+				new IntersectionObserver(
+					(entries) => {
+						const reachedEnd =
+							entries.some((entry) => entry.isIntersecting) &&
+							document.documentElement.scrollHeight > window.innerHeight;
+						if (reachedEnd === atEnd) return;
+						atEnd = reachedEnd;
+						recompute();
+					},
+					// A modest 8px window below the viewport: enough that the very
+					// end registers and small jitter near the bottom cannot drop
+					// the mark, while staying far too small to fire while the
+					// reader is still in the second-to-last section.
+					{ rootMargin: '0px 0px 8px 0px', threshold: 0 }
+				).observe(sentinel);
+			}
 
 			observe();
 			let resizeFrame = 0;
