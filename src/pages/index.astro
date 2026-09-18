@@ -272,8 +272,8 @@ const searchableText = (study: (typeof studies)[number]) =>
                 padding-block: clamp(2.5rem, 7vw, 4.5rem)
                     clamp(4rem, 11vw, 8rem);
             }
-            /* Hero copy sits on the left tracks; the metadata rail (commit B)
-               is deliberately offset down the right, not centred against it. */
+            /* Hero copy sits on the left tracks; the metadata rail is
+               deliberately offset down the right, not centred against it. */
             .portfolio-hero-copy {
                 grid-column: 1 / 8;
             }
@@ -398,9 +398,10 @@ const searchableText = (study: (typeof studies)[number]) =>
                 padding-block: clamp(4rem, 10vw, 7rem)
                     clamp(2rem, 5vw, 3rem);
             }
-            /* Section heading is stacked flush with the content it introduces;
-               the two are separated by the grid row gap rather than a
-               trailing margin. */
+            /* Section heading is stacked flush with the content it introduces.
+               The two grid sections (focus, lead) are separated by the grid
+               row gap rather than a trailing margin; the explorer is not a
+               grid and instead gets its spacing from the subtitle's margin. */
             .portfolio-section-heading {
                 grid-column: 1 / 8;
                 margin: 0;
