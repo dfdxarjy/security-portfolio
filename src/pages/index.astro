@@ -303,17 +303,33 @@ const searchableText = (study: (typeof studies)[number]) =>
             .portfolio-nav a:focus-visible {
                 color: var(--accent);
             }
-            /* Three-state theme control matching the Starlight case-page idiom:
-               a leading icon for the selected state, the label, then a caret —
-               bare monospace text in muted grey, no filled box and no
-               underline. The --control-line rule governs borders that exist;
-               Starlight's control is borderless, so this one is too, and the
-               hover colour shift plus the global focus ring carry the
-               affordances instead. */
+            /* Three-state theme control mirroring the Starlight case-page
+               select: a leading icon for the selected state, the label, then a
+               caret — bare monospace text, no filled box and no underline. The
+               --control-line rule governs borders that exist; Starlight's
+               control is borderless, so this one is too, and the hover colour
+               shift plus the global focus ring carry the affordances.
+
+               This control intentionally mirrors Starlight's theme select, and
+               both derive their sizes from the same --sl-* variables: font size
+               from --sl-text-sm, width from --sl-select-width, state-icon and
+               caret sizes from --sl-label-icon-size / --sl-caret-size, and the
+               inline padding from those icon sizes plus --sl-inline-padding.
+               Text colour is --sl-color-gray-2. Never reintroduce a local
+               literal here; change the shared variable so the two controls
+               cannot drift. The standalone homepage does not load Starlight's
+               props.css, so the tokens are declared here at Starlight's own
+               values. */
             .portfolio-theme {
+                --sl-label-icon-size: 0.875rem;
+                --sl-caret-size: 1.25rem;
+                --sl-inline-padding: 0.5rem;
+                --sl-select-width: 6.25em;
+                --sl-text-sm: 0.875rem;
                 position: relative;
                 display: inline-flex;
                 align-items: center;
+                color: var(--sl-color-gray-2);
             }
             /* Decorative vertical hairline between the nav links and the
                control. Mirrors Starlight's header divider — a 2rem
@@ -346,20 +362,27 @@ const searchableText = (study: (typeof studies)[number]) =>
             .portfolio-theme-select {
                 appearance: none;
                 -webkit-appearance: none;
-                /* Matches Starlight's --sl-select-width: 6.25em so the header
-                   width does not shift between Auto / Light / Dark. */
-                min-width: 6.25em;
+                /* Starlight's --sl-select-width keeps the header width stable
+                   between Auto / Light / Dark. */
+                min-width: var(--sl-select-width);
                 min-height: 1.5rem;
                 border: 0;
                 border-radius: 0;
-                /* Reserve room for the leading state icon (~0.875rem) and the
-                   caret (~1.25rem), as Starlight's own Select does. */
-                padding: 0.25rem 2rem 0.25rem 1.625rem;
+                /* Reserve room for the leading state icon and the caret exactly
+                   as Starlight's Select derives it, so a token change moves
+                   both controls. */
+                padding-block: 0.25rem;
+                padding-inline: calc(
+                        var(--sl-label-icon-size) + var(--sl-inline-padding) +
+                            0.25rem
+                    )
+                    calc(
+                        var(--sl-caret-size) + var(--sl-inline-padding) + 0.25rem
+                    );
                 background: transparent;
-                color: var(--muted);
+                color: inherit;
                 font-family: var(--font-mono), ui-monospace, monospace;
-                /* Starlight's effective --sl-text-sm size for this control. */
-                font-size: 0.875rem;
+                font-size: var(--sl-text-sm);
                 cursor: pointer;
             }
             .portfolio-theme-select:hover,
@@ -372,10 +395,10 @@ const searchableText = (study: (typeof studies)[number]) =>
                 position: absolute;
                 left: 0;
                 top: 50%;
-                width: 0.875rem;
-                height: 0.875rem;
+                width: var(--sl-label-icon-size);
+                height: var(--sl-label-icon-size);
                 transform: translateY(-50%);
-                color: var(--muted);
+                color: inherit;
                 pointer-events: none;
                 opacity: 0;
             }
@@ -390,9 +413,9 @@ const searchableText = (study: (typeof studies)[number]) =>
             .portfolio-theme-caret {
                 position: absolute;
                 right: 0;
-                width: 1.25rem;
-                height: 1.25rem;
-                color: var(--muted);
+                width: var(--sl-caret-size);
+                height: var(--sl-caret-size);
+                color: inherit;
                 pointer-events: none;
             }
             .portfolio-theme-select:hover ~ .portfolio-theme-caret,
@@ -1071,71 +1094,55 @@ const searchableText = (study: (typeof studies)[number]) =>
                             <option value="auto" selected>Auto</option>
                         </select>
                         {/* Leading state icon: exactly one is visible, picked
-                            from data-theme-choice. Starlight swaps these three
-                            glyphs for its own picker; this keeps the anatomy
-                            without importing from @astrojs/starlight. */}
+                            from data-theme-choice. These are Starlight's own
+                            filled theme glyphs (laptop / sun / moon) taken from
+                            its theme-icons template, so the homepage matches the
+                            case-page picker without importing from
+                            @astrojs/starlight. */}
                         <svg
                             class="portfolio-theme-icon portfolio-theme-icon--auto"
                             viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.5"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
+                            fill="currentColor"
                             aria-hidden="true"
                             focusable="false"
                         >
                             <path
-                                d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16"
+                                d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"
                             />
                         </svg>
                         <svg
                             class="portfolio-theme-icon portfolio-theme-icon--light"
                             viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.5"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            aria-hidden="true"
-                            focusable="false"
-                        >
-                            <circle cx="12" cy="12" r="4" />
-                            <path d="M12 2v2" />
-                            <path d="M12 20v2" />
-                            <path d="m4.93 4.93 1.41 1.41" />
-                            <path d="m17.66 17.66 1.41 1.41" />
-                            <path d="M2 12h2" />
-                            <path d="M20 12h2" />
-                            <path d="m6.34 17.66-1.41 1.41" />
-                            <path d="m19.07 4.93-1.41 1.41" />
-                        </svg>
-                        <svg
-                            class="portfolio-theme-icon portfolio-theme-icon--dark"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.5"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            aria-hidden="true"
-                            focusable="false"
-                        >
-                            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
-                        </svg>
-                        <svg
-                            class="portfolio-theme-caret"
-                            viewBox="0 0 16 16"
-                            fill="none"
+                            fill="currentColor"
                             aria-hidden="true"
                             focusable="false"
                         >
                             <path
-                                d="M4 6l4 4 4-4"
-                                stroke="currentColor"
-                                stroke-width="1.5"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
+                                d="M5 12a1 1 0 0 0-1-1H3a1 1 0 0 0 0 2h1a1 1 0 0 0 1-1Zm.64 5-.71.71a1 1 0 0 0 0 1.41 1 1 0 0 0 1.41 0l.71-.71A1 1 0 0 0 5.64 17ZM12 5a1 1 0 0 0 1-1V3a1 1 0 0 0-2 0v1a1 1 0 0 0 1 1Zm5.66 2.34a1 1 0 0 0 .7-.29l.71-.71a1 1 0 1 0-1.41-1.41l-.66.71a1 1 0 0 0 0 1.41 1 1 0 0 0 .66.29Zm-12-.29a1 1 0 0 0 1.41 0 1 1 0 0 0 0-1.41l-.71-.71a1.004 1.004 0 1 0-1.43 1.41l.73.71ZM21 11h-1a1 1 0 0 0 0 2h1a1 1 0 0 0 0-2Zm-2.64 6A1 1 0 0 0 17 18.36l.71.71a1 1 0 0 0 1.41 0 1 1 0 0 0 0-1.41l-.76-.66ZM12 6.5a5.5 5.5 0 1 0 5.5 5.5A5.51 5.51 0 0 0 12 6.5Zm0 9a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Zm0 3.5a1 1 0 0 0-1 1v1a1 1 0 0 0 2 0v-1a1 1 0 0 0-1-1Z"
+                            />
+                        </svg>
+                        <svg
+                            class="portfolio-theme-icon portfolio-theme-icon--dark"
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            aria-hidden="true"
+                            focusable="false"
+                        >
+                            <path
+                                d="M21.64 13a1 1 0 0 0-1.05-.14 8.049 8.049 0 0 1-3.37.73 8.15 8.15 0 0 1-8.14-8.1 8.59 8.59 0 0 1 .25-2A1 1 0 0 0 8 2.36a10.14 10.14 0 1 0 14 11.69 1 1 0 0 0-.36-1.05Zm-9.5 6.69A8.14 8.14 0 0 1 7.08 5.22v.27a10.15 10.15 0 0 0 10.14 10.14 9.784 9.784 0 0 0 2.1-.22 8.11 8.11 0 0 1-7.18 4.32v-.04Z"
+                            />
+                        </svg>
+                        {/* Caret uses Starlight's own filled down-caret glyph,
+                            sized from the same token. */}
+                        <svg
+                            class="portfolio-theme-caret"
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            aria-hidden="true"
+                            focusable="false"
+                        >
+                            <path
+                                d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"
                             />
                         </svg>
                     </label>
