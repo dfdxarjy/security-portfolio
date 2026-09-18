@@ -213,6 +213,28 @@ select {
 .sl-markdown-content :where(blockquote) { border-inline-start-color: var(--portfolio-accent); }
 .sidebar-content { border-inline-end-color: var(--portfolio-line); }
 
+/* Starlight header translucency. Starlight paints the fixed header opaque via
+   `background-color: var(--sl-color-bg-nav)` (remapped through --sl-color-gray-6
+   above); content already scrolls beneath it. `color-mix` keeps the surface at
+   85% alpha so header text retains AA contrast over moving content. Blur is an
+   accepted baseline — Starlight's own search backdrop already uses it. Fallbacks
+   restore the opaque token where blur/transparency is unavailable; forced-colors
+   keeps the system canvas. */
+.page > header {
+	background-color: color-mix(in srgb, var(--sl-color-bg-nav) 85%, transparent);
+	-webkit-backdrop-filter: blur(12px);
+	backdrop-filter: blur(12px);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+	.page > header { background-color: var(--sl-color-bg-nav); }
+}
+@media (prefers-reduced-transparency: reduce) {
+	.page > header { background-color: var(--sl-color-bg-nav); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@media (forced-colors: active) {
+	.page > header { background-color: Canvas; -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+
 /* Shared branded footer, used by the homepage and src/components/SiteFooter.astro. */
 .portfolio-footer { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; justify-content: space-between; align-items: baseline; border-top: 1px solid var(--portfolio-line); margin-top: 1.5rem; padding-top: 1.5rem; color: var(--portfolio-muted); font-size: 0.85rem; }
 .portfolio-footer p { margin: 0; }
