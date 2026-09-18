@@ -210,19 +210,34 @@ const searchableText = (study: (typeof studies)[number]) =>
                 position: sticky;
                 top: 0;
                 z-index: 10;
-                background-color: color-mix(
-                    in srgb,
-                    var(--portfolio-surface) 85%,
-                    transparent
-                );
+                /* Opaque first: a browser with blur but no `color-mix` keeps a
+                   solid tinted header rather than a blurred, untinted one.
+                   The translucent layer is applied only where color-mix is
+                   genuinely supported. */
+                background-color: var(--portfolio-surface);
                 -webkit-backdrop-filter: blur(12px);
                 backdrop-filter: blur(12px);
             }
-            /* Anchor targets must clear the sticky header. Measured header
-               height: 87.8px at one row, 118.1px once the nav wraps, and
-               150.1px in the max-width:380px stacked layout. */
+            /* Muted nav text must clear AA over the worst plausible backdrop
+               (`--portfolio-ink` content scrolling beneath the header). At
+               0.95 alpha the composite over pure ink is ~4.93:1, above the
+               4.5:1 threshold; 0.90 only reached ~4.45:1. */
+            @supports (color: color-mix(in srgb, red 50%, transparent)) {
+                .portfolio-header {
+                    background-color: color-mix(
+                        in srgb,
+                        var(--portfolio-surface) 95%,
+                        transparent
+                    );
+                }
+            }
+            /* Anchor targets must clear the sticky header. The rem values are
+               the no-JS fallback (measured heights: 87.8px at one row, 118.1px
+               once the nav wraps, 150.1px in the max-width:380px layout); the
+               inline script below measures the real header and writes
+               `--portfolio-header-h`, which wins wherever scripting is on. */
             :global(html) {
-                scroll-padding-top: 5.5rem;
+                scroll-padding-top: var(--portfolio-header-h, 5.5rem);
             }
             @supports not (
                 (backdrop-filter: blur(1px)) or
@@ -230,6 +245,15 @@ const searchableText = (study: (typeof studies)[number]) =>
             ) {
                 .portfolio-header {
                     background-color: var(--portfolio-surface);
+                }
+            }
+            /* Blur costs compositing; halve the radius on narrow screens where
+               two full-width blurred headers, the fixed grain and the
+               scroll-linked rail can all run at once. Reduced, never removed. */
+            @media (max-width: 56.25rem) {
+                .portfolio-header {
+                    -webkit-backdrop-filter: blur(8px);
+                    backdrop-filter: blur(8px);
                 }
             }
             @media (prefers-reduced-transparency: reduce) {
@@ -248,12 +272,12 @@ const searchableText = (study: (typeof studies)[number]) =>
             }
             @media (max-width: 37.5rem) {
                 :global(html) {
-                    scroll-padding-top: 7.5rem;
+                    scroll-padding-top: var(--portfolio-header-h, 7.5rem);
                 }
             }
             @media (max-width: 380px) {
                 :global(html) {
-                    scroll-padding-top: 9.5rem;
+                    scroll-padding-top: var(--portfolio-header-h, 9.5rem);
                 }
             }
             .portfolio-brand {
@@ -342,7 +366,11 @@ const searchableText = (study: (typeof studies)[number]) =>
             /* Scroll-linked drift: transform only, gated so engines without
                scroll timelines never run the keyframes on the document
                timeline, and motion-averse visitors keep the static rail.
-               `scroll(root block)` makes progress 0 at the page top. */
+               `scroll(root block)` makes progress 0 at the page top.
+               `min-width: 56.26rem` deliberately sits 0.01rem above the
+               `max-width: 56.25rem` single-column fold below so the drift is
+               off at the exact fold; do not "tidy" it to 56.25rem, or a
+               boundary width would run both rules at once. */
             @supports (animation-timeline: scroll()) {
                 @media (prefers-reduced-motion: no-preference) and (min-width: 56.26rem) {
                     .portfolio-hero-rail {
@@ -1535,6 +1563,30 @@ const searchableText = (study: (typeof studies)[number]) =>
                     lead.style.removeProperty("--lead-mx");
                     lead.style.removeProperty("--lead-my");
                 });
+            })();
+        </script>
+        <script is:inline>
+            // Keep in-page anchors clear of the sticky header: write the
+            // measured header height to `--portfolio-header-h`, which
+            // `scroll-padding-top` consumes. The static rem values in the
+            // stylesheet remain the no-JS fallback, so anchors still clear the
+            // header with scripting disabled. ResizeObserver (where available)
+            // re-measures whenever the header reflows, e.g. when the nav wraps.
+            (() => {
+                const header = document.querySelector(".portfolio-header");
+                if (!header) return;
+                const root = document.documentElement;
+                const measure = () =>
+                    root.style.setProperty(
+                        "--portfolio-header-h",
+                        `${header.getBoundingClientRect().height}px`,
+                    );
+                measure();
+                if (typeof ResizeObserver !== "undefined") {
+                    new ResizeObserver(measure).observe(header);
+                } else {
+                    window.addEventListener("resize", measure);
+                }
             })();
         </script>
         <script is:inline>

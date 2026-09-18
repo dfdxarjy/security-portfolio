@@ -219,11 +219,32 @@ select {
    85% alpha so header text retains AA contrast over moving content. Blur is an
    accepted baseline — Starlight's own search backdrop already uses it. Fallbacks
    restore the opaque token where blur/transparency is unavailable; forced-colors
-   keeps the system canvas. */
+   keeps the system canvas.
+
+   `-webkit-backdrop-filter` here is progressive-only: the production minifier
+   strips the prefixed declaration, so a WebKit build that supports only the
+   prefix paints the opaque fallback rather than a translucent header without
+   blur. That is the intended degradation. */
 .page > header {
-	background-color: color-mix(in srgb, var(--sl-color-bg-nav) 85%, transparent);
+	/* Opaque first so a browser with blur but no `color-mix` keeps a solid
+	   header instead of a blurred, untinted one. */
+	background-color: var(--sl-color-bg-nav);
 	-webkit-backdrop-filter: blur(12px);
 	backdrop-filter: blur(12px);
+}
+@supports (color: color-mix(in srgb, red 50%, transparent)) {
+	.page > header {
+		background-color: color-mix(in srgb, var(--sl-color-bg-nav) 85%, transparent);
+	}
+}
+/* Blur costs compositing; halve the radius on narrow screens, where two
+   full-width blurred headers and the fixed grain can run at once. Reduced,
+   never removed. */
+@media (max-width: 56.25rem) {
+	.page > header {
+		-webkit-backdrop-filter: blur(8px);
+		backdrop-filter: blur(8px);
+	}
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
 	.page > header { background-color: var(--sl-color-bg-nav); }
