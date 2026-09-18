@@ -19,16 +19,12 @@ export default function HomeHero({ counts }: { counts: Counts }) {
 				</p>
 				<h1
 					id="portfolio-title"
-					className="mt-4 max-w-[14ch] text-[clamp(3rem,1.75rem+6.5vw,7.5rem)] leading-[0.92] tracking-[-0.07em]"
+					className="mt-4 max-w-[14ch] text-[clamp(3rem,1.75rem+6.5vw,7.5rem)] leading-[0.92] tracking-[-0.02em]"
 				>
 					Taktak
 				</h1>
 				<p className="mt-5 max-w-[68ch] text-pretty text-lg text-muted-foreground">
-					I'm interested in cybersecurity, particularly red and blue team
-					work, incident investigation, and Windows and Active Directory
-					environments. Most of my time goes into building labs, working
-					through HTB content, and exploring attacks from both the offensive
-					and defensive sides.
+					I'm focused on cybersecurity, with an emphasis on Active Directory, penetration testing, and incident investigation. I'm currently expanding my skills in SOC operations, DFIR, and detection engineering through hands-on labs, HTB content, and practical security projects.
 				</p>
 				<div className="mt-7 flex flex-wrap gap-3">
 					<a
