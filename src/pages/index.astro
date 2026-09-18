@@ -1014,7 +1014,7 @@ const searchableText = (study: (typeof studies)[number]) =>
                         <a href="/prolabs/">Pro Labs</a>
                         <a href="/profiles/">Profiles</a>
                     </nav>
-                    <label class="portfolio-theme" id="portfolio-theme">
+                    <label class="portfolio-theme">
                         <span class="portfolio-theme-label">
                             Select theme
                         </span>
@@ -1043,6 +1043,26 @@ const searchableText = (study: (typeof studies)[number]) =>
                             />
                         </svg>
                     </label>
+                    {/* Sync the control's value before the body script runs so an
+                        explicit stored preference is not briefly shown as
+                        "Auto". No listener, no storage write, no data-theme. */}
+                    <script is:inline>
+                        (() => {
+                            const select = document.getElementById(
+                                "portfolio-theme-select",
+                            );
+                            if (!select) return;
+                            let stored = null;
+                            try {
+                                stored =
+                                    localStorage.getItem("starlight-theme");
+                            } catch {}
+                            select.value =
+                                stored === "light" || stored === "dark"
+                                    ? stored
+                                    : "auto";
+                        })();
+                    </script>
                 </div>
             </header>
 
