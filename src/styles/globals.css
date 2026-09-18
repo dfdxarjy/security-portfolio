@@ -118,6 +118,34 @@
 .portfolio-prose :where(strong, b) { font-weight: 600; }
 .portfolio-prose :where(em, i) { font-style: italic; }
 
+/*
+ * Category index listing: ruled list of descendant case studies, grouped by
+ * directory. Lives inside .portfolio-prose, so it overrides the disc marker
+ * and prose padding with a flat, hairline-separated list (§12.4).
+ */
+.portfolio-index {
+	margin: 1.5rem 0 2rem;
+	border-top: 1px solid var(--portfolio-line);
+}
+.portfolio-index h2 { margin-top: 2rem; }
+.portfolio-index ul {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+.portfolio-index li {
+	margin: 0;
+	padding: 0.6rem 0;
+	border-bottom: 1px solid var(--portfolio-line);
+}
+.portfolio-index a { font-weight: 500; }
+.portfolio-index__description {
+	display: block;
+	margin-top: 0.2rem;
+	color: var(--portfolio-muted);
+	font-size: var(--step--1);
+}
+
 .portfolio-prose blockquote {
 	margin: 1.5rem 0;
 	padding-block: 0.25rem;

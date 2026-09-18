@@ -139,6 +139,46 @@ const labelFor = (segment: string) =>
 		.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
 		.join(' ');
 
+// Index entries would otherwise dead-end: list their descendant case studies,
+// grouped by the directory they live in. Same newest-first / id-tiebreak order
+// as the related list above. Leaf category pages yield a single group.
+const isIndex = isIndexEntry(entry);
+const descendantGroups: {
+	label: string;
+	items: { href: string; title: string; description?: string }[];
+}[] = [];
+if (isIndex) {
+	const prefix = entry.id + '/';
+	const descendants = (await getCollection('docs'))
+		.filter(
+			(item) =>
+				item.data.type === 'case-study' && item.id.startsWith(prefix),
+		)
+		.sort((a, b) => {
+			const aDate = a.data.addedAt ?? '';
+			const bDate = b.data.addedAt ?? '';
+			return aDate === bDate ? a.id.localeCompare(b.id) : bDate.localeCompare(aDate);
+		});
+	const grouped = new Map<string, typeof descendants>();
+	for (const item of descendants) {
+		const segment = item.id.split('/').at(-2) ?? '';
+		const group = grouped.get(segment);
+		if (group) group.push(item);
+		else grouped.set(segment, [item]);
+	}
+	for (const [segment, items] of grouped) {
+		descendantGroups.push({
+			label: labelFor(segment),
+			items: items.map((item) => ({
+				href: '/' + item.id + '/',
+				title: item.data.title,
+				description: item.data.description,
+			})),
+		});
+	}
+	descendantGroups.sort((a, b) => a.label.localeCompare(b.label));
+}
+
 // JSON-LD is emitted only on case pages: an Article node plus a BreadcrumbList
 // built from the canonical pathname. Non-case pages get none.
 let jsonLd: Record<string, unknown> | undefined;
@@ -268,6 +308,32 @@ const panelProps = {
 				<article class="portfolio-prose">
 					<h1 id="_top">{entry.data.title}</h1>
 					<Content />
+					{
+						isIndex && descendantGroups.length > 0 && (
+							<nav
+								class="portfolio-index"
+								aria-label={`Case studies in ${entry.data.title}`}
+							>
+								{descendantGroups.map((group) => (
+									<>
+										{descendantGroups.length > 1 && <h2>{group.label}</h2>}
+										<ul>
+											{group.items.map((item) => (
+												<li>
+													<a href={item.href}>{item.title}</a>
+													{item.description && (
+														<span class="portfolio-index__description">
+															{item.description}
+														</span>
+													)}
+												</li>
+											))}
+										</ul>
+									</>
+								))}
+							</nav>
+						)
+					}
 				</article>
 				{
 					!isCase && (
