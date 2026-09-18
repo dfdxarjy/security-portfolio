@@ -24,7 +24,7 @@ export default function HomeHero({ counts }: { counts: Counts }) {
 					Taktak
 				</h1>
 				<p className="mt-5 max-w-[68ch] text-pretty text-lg text-muted-foreground">
-					I'm focused on cybersecurity, with an emphasis on Active Directory, penetration testing, and incident investigation. I'm currently expanding my skills in SOC operations, DFIR, and detection engineering through hands-on labs, HTB content, and practical security projects.
+					I focus on cybersecurity, with an emphasis on Active Directory, penetration testing, and incident investigation. I'm currently expanding my skills in SOC operations, DFIR, and detection engineering. I learn them through hands-on labs, HTB content, and practical security projects.
 				</p>
 				<div className="mt-7 flex flex-wrap gap-3">
 					<a

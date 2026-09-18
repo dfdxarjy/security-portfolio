@@ -197,8 +197,7 @@ export default function Explorer({ studies }: { studies: Study[] }) {
 				</p>
 			</div>
 			<p className="mt-2 mb-6 text-pretty text-sm text-muted-foreground">
-				Browse all {studies.length} published case studies, then narrow by
-				focus or keyword.
+				{studies.length} published case studies. Narrow by focus or keyword.
 			</p>
 
 			{/* Search/sort row is separate from the focus filters below. */}
@@ -333,8 +332,7 @@ export default function Explorer({ studies }: { studies: Study[] }) {
 				hidden={matched.length > 0}
 				className="rounded-xl border border-dashed border-border p-8 text-center text-muted-foreground"
 			>
-				Nothing matches that combination. Clear a focus filter or search for
-				a tool, protocol, CVE, or technique.
+				No case studies match. Clear a filter or broaden the search.
 			</p>
 		</section>
 	);

@@ -1,6 +1,6 @@
 ---
 title: All Work
-description: Searchable, filterable library of reviewed security investigations and methodologies.
+description: Reviewed security investigations and methodologies, searchable and filterable.
 ---
 
-Searchable, filterable library of reviewed security investigations and methodologies, split into **Machines** and **Investigations**.
+Reviewed investigations and methodologies, searchable and filterable, split into **Machines** and **Investigations**.

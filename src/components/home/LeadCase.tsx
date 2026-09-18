@@ -17,8 +17,7 @@ export default function LeadCase({
 					Latest case
 				</h2>
 				<p className="mt-1 text-muted-foreground">
-					The most recent addition; the explorer below lists every published
-					study.
+					The most recent addition.
 				</p>
 			</div>
 			{study && (
