@@ -77,8 +77,14 @@ const {
 				document.documentElement.style.colorScheme = theme;
 				// Opt in to the scroll-reveal gate before first paint so reveal targets
 				// are never painted hidden; without JS the class is absent and all content
-				// stays visible.
+				// stays visible. The gate is fail-open: the observer cancels this timer
+				// once it starts, but if the observer is blocked by CSP or init fails,
+				// the timer removes the gate after 2 seconds so targets cannot stay
+				// hidden forever.
 				document.documentElement.classList.add("js-reveal");
+				window.__revealFailOpenTimer = window.setTimeout(() => {
+					document.documentElement.classList.remove("js-reveal");
+				}, 2000);
 			})();
 		</script>
 		<style is:global>
@@ -152,9 +158,16 @@ const {
 			// Scroll reveal: transform + opacity only, one observer, no scroll
 			// listener. Static data-reveal targets and direct Markdown prose blocks
 			// are observed. Reduced-motion users get the final state immediately and
-			// no observer runs. If the observer is unavailable or init throws, every
+			// no observer runs. This script first cancels the prepaint fail-open timer
+			// so normal observer operation keeps reveal active past the 2-second mark;
+			// a blocked or failed observer never reaches this line, leaving the timer
+			// to fail open. If the observer is unavailable or init throws, every
 			// target is shown, so a failure can never leave content hidden.
 			(() => {
+				if (window.__revealFailOpenTimer) {
+					window.clearTimeout(window.__revealFailOpenTimer);
+					delete window.__revealFailOpenTimer;
+				}
 				document.querySelectorAll(".portfolio-prose").forEach((prose) => {
 					prose
 						.querySelectorAll(
@@ -182,7 +195,7 @@ const {
 									}
 								});
 							},
-							{ threshold: 0.15, rootMargin: "0px 0px -8% 0px" },
+							{ threshold: 0, rootMargin: "0px 0px -8% 0px" },
 						);
 						items.forEach((el) => io.observe(el));
 					}

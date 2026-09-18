@@ -153,8 +153,12 @@ const jsonLd = {
 		<div class="mx-auto w-full max-w-[86rem] px-4 pb-16 lg:px-8">
 			<HomeHero counts={counts} />
 			<FocusCards counts={counts} />
-			<LeadCase study={leadStudy} meta={leadMeta} client:load />
-			<Explorer studies={studies} client:load />
+			<div data-reveal>
+				<LeadCase study={leadStudy} meta={leadMeta} client:load />
+			</div>
+			<div data-reveal>
+				<Explorer studies={studies} client:load />
+			</div>
 		</div>
 	</main>
 </BaseLayout>

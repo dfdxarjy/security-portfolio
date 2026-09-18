@@ -29,7 +29,7 @@ export default function LeadCase({
 	};
 	return (
 		<section className="py-12" aria-labelledby="lead-title">
-			<div className="max-w-[68ch]" data-reveal>
+			<div className="max-w-[68ch]">
 				<h2
 					id="lead-title"
 					className="text-3xl tracking-[-0.04em] sm:text-4xl"
@@ -43,7 +43,6 @@ export default function LeadCase({
 			{study && (
 				<article
 					className="portfolio-lead relative mt-6 rounded-xl border border-border bg-card p-6"
-					data-reveal
 					onPointerMove={handlePointerMove}
 					onPointerLeave={handlePointerLeave}
 				>

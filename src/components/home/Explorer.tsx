@@ -179,7 +179,6 @@ export default function Explorer({ studies }: { studies: Study[] }) {
 			id="explorer"
 			className="border-t border-border py-12"
 			aria-labelledby="explorer-title"
-			data-reveal
 		>
 			<div className="max-w-[68ch]">
 				<h2
