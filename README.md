@@ -1,11 +1,12 @@
 # security-portfolio
 
-Static portfolio of security case studies and training write-ups, built with Astro and Starlight.
+Static portfolio of security case studies and training write-ups, built with Astro, React, and shadcn/ui.
 
 ## Stack
 
 - [Astro](https://astro.build) 7
-- [@astrojs/starlight](https://starlight.astro.build) for the documentation shell
+- [React](https://react.dev) + [shadcn/ui](https://ui.shadcn.com) for the site shell, rendered by Astro
+- Astro content collections for Markdown content under `src/content/docs/`
 - [@astrojs/sitemap](https://docs.astro.build/en/guides/integrations-guide/sitemap/) for the sitemap
 - pnpm
 

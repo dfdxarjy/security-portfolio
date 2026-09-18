@@ -165,125 +165,17 @@ select {
  * homepage is the single owner of its layout and reuses the tokens above.
  */
 
-/* Starlight shell and long-form content. */
-:root {
-	--sl-color-accent: var(--portfolio-accent);
-	--sl-color-accent-high: var(--portfolio-accent-strong);
-	--sl-color-accent-low: var(--portfolio-accent-soft);
-	--sl-color-white: var(--portfolio-ink);
-
-	/* Wire the Starlight shell to the editorial type system. */
-	--sl-font: var(--font-body);
-	--sl-font-mono: var(--font-mono);
-
-	/* Light greys remapped to the editorial palette so docs match the homepage. */
-	--sl-color-gray-1: #1a1a17;
-	--sl-color-gray-2: #1a1a17;
-	--sl-color-gray-3: #6b655c;
-	--sl-color-gray-4: #8c8477;
-	--sl-color-gray-5: #e2dace;
-	--sl-color-gray-6: #f3eee4;
-	--sl-color-gray-7: #fbf8f1;
-	--sl-color-black: #fbf8f1;
-}
-
-[data-theme='dark'] {
-	--sl-color-gray-1: #efeae1;
-	--sl-color-gray-2: #efeae1;
-	--sl-color-gray-3: #a9a199;
-	--sl-color-gray-4: #6f675d;
-	--sl-color-gray-5: #2c2823;
-	--sl-color-gray-6: #1b1815;
-	--sl-color-gray-7: #14120f;
-	--sl-color-black: #14120f;
-}
-
-.sl-markdown-content { line-height: var(--lh-body); }
-/* Body copy wraps pretty; headings keep `balance`. Code and table cells are
-   excluded so wrapping there stays as authored. */
-.sl-markdown-content :where(p, li) { text-wrap: pretty; }
-.sl-markdown-content :where(h1, h2, h3, h4) { letter-spacing: -0.025em; }
-/* No drop shadows on code frames, tables or blocks: on the dark surface a soft
-   shadow banded visibly (#12.4 also calls for flat surfaces and hairlines).
-   Expressive Code frames and Starlight pre/table already carry their own
-   hairline borders, so removing the shadow loses no definition. */
-.sl-markdown-content :where(code:not(pre code)) { border: 1px solid var(--portfolio-line); border-radius: var(--portfolio-radius-sm); padding: 0.1em 0.3em; }
-.sl-markdown-content :where(th) { color: var(--portfolio-ink); }
-.sl-markdown-content :where(td, th) { font-variant-numeric: tabular-nums; }
-.sl-markdown-content :where(blockquote) { border-inline-start-color: var(--portfolio-accent); }
-.sidebar-content { border-inline-end-color: var(--portfolio-line); }
-
-/* Starlight header translucency. Starlight paints the fixed header opaque via
-   `background-color: var(--sl-color-bg-nav)` (remapped through --sl-color-gray-6
-   above); content already scrolls beneath it. `color-mix` keeps the surface at
-   85% alpha so header text retains AA contrast over moving content. Blur is an
-   accepted baseline — Starlight's own search backdrop already uses it. Fallbacks
-   restore the opaque token where blur/transparency is unavailable; forced-colors
-   keeps the system canvas.
-
-   `-webkit-backdrop-filter` here is progressive-only: the production minifier
-   strips the prefixed declaration, so a WebKit build that supports only the
-   prefix paints the opaque fallback rather than a translucent header without
-   blur. That is the intended degradation. */
-.page > header {
-	/* Opaque first so a browser with blur but no `color-mix` keeps a solid
-	   header instead of a blurred, untinted one. */
-	background-color: var(--sl-color-bg-nav);
-	-webkit-backdrop-filter: blur(12px);
-	backdrop-filter: blur(12px);
-}
-@supports (color: color-mix(in srgb, red 50%, transparent)) {
-	.page > header {
-		background-color: color-mix(in srgb, var(--sl-color-bg-nav) 85%, transparent);
-	}
-}
-/* Blur costs compositing; halve the radius on narrow screens, where two
-   full-width blurred headers and the fixed grain can run at once. Reduced,
-   never removed. */
-@media (max-width: 56.25rem) {
-	.page > header {
-		-webkit-backdrop-filter: blur(8px);
-		backdrop-filter: blur(8px);
-	}
-}
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-	.page > header { background-color: var(--sl-color-bg-nav); }
-}
-@media (prefers-reduced-transparency: reduce) {
-	.page > header { background-color: var(--sl-color-bg-nav); -webkit-backdrop-filter: none; backdrop-filter: none; }
-}
-@media (forced-colors: active) {
-	.page > header { background-color: Canvas; -webkit-backdrop-filter: none; backdrop-filter: none; }
-}
-
 /* Shared branded footer, used by the homepage and src/components/SiteFooter.astro. */
 .portfolio-footer { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; justify-content: space-between; align-items: baseline; border-top: 1px solid var(--portfolio-line); margin-top: 1.5rem; padding-top: 1.5rem; color: var(--portfolio-muted); font-size: 0.85rem; }
 .portfolio-footer p { margin: 0; }
 .portfolio-footer-links { display: flex; flex-wrap: wrap; gap: 0.35rem 1.25rem; }
 .portfolio-footer-links a { color: inherit; text-decoration: none; }
 .portfolio-footer-links a:hover, .portfolio-footer-links a:focus-visible { color: var(--portfolio-accent); }
-/* Starlight doc-page meta/pagination kept above the branded footer. */
-.portfolio-doc-meta { display: flex; flex-wrap: wrap; gap: 0.75rem 3rem; justify-content: space-between; margin-top: 3rem; font-size: var(--sl-text-sm); color: var(--portfolio-muted); font-variant-numeric: tabular-nums; }
-.portfolio-doc-meta > :where(a, p) { margin: 0; }
-
 /* Shared credential certificate embed, used by the credential pages. */
 .credential-certificate { width: 100%; height: 760px; min-height: 65vh; border: 1px solid var(--portfolio-line); border-radius: var(--portfolio-radius); background: var(--portfolio-surface-raised); }
 
 @media (max-width: 720px) {
 	.credential-certificate { height: 65vh; min-height: 22rem; overflow: auto; }
-}
-
-@media (max-width: 380px) {
-	.header {
-		align-items: stretch;
-		flex-direction: column;
-		flex-wrap: wrap;
-		height: auto;
-		row-gap: 0.75rem;
-		padding-block: 0.75rem;
-	}
-	.header > :where(.title-wrapper, .right-group) { min-width: 0; }
-	.header > .right-group { flex-wrap: wrap; justify-content: flex-end; max-width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,0 +1,195 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "./portfolio.css";
+
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+/*
+ * shadcn/ui tokens reference the portfolio palette vars directly, so the
+ * component layer swaps with [data-theme='dark'] without a second dark block.
+ */
+:root {
+	--background: var(--portfolio-surface);
+	--foreground: var(--portfolio-ink);
+	--card: var(--portfolio-surface-raised);
+	--card-foreground: var(--portfolio-ink);
+	--popover: var(--portfolio-surface-raised);
+	--popover-foreground: var(--portfolio-ink);
+	--primary: var(--portfolio-accent);
+	--primary-foreground: var(--portfolio-accent-contrast);
+	--secondary: var(--portfolio-accent-soft);
+	--secondary-foreground: var(--portfolio-ink);
+	--muted: var(--portfolio-accent-soft);
+	--muted-foreground: var(--portfolio-muted);
+	--accent: var(--portfolio-accent-soft);
+	--accent-foreground: var(--portfolio-accent-strong);
+	--border: var(--portfolio-line);
+	--input: var(--control-line);
+	--ring: var(--portfolio-accent);
+	--radius: var(--portfolio-radius);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	[data-slot],
+	[data-slot] * {
+		animation: none !important;
+		transition: none !important;
+	}
+}
+
+@theme inline {
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+	/* Two-step radius: controls resolve to --portfolio-radius-sm (0.375rem),
+	   containers to --portfolio-radius (0.875rem). No calc subtraction. */
+	--radius-sm: var(--portfolio-radius-sm);
+	--radius-md: var(--portfolio-radius-sm);
+	--radius-lg: var(--portfolio-radius);
+	--radius-xl: var(--portfolio-radius);
+}
+
+/*
+ * Long-form prose. Starlight previously supplied this whole layer; Tailwind
+ * preflight resets headings/lists/tables/code to inherit, so the article needs
+ * its own typographic system built from the site's own tokens.
+ */
+.portfolio-prose {
+	line-height: var(--lh-body);
+	color: var(--portfolio-ink);
+	overflow-wrap: break-word;
+}
+.portfolio-prose > :first-child { margin-top: 0; }
+
+.portfolio-prose :where(h1, h2, h3, h4, h5, h6) {
+	font-family: var(--font-display);
+	font-weight: 600;
+	line-height: var(--lh-tight);
+	text-wrap: balance;
+	scroll-margin-top: calc(var(--portfolio-header-h, 5.5rem) + 1rem);
+}
+.portfolio-prose h1 { font-size: var(--step-4); letter-spacing: -0.03em; margin: 0 0 1.5rem; }
+.portfolio-prose h2 {
+	font-size: var(--step-3);
+	letter-spacing: -0.025em;
+	margin: 2.75rem 0 1rem;
+	padding-bottom: 0.4rem;
+	border-bottom: 1px solid var(--portfolio-line);
+}
+.portfolio-prose h3 { font-size: var(--step-2); letter-spacing: -0.02em; margin: 2rem 0 0.75rem; }
+.portfolio-prose h4 { font-size: var(--step-1); letter-spacing: -0.01em; margin: 1.5rem 0 0.5rem; }
+.portfolio-prose h5, .portfolio-prose h6 { font-size: var(--step-0); margin: 1.25rem 0 0.5rem; }
+
+.portfolio-prose p { margin: 0 0 1.15rem; text-wrap: pretty; }
+
+.portfolio-prose :where(ul, ol) { margin: 0 0 1.15rem; padding-inline-start: 1.5rem; }
+.portfolio-prose ul { list-style: disc; }
+.portfolio-prose ol { list-style: decimal; }
+.portfolio-prose li { margin-block: 0.35rem; text-wrap: pretty; }
+.portfolio-prose li > :where(ul, ol) { margin-block: 0.35rem; }
+.portfolio-prose :where(li)::marker { color: var(--portfolio-accent); }
+
+.portfolio-prose a {
+	color: var(--portfolio-accent);
+	text-decoration: underline;
+	text-underline-offset: 0.15em;
+}
+.portfolio-prose a:hover,
+.portfolio-prose a:focus-visible { color: var(--portfolio-accent-strong); }
+
+.portfolio-prose :where(strong, b) { font-weight: 600; }
+.portfolio-prose :where(em, i) { font-style: italic; }
+
+.portfolio-prose blockquote {
+	margin: 1.5rem 0;
+	padding-block: 0.25rem;
+	padding-inline-start: 1rem;
+	border-inline-start: 3px solid var(--portfolio-accent);
+	color: var(--portfolio-muted);
+}
+.portfolio-prose hr { border: 0; border-top: 1px solid var(--portfolio-line); margin: 2.5rem 0; }
+.portfolio-prose img { max-width: 100%; height: auto; border-radius: var(--portfolio-radius-sm); }
+
+.portfolio-prose :where(code:not(pre code)) {
+	font-family: var(--font-mono);
+	font-size: 0.9em;
+	background: var(--portfolio-accent-soft);
+	border: 1px solid var(--portfolio-line);
+	border-radius: var(--portfolio-radius-sm);
+	padding: 0.1em 0.35em;
+	overflow-wrap: anywhere;
+}
+
+.portfolio-prose pre {
+	font-family: var(--font-mono);
+	font-size: var(--step--1);
+	line-height: 1.6;
+	background: var(--portfolio-surface-raised);
+	border: 1px solid var(--portfolio-line);
+	border-radius: var(--portfolio-radius);
+	padding: 1rem 1.1rem;
+	margin: 1.25rem 0;
+	overflow-x: auto;
+	overflow-y: hidden;
+	tab-size: 2;
+}
+.portfolio-prose pre code {
+	background: none;
+	border: 0;
+	padding: 0;
+	font-size: inherit;
+	border-radius: 0;
+}
+
+/*
+ * Shiki dual-theme. With `defaultColor: false` the token colours live in
+ * --shiki-light / --shiki-dark; our own `pre` rule paints the surface, so only
+ * the token colours switch with the theme. Without this the blocks keep the
+ * inline default theme and ignore [data-theme].
+ */
+.portfolio-prose .astro-code {
+	background-color: var(--portfolio-surface-raised) !important;
+}
+.portfolio-prose .astro-code,
+.portfolio-prose .astro-code span {
+	color: var(--shiki-light);
+}
+[data-theme='dark'] .portfolio-prose .astro-code,
+[data-theme='dark'] .portfolio-prose .astro-code span {
+	color: var(--shiki-dark);
+}
+
+.portfolio-prose table {
+	width: 100%;
+	margin: 1.5rem 0;
+	border-collapse: collapse;
+	font-size: var(--step--1);
+}
+.portfolio-prose :where(th, td) {
+	border: 1px solid var(--portfolio-line);
+	padding: 0.5rem 0.7rem;
+	text-align: start;
+	vertical-align: top;
+	overflow-wrap: break-word;
+}
+.portfolio-prose :where(th, td):first-child { min-width: 7.5rem; }
+.portfolio-prose th {
+	background: var(--portfolio-accent-soft);
+	color: var(--portfolio-ink);
+	font-weight: 600;
+}
+.portfolio-prose :where(td, th) { font-variant-numeric: tabular-nums; }
