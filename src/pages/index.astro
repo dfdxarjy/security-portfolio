@@ -1251,7 +1251,10 @@ const searchableText = (study: (typeof studies)[number]) =>
             // values are ignored and fall back to defaults; nothing throws.
             const readUrl = () => {
                 const params = new URLSearchParams(window.location.search);
-                const kindParam = params.get("kind");
+                // `focus` was the earlier parameter name; keep it as a
+                // fallback alias so already-shared links keep working. `kind`
+                // wins when both are present.
+                const kindParam = params.get("kind") ?? params.get("focus");
                 active = buttons.some(
                     (button) => button.dataset.filter === kindParam,
                 )
@@ -1360,7 +1363,12 @@ const searchableText = (study: (typeof studies)[number]) =>
                 const searchPart = params.toString();
                 const hash = searchPart ? "#explorer" : window.location.hash;
                 const url = `${window.location.pathname}${searchPart ? `?${searchPart}` : ""}${hash}`;
-                history[push ? "pushState" : "replaceState"](null, "", url);
+                // Idempotent: clicking the already-active filter must not add a
+                // duplicate history entry that makes Back appear to do nothing.
+                const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+                if (url === current) return;
+                if (push) history.pushState(null, "", url);
+                else history.replaceState(null, "", url);
             };
 
             buttons.forEach((button) =>
