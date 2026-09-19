@@ -328,7 +328,6 @@ export default function Explorer({ studies }: { studies: Study[] }) {
 			/>
 
 			<p
-				role="status"
 				hidden={matched.length > 0}
 				className="rounded-xl border border-dashed border-border p-8 text-center text-muted-foreground"
 			>
