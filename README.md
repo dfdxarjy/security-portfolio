@@ -1,6 +1,6 @@
 # security-portfolio
 
-Static portfolio of security case studies and training write-ups, built with Astro, React, and shadcn/ui.
+Static security portfolio of case studies, digital forensics, and credential records, built with Astro, React, and shadcn/ui.
 
 ## Stack
 

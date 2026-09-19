@@ -12,11 +12,11 @@ type Props = {
 	skill?: string
 	tags: string[]
 	published?: string
+	publishedLabel?: string
 	updated?: string
 	updatedLabel?: string
 	evidenceQuality?: string
 	related: RelatedLink[]
-	editUrl?: string
 	reportUrl: string
 }
 
@@ -26,18 +26,18 @@ export function CaseInfoPanel({
 	skill,
 	tags,
 	published,
+	publishedLabel,
 	updated,
 	updatedLabel,
 	evidenceQuality,
 	related,
-	editUrl,
 	reportUrl,
 }: Props) {
 	const rows: [string, string][] = [["Category", categoryLabel]]
 	if (tools.length > 0) rows.push(["Tools", tools.join(", ")])
 	if (skill) rows.push(["Skill", skill])
 	if (tags.length > 0) rows.push(["Tags", tags.join(", ")])
-	if (published) rows.push(["Published", published])
+	if (published) rows.push([publishedLabel ?? "Published", published])
 	if (updated) rows.push([updatedLabel ?? "Updated", updated])
 	if (evidenceQuality) rows.push(["Evidence", evidenceQuality])
 
@@ -80,16 +80,6 @@ export function CaseInfoPanel({
 					Provenance
 				</h2>
 				<ul className="m-0 flex list-none flex-col gap-1.5 p-0 text-[0.78rem]">
-					{editUrl && (
-						<li>
-							<a
-								href={editUrl}
-								className="inline-flex min-h-6 items-center text-foreground no-underline hover:text-primary hover:underline focus-visible:text-primary focus-visible:underline"
-							>
-								Edit on GitHub
-							</a>
-						</li>
-					)}
 					<li>
 						<a
 							href={reportUrl}

@@ -3,11 +3,10 @@ import { getCollection } from "astro:content";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import HomeHero from "../components/home/HomeHero.tsx";
 import FocusCards from "../components/home/FocusCards.tsx";
-import LeadCase from "../components/home/LeadCase.tsx";
 import Explorer from "../components/home/Explorer.tsx";
 import { PERSON, PERSON_ID } from "../lib/schema.ts";
 
-const title = "Taktak — Security Portfolio";
+const title = "TakTak — Security Portfolio";
 const description =
 	"Security case studies across red and blue team work, incident investigation, and Windows and Active Directory environments.";
 
@@ -71,45 +70,17 @@ const studies = studiesRaw.map((study) => {
 		search: searchableText(study),
 	};
 });
-const counts = {
-	all: studies.length,
-	linux: studies.filter((study) => study.category === "linux").length,
-	windows: studies.filter((study) => study.category === "windows").length,
-	dfir: studies.filter((study) => study.category === "dfir").length,
-};
-
-// Lead case is always the newest: explicit immutable `addedAt`
-// (portfolio-addition date) descending, then stable id ascending, first entry.
-// Entries without `addedAt` are omitted here but stay in the explorer. No Git
-// commit time or file mtime is read, and `featured` is not consulted.
-const leadStudyRaw = studiesRaw
-	.filter((study) => Boolean(study.data.addedAt))
+// Hero rail: the newest three case studies, derived from the same serialised
+// payload the explorer uses. Explicit immutable `addedAt` (portfolio-addition
+// date) descending, then stable id ascending. Entries without `addedAt` are
+// omitted. No Git commit time or file mtime is read, and `featured` is not
+// consulted.
+const railStudies = [...studies]
+	.filter((study) => study.addedAt)
 	.sort(
-		(a, b) =>
-			(b.data.addedAt ?? "").localeCompare(a.data.addedAt ?? "") ||
-			a.id.localeCompare(b.id),
-	)[0];
-const leadStudy = leadStudyRaw
-	? {
-			title: leadStudyRaw.data.title,
-			href: `/${leadStudyRaw.id}/`,
-			description: cleanDescription(leadStudyRaw.data.description),
-			label: label(category(leadStudyRaw)),
-		}
-	: null;
-// Mono meta line: tools and tags, omitting any empty part.
-const leadMeta = leadStudyRaw
-	? [
-			leadStudyRaw.data.tools?.length
-				? `Tools: ${leadStudyRaw.data.tools.join(", ")}`
-				: "",
-			leadStudyRaw.data.tags?.length
-				? `Tags: ${leadStudyRaw.data.tags.join(" · ")}`
-				: "",
-		]
-			.filter(Boolean)
-			.join(" · ")
-	: "";
+		(a, b) => b.addedAt.localeCompare(a.addedAt) || a.id.localeCompare(b.id),
+	)
+	.slice(0, 3);
 
 // The only authorised `sameAs` URLs are the Markdown links in the profiles page;
 // derive them from that raw body so no URL is hand-copied into this file.
@@ -149,13 +120,10 @@ const jsonLd = {
 	jsonLd={jsonLd}
 	currentPath="/"
 >
-	<main id="main-content">
-		<div class="mx-auto w-full max-w-[86rem] px-4 pb-16 lg:px-8">
-			<HomeHero counts={counts} />
-			<FocusCards counts={counts} />
-			<div data-reveal>
-				<LeadCase study={leadStudy} meta={leadMeta} />
-			</div>
+	<main id="main-content" tabindex="-1">
+		<div class="mx-auto w-full max-w-[var(--portfolio-max-width)] px-4 pb-16 lg:px-8">
+			<HomeHero studies={railStudies} />
+			<FocusCards />
 			<div data-reveal>
 				<Explorer studies={studies} client:load />
 			</div>

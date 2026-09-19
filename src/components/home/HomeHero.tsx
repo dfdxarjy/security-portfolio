@@ -1,13 +1,6 @@
-import type { Counts } from "./types";
+import type { Study } from "./types";
 
-// Display label for a derived category. Kept identical to the homepage's
-// `label(kind)` so the rail and the explorer filters never diverge.
-const label = (kind: "linux" | "windows" | "dfir") =>
-	kind === "dfir"
-		? "DFIR / Sherlock"
-		: `${kind[0].toUpperCase()}${kind.slice(1)} machine`;
-
-export default function HomeHero({ counts }: { counts: Counts }) {
+export default function HomeHero({ studies }: { studies: Study[] }) {
 	return (
 		<section
 			className="grid grid-cols-1 gap-8 py-16 lg:grid-cols-12 lg:gap-6 lg:py-24"
@@ -21,7 +14,7 @@ export default function HomeHero({ counts }: { counts: Counts }) {
 					id="portfolio-title"
 					className="mt-4 max-w-[14ch] text-[clamp(3rem,1.75rem+6.5vw,7.5rem)] leading-[0.92] tracking-[-0.02em]"
 				>
-					Taktak
+					TakTak
 				</h1>
 				<p className="mt-5 max-w-[68ch] text-pretty text-lg text-muted-foreground">
 					I focus on cybersecurity, with an emphasis on Active Directory, penetration testing, and incident investigation. I'm currently expanding my skills in SOC operations, DFIR, and detection engineering. I learn them through hands-on labs, HTB content, and practical security projects.
@@ -29,36 +22,45 @@ export default function HomeHero({ counts }: { counts: Counts }) {
 				<div className="mt-7 flex flex-wrap gap-3">
 					<a
 						href="#explorer"
-						className="inline-flex items-center rounded-md border border-primary bg-primary px-4 py-2 font-bold text-primary-foreground no-underline hover:brightness-110"
+						className="inline-flex items-center rounded-md border border-primary bg-primary px-4 py-2 font-bold text-primary-foreground no-underline hover:brightness-110 focus-visible:brightness-110"
 					>
 						View case studies
 					</a>
 				</div>
 			</div>
 			<aside
-				className="border-t border-border pt-4 lg:col-span-4 lg:col-start-9 lg:mt-24"
-				aria-label="Case studies by category"
+				className="hidden lg:col-start-8 lg:col-span-5 lg:block"
+				aria-labelledby="case-index-title"
 			>
-				<dl className="grid gap-4">
-					<div className="grid gap-0.5">
-						<dt className="font-mono text-[0.72rem] uppercase tracking-[0.1em] text-muted-foreground">
-							All
-						</dt>
-						<dd className="font-mono text-2xl tabular-nums text-foreground">
-							{counts.all}
-						</dd>
-					</div>
-					{(['linux', 'windows', 'dfir'] as const).map((kind) => (
-						<div className="grid gap-0.5" key={kind}>
-							<dt className="font-mono text-[0.72rem] uppercase tracking-[0.1em] text-muted-foreground">
-								{label(kind)}
-							</dt>
-							<dd className="font-mono text-2xl tabular-nums text-foreground">
-								{counts[kind]}
-							</dd>
-						</div>
-					))}
-				</dl>
+				<div className="border-t border-input pt-5">
+					<h2
+						id="case-index-title"
+						className="font-mono text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground"
+					>
+						Case index
+					</h2>
+					<ul className="mt-2 divide-y divide-input">
+						{studies.map((study) => (
+							<li key={study.id}>
+								<a
+									href={study.href}
+									className="flex flex-col gap-0.5 py-3 no-underline"
+								>
+									<span className="font-medium">{study.title}</span>
+									<span className="font-mono text-xs text-muted-foreground">
+										{study.label}
+									</span>
+								</a>
+							</li>
+						))}
+					</ul>
+					<a
+						href="#explorer"
+						className="mt-2 inline-block font-mono text-xs text-muted-foreground no-underline hover:text-primary"
+					>
+						All case studies
+					</a>
+				</div>
 			</aside>
 		</section>
 	);

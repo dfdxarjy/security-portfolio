@@ -5,6 +5,6 @@ export const PERSON_ID = `${SITE_URL}#person`;
 export const PERSON = {
 	"@type": "Person",
 	"@id": PERSON_ID,
-	name: "Taktak",
+	name: "TakTak",
 	url: SITE_URL,
 };

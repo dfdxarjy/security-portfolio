@@ -14,7 +14,7 @@ const LINKS = [
 export default function SiteFooter() {
 	return (
 		<footer className="portfolio-footer">
-			<div className="mx-auto flex w-full max-w-[86rem] flex-wrap items-baseline justify-between gap-2 px-4 py-4 lg:px-8">
+			<div className="mx-auto flex w-full max-w-[var(--portfolio-max-width)] flex-wrap items-baseline justify-between gap-2 px-4 py-4 lg:px-8">
 				<p>&copy; {new Date().getFullYear()} taktak.hu</p>
 				<nav aria-label="Footer" className="portfolio-footer-links">
 					{LINKS.map(({ href, label }) => (

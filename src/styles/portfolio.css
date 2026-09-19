@@ -66,6 +66,7 @@
 	--portfolio-radius: 0.875rem;
 	--portfolio-radius-sm: 0.375rem;
 	--portfolio-copy: 68ch;
+	--portfolio-max-width: 86rem;
 
 	--surface-grain-opacity: 0.035;
 
@@ -287,6 +288,11 @@ select {
     transition: opacity 240ms ease;
   }
 }
+/* Forced-colours: the spotlight ring is decoration with no information, so hide
+   it outright. The plain border feedback below still marks the hovered card. */
+@media (forced-colors: active) {
+  .portfolio-spotlight::before { display: none; }
+}
 /* Smaller category cards get a tighter falloff than the broad lead-card ring. */
 .portfolio-spotlight--compact {
   --spotlight-radius: 220px;
@@ -303,4 +309,28 @@ select {
   html:not(.js-reveal) .portfolio-spotlight:hover {
     border-color: var(--portfolio-accent);
   }
+}
+
+/* Mobile disclosure summaries (Sections, Contents, Case info) in the docs page
+   template. Native <details>/<summary> semantics and keyboard behaviour stay;
+   the chevron is a CSS-drawn affordance that rotates when the disclosure opens.
+   No icon font or emoji. `list-none` is set in the markup. */
+.portfolio-disclosure {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.portfolio-disclosure::after {
+  content: "";
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 180ms ease;
+}
+details[open] > .portfolio-disclosure::after {
+  transform: rotate(225deg);
 }

@@ -32,9 +32,6 @@ const description = entry.data.description;
 const canonical = new URL(Astro.url.pathname, Astro.site).href;
 const currentPath = Astro.url.pathname;
 
-const editUrl =
-	'https://github.com/taktak0x/security-portfolio/edit/main/' + entry.filePath;
-
 let lastUpdated: string | undefined;
 try {
 	const commitDate = execFileSync(
@@ -81,9 +78,14 @@ const related = (await getCollection('docs'))
 	.slice(0, 3)
 	.map((item) => ({ href: '/' + item.id + '/', title: item.data.title }));
 
+// The case panel's date rows reflect the frontmatter field they carry: only a
+// real `publishedAt` is labelled "Published"; the portfolio-addition date is
+// labelled "Added". Labels never come from the Git commit fallback used for
+// non-case documentation pages.
 const published = entry.data.publishedAt ?? entry.data.addedAt;
+const publishedLabel = entry.data.publishedAt ? 'Published' : 'Added';
 const updated = entry.data.updatedAt;
-const updatedLabel = lastUpdated ? 'Last updated' : 'Updated';
+const updatedLabel = 'Updated';
 
 const reportUrl = `https://github.com/taktak0x/security-portfolio/issues/new?${new URLSearchParams(
 	{
@@ -221,11 +223,11 @@ const panelProps = {
 	skill: entry.data.skill,
 	tags: entry.data.tags ?? [],
 	published,
+	publishedLabel,
 	updated,
 	updatedLabel,
 	evidenceQuality: entry.data.evidenceQuality,
 	related,
-	editUrl,
 	reportUrl,
 };
 ---
@@ -238,12 +240,12 @@ const panelProps = {
 	jsonLd={jsonLd}
 	currentPath={currentPath}
 >
-	<main id="main-content" class="bg-background">
+	<main id="main-content" tabindex="-1" class="bg-background">
 		{
 			!isCase && (
-				<div class="mx-auto w-full max-w-[86rem] px-4 pb-6 xl:hidden">
+				<div class="mx-auto w-full max-w-[var(--portfolio-max-width)] px-4 pb-6 xl:hidden">
 					<details class="rounded-[var(--portfolio-radius)] border border-border bg-card">
-						<summary class="cursor-pointer list-none px-4 py-3 font-mono text-sm font-bold text-foreground">
+						<summary class="cursor-pointer list-none px-4 py-3 font-mono text-sm font-bold text-foreground portfolio-disclosure">
 							Sections
 						</summary>
 						<div class="px-4 pb-4">
@@ -255,11 +257,24 @@ const panelProps = {
 		}
 
 		{
+			isCase && (
+				<div class="mx-auto w-full max-w-[var(--portfolio-max-width)] px-4 pt-6 xl:hidden">
+					<a
+						href={categoryHref}
+						class="font-mono text-[0.78rem] tracking-[0.02em] text-primary no-underline hover:underline focus-visible:underline"
+					>
+						<span aria-hidden="true">←</span> Back to {railLabel}
+					</a>
+				</div>
+			)
+		}
+
+		{
 			isCase &&
 				headings.some((heading) => heading.depth === 2 && heading.slug) && (
-					<div class="mx-auto w-full max-w-[86rem] px-4 pb-6 xl:hidden">
+					<div class="mx-auto w-full max-w-[var(--portfolio-max-width)] px-4 pb-6 xl:hidden">
 						<details class="rounded-[var(--portfolio-radius)] border border-border bg-card">
-							<summary class="cursor-pointer list-none px-4 py-3 font-mono text-sm font-bold text-foreground">
+							<summary class="cursor-pointer list-none px-4 py-3 font-mono text-sm font-bold text-foreground portfolio-disclosure">
 								Contents
 							</summary>
 							<div class="px-4 pb-4">
@@ -283,12 +298,12 @@ const panelProps = {
 		}
 
 		<div
-			class="mx-auto grid w-full max-w-[86rem] grid-cols-1 gap-10 px-4 py-10 lg:px-8 xl:grid-cols-[15rem_minmax(0,1fr)_17rem]"
+			class="mx-auto grid w-full max-w-[var(--portfolio-max-width)] grid-cols-1 gap-10 px-4 py-10 lg:px-8 xl:grid-cols-[15rem_minmax(0,1fr)_17rem]"
 		>
 			<div class="hidden xl:block" data-reveal>
 				{
 					isCase ? (
-						<div class="sticky top-[var(--portfolio-header-h,5.5rem)]">
+						<div class="sticky top-[calc(var(--portfolio-header-h,5.5rem)+1rem)]">
 							<CaseRail
 								client:load
 								categoryHref={categoryHref}
@@ -297,7 +312,7 @@ const panelProps = {
 							/>
 						</div>
 					) : (
-						<div class="sticky top-[var(--portfolio-header-h,5.5rem)]">
+						<div class="sticky top-[calc(var(--portfolio-header-h,5.5rem)+1rem)]">
 							<SidebarNav currentPath={currentPath} />
 						</div>
 					)
@@ -338,7 +353,7 @@ const panelProps = {
 				{
 					!isCase && (
 						<>
-							<DocsMeta editUrl={editUrl} lastUpdated={lastUpdated} />
+							<DocsMeta lastUpdated={lastUpdated} />
 							<Pagination prev={prev} next={next} />
 						</>
 					)
@@ -346,7 +361,7 @@ const panelProps = {
 			</div>
 
 			<div class="hidden xl:block" data-reveal>
-				<div class="sticky top-[var(--portfolio-header-h,5.5rem)]">
+				<div class="sticky top-[calc(var(--portfolio-header-h,5.5rem)+1rem)]">
 					{isCase ? <CaseInfoPanel {...panelProps} /> : <Toc headings={headings} />}
 				</div>
 			</div>
@@ -354,9 +369,9 @@ const panelProps = {
 
 		{
 			isCase && (
-				<div class="mx-auto w-full max-w-[86rem] px-4 pb-10 xl:hidden">
+				<div class="mx-auto w-full max-w-[var(--portfolio-max-width)] px-4 pb-10 xl:hidden">
 					<details class="rounded-[var(--portfolio-radius)] border border-border bg-card">
-						<summary class="cursor-pointer list-none px-4 py-3 font-mono text-sm font-bold text-foreground">
+						<summary class="cursor-pointer list-none px-4 py-3 font-mono text-sm font-bold text-foreground portfolio-disclosure">
 							Case info
 						</summary>
 						<div class="px-4 pb-4">

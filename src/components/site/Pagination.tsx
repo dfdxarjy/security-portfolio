@@ -20,7 +20,7 @@ export function Pagination({ prev, next }: { prev?: PageLink; next?: PageLink })
 					<span className="font-mono text-[0.68rem] tracking-[0.06em] text-muted-foreground uppercase">
 						Previous
 					</span>
-					<span className="text-sm font-medium text-foreground group-hover:text-primary group-hover:underline">
+					<span className="text-sm font-medium text-foreground group-hover:text-primary group-hover:underline group-focus-visible:text-primary group-focus-visible:underline">
 						{prev.title}
 					</span>
 				</a>
@@ -36,7 +36,7 @@ export function Pagination({ prev, next }: { prev?: PageLink; next?: PageLink })
 					<span className="font-mono text-[0.68rem] tracking-[0.06em] text-muted-foreground uppercase">
 						Next
 					</span>
-					<span className="text-sm font-medium text-foreground group-hover:text-primary group-hover:underline">
+					<span className="text-sm font-medium text-foreground group-hover:text-primary group-hover:underline group-focus-visible:text-primary group-focus-visible:underline">
 						{next.title}
 					</span>
 				</a>
