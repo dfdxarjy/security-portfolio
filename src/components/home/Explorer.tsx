@@ -215,7 +215,7 @@ export default function Explorer({ studies }: { studies: Study[] }) {
 						placeholder="Try AD CS, Docker, Kerberos, or event logs"
 						value={state.query}
 						onChange={(event) => onSearch(event.target.value)}
-						className="h-9 w-full min-w-0 rounded-md border border-input bg-card px-3 text-sm text-foreground"
+						className="h-9 w-full min-w-0 rounded-md border border-input bg-card px-3 text-sm text-foreground placeholder:text-muted-foreground"
 					/>
 				</div>
 				<div className="grid gap-1.5">

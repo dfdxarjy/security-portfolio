@@ -139,7 +139,7 @@ export function CaseRail({ categoryHref, categoryLabel, headings }: Props) {
 		>
 			<a
 				href={categoryHref}
-				className="font-mono text-[0.78rem] tracking-[0.02em] text-primary no-underline hover:underline focus-visible:underline"
+				className="inline-flex min-h-6 items-center gap-1 font-mono text-[0.78rem] tracking-[0.02em] text-primary no-underline hover:underline focus-visible:underline"
 			>
 				<span aria-hidden="true">←</span> {categoryLabel}
 			</a>

@@ -29,7 +29,7 @@ export default function HomeHero({ studies }: { studies: Study[] }) {
 				</div>
 			</div>
 			<aside
-				className="hidden lg:col-start-8 lg:col-span-5 lg:block"
+				className="col-span-1 lg:col-start-8 lg:col-span-5"
 				aria-labelledby="case-index-title"
 			>
 				<div className="border-t border-input pt-5">
@@ -44,7 +44,7 @@ export default function HomeHero({ studies }: { studies: Study[] }) {
 							<li key={study.id}>
 								<a
 									href={study.href}
-									className="flex flex-col gap-0.5 py-3 no-underline"
+									className="flex flex-col gap-0.5 py-3 no-underline hover:text-primary focus-visible:text-primary"
 								>
 									<span className="font-medium">{study.title}</span>
 									<span className="font-mono text-xs text-muted-foreground">
@@ -56,7 +56,7 @@ export default function HomeHero({ studies }: { studies: Study[] }) {
 					</ul>
 					<a
 						href="#explorer"
-						className="mt-2 inline-block font-mono text-xs text-muted-foreground no-underline hover:text-primary"
+						className="mt-2 inline-block py-1 font-mono text-xs text-muted-foreground no-underline hover:text-primary"
 					>
 						All case studies
 					</a>
