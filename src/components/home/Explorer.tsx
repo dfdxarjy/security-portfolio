@@ -187,21 +187,13 @@ export default function Explorer({ studies }: { studies: Study[] }) {
 				>
 					Case-study explorer
 				</h2>
-				<p
-					role="status"
-					aria-live="polite"
-					aria-atomic="true"
-					className="mt-1 font-mono tabular-nums text-muted-foreground"
-				>
-					{matched.length} results
+				<p className="mt-1 text-pretty text-sm text-muted-foreground">
+					{studies.length} published case studies. Narrow by focus or keyword.
 				</p>
 			</div>
-			<p className="mt-2 mb-6 text-pretty text-sm text-muted-foreground">
-				{studies.length} published case studies. Narrow by focus or keyword.
-			</p>
 
 			{/* Search/sort row is separate from the focus filters below. */}
-			<div className="mb-4 flex flex-wrap items-end gap-x-4 gap-y-2">
+			<div className="mb-3 flex flex-wrap items-end gap-x-4 gap-y-2">
 				<div className="grid min-w-0 flex-1 basis-64 gap-1.5">
 					<label
 						htmlFor="explorer-search"
@@ -239,7 +231,7 @@ export default function Explorer({ studies }: { studies: Study[] }) {
 			</div>
 
 			<div
-				className="mb-6 flex flex-wrap items-center gap-3"
+				className="mb-4 flex flex-wrap items-center gap-3"
 				role="group"
 				aria-label="Filter case studies"
 			>
@@ -250,7 +242,7 @@ export default function Explorer({ studies }: { studies: Study[] }) {
 								type="button"
 								aria-pressed={state.active === kind}
 								onClick={() => setFilter(kind)}
-								className="cursor-pointer rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground hover:border-primary hover:bg-secondary hover:text-primary aria-pressed:border-primary aria-pressed:bg-secondary aria-pressed:text-primary aria-pressed:underline aria-pressed:underline-offset-4"
+								className="cursor-pointer rounded-md border border-input bg-card px-2.5 py-1.5 text-sm text-foreground hover:border-primary hover:bg-secondary hover:text-primary aria-pressed:border-primary aria-pressed:bg-secondary aria-pressed:text-primary aria-pressed:underline aria-pressed:underline-offset-4"
 							>
 								{kind === "all" ? "All" : label(kind)}{" "}
 								<span className="tabular-nums">({counts[kind]})</span>
@@ -260,45 +252,56 @@ export default function Explorer({ studies }: { studies: Study[] }) {
 				</ul>
 			</div>
 
+			<p
+				role="status"
+				aria-live="polite"
+				aria-atomic="true"
+				className="mb-2 font-mono tabular-nums text-sm text-muted-foreground"
+			>
+				{matched.length} results
+			</p>
+
 			<div
 				ref={gridRef}
 				id="explorer-grid"
 				tabIndex={-1}
-				className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
+				className="border-t border-[var(--portfolio-line)]"
 			>
 				{ordered.map((study) => (
 					<article
 						key={study.id}
-						className="explorer-card relative flex min-w-0 flex-col rounded-xl border border-border bg-card p-5 hover:border-primary focus-within:border-primary"
+						className="explorer-card relative grid gap-1 border-b border-[var(--portfolio-line)] py-4 md:grid-cols-[10rem_1fr] md:gap-x-6"
 						hidden={!visible.has(study.id)}
 					>
-						<span className="font-mono text-xs uppercase tracking-wide text-primary">
+						<span className="font-mono text-xs uppercase tracking-wide text-primary md:pt-1">
 							{study.label}
 						</span>
-						<h3 className="mt-2 text-base leading-snug">
-							<a
-								href={study.href}
-								className="no-underline hover:text-primary focus-visible:text-primary after:absolute after:inset-0 after:rounded-xl after:content-['']"
-							>
-								{study.title}
-							</a>
-						</h3>
-						<p className="mt-2 mb-4 text-pretty text-sm text-muted-foreground">
-							{study.description}
-						</p>
-						<div
-							className="mt-auto flex flex-wrap gap-1.5 pt-2"
-							role="group"
-							aria-label="Topics"
-						>
-							{study.tags.slice(0, 4).map((tag) => (
-								<span
-									key={tag}
-									className="rounded-md bg-secondary px-1.5 py-0.5 text-xs text-primary"
+						<div className="min-w-0">
+							<h3 className="text-base leading-snug">
+								<a
+									href={study.href}
+									className="no-underline hover:text-primary focus-visible:text-primary after:absolute after:inset-0 after:content-['']"
 								>
-									{tag}
-								</span>
-							))}
+									{study.title}
+								</a>
+							</h3>
+							<p className="mt-1 text-pretty text-sm text-muted-foreground">
+								{study.description}
+							</p>
+							<div
+								className="mt-2 flex flex-wrap gap-1.5"
+								role="group"
+								aria-label="Topics"
+							>
+								{study.tags.slice(0, 4).map((tag) => (
+									<span
+										key={tag}
+										className="rounded-sm border border-[var(--portfolio-line)] px-1.5 py-0.5 font-mono text-xs text-muted-foreground"
+									>
+										{tag}
+									</span>
+								))}
+							</div>
 						</div>
 					</article>
 				))}
@@ -328,7 +331,7 @@ export default function Explorer({ studies }: { studies: Study[] }) {
 			<noscript
 				dangerouslySetInnerHTML={{
 					__html:
-						"<style>@layer base{.explorer-card[hidden]{display:flex !important}.explorer-load-more-wrap{display:none !important}}</style>",
+						"<style>@layer base{.explorer-card[hidden]{display:grid !important}.explorer-load-more-wrap{display:none !important}}</style>",
 				}}
 			/>
 

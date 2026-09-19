@@ -7,7 +7,7 @@ const LINKS = [
 	{ href: "https://github.com/taktak0x/security-portfolio", label: "Source" },
 	{
 		href: "https://github.com/taktak0x/security-portfolio/issues/new",
-		label: "Contact",
+		label: "Report site issue",
 	},
 ];
 

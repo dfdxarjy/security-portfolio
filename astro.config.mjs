@@ -23,9 +23,10 @@ export default defineConfig({
 			scriptDirective: {
 				resources: ["'self'"],
 				hashes: [
-					"sha256-Z2WcKnfs9E/VBx56jNyEzuBZIeaDNqH1mNg0E9qrv+8=",
+					"sha256-OT6rncc3q/HAZxFhU8Z7usSuSFUYlKM4kgPHZV03rBg=",
 					"sha256-Zq2C3D7tul51zk4otXeF3betszC3IgHnvOlehVJyxOE=",
-					"sha256-BPKCggQ3aILOs36jpj82KHsITiajwgKUt1tGXkcTFto=",
+					// Legacy homepage-explorer forwarder (index.astro).
+					"sha256-LsBn86Ew7qAP7RTUSO6RteaVmb2xdknEl8jHcf7BE+M=",
 				],
 			},
 			styleDirective: {

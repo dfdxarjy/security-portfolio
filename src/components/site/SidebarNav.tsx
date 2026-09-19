@@ -5,7 +5,7 @@
 type NavLink = { label: string; href: string }
 
 const PRIMARY_LINKS: NavLink[] = [
-	{ label: "All Work", href: "/#explorer" },
+	{ label: "All Work", href: "/case-studies/" },
 	{ label: "Pro Labs", href: "/prolabs/" },
 	{ label: "Profiles", href: "/profiles/" },
 ]
@@ -25,7 +25,7 @@ const GROUPS: { label: string; links: NavLink[] }[] = [
 ]
 
 // Compare path parts only: drop query/hash and the trailing slash, so
-// "/prolabs/" and "/prolabs" match and "/#explorer" matches the homepage "/".
+// "/prolabs/" and "/prolabs" match and "/case-studies/" matches "/case-studies".
 function normalize(path: string): string {
 	const clean = path.split("#")[0].split("?")[0]
 	const trimmed = clean.replace(/\/+$/, "")

@@ -148,6 +148,40 @@
 	color: var(--portfolio-muted);
 	font-size: var(--step--1);
 }
+/* Collection index rows: the anchor fills the row so the ruled line is the
+   target, with the description reading as its supporting line. */
+main[data-page='collection-index'] .portfolio-index a {
+	display: block;
+}
+
+/* Profiles is deliberately light: a ruled index of its public links, with the
+   whole row as the target. */
+main[data-page='profiles'] .portfolio-prose ul {
+	list-style: none;
+	padding-inline-start: 0;
+}
+main[data-page='profiles'] .portfolio-prose li {
+	margin: 0;
+	padding: 0.6rem 0;
+	border-bottom: 1px solid var(--portfolio-line);
+}
+main[data-page='profiles'] .portfolio-prose li:first-child {
+	border-top: 1px solid var(--portfolio-line);
+}
+main[data-page='profiles'] .portfolio-prose li a {
+	display: block;
+	font-weight: 500;
+}
+
+/* Credential records read as a certificate-backed narrative: the title carries
+   a rule and the certificate is framed as the page's artifact. */
+main[data-page='credential'] .portfolio-prose > h1 {
+	padding-bottom: 0.75rem;
+	border-bottom: 1px solid var(--portfolio-line);
+}
+main[data-page='credential'] .credential-certificate {
+	margin-top: 2rem;
+}
 
 .portfolio-prose blockquote {
 	margin: 1.5rem 0;
@@ -209,15 +243,40 @@
 }
 
 /*
- * Case/article grid. The side rails are capped in CSS pixels as well as rem so
- * a 200% text zoom (or a larger user root font) cannot let the rem-sized rails
- * swallow the article column. At the default root the caps equal the previous
- * 15rem/17rem, so the desktop layout is unchanged. Collapses below the breakpoint
- * through the grid-cols-1 base.
+ * Route archetype grid. `data-page` is set from the route on <main>; the base
+ * track list is the case report, and every other shape overrides only its own
+ * tracks. The side rails are capped in CSS pixels as well as rem so a 200% text
+ * zoom (or a larger user root font) cannot let the rem-sized rails swallow the
+ * article column. At the default root the caps equal the previous 15rem/17rem,
+ * so the case layout is unchanged. Collapses below the breakpoint through the
+ * grid-cols-1 base.
  */
 @media (min-width: 80rem) {
-	.portfolio-case-grid {
+	.portfolio-route {
 		grid-template-columns: min(15rem, 240px) minmax(0, 1fr) min(17rem, 272px);
+	}
+	/* Method keeps the reading rail (contents) without the navigation rail. */
+	main[data-page='method'] .portfolio-route {
+		grid-template-columns: minmax(0, 1fr) min(17rem, 272px);
+	}
+	/* Credential records carry no code or tables, so the article track is capped
+	   at the readable prose measure (`--portfolio-copy`) and the certificate
+	   inherits it, keeping the contents rail adjacent instead of leaving an
+	   empty column beside the ~68ch prose. */
+	main[data-page='credential'] .portfolio-route {
+		grid-template-columns: minmax(0, var(--portfolio-copy)) min(17rem, 272px);
+		justify-content: center;
+	}
+	/* The archive keeps the explorer at a readable width, centred. */
+	main[data-page='archive'] .portfolio-route {
+		grid-template-columns: minmax(0, 64rem);
+		justify-content: center;
+	}
+	/* Collection indexes and profiles are single-column editorial pages. */
+	main[data-page='collection-index'] .portfolio-route,
+	main[data-page='profiles'] .portfolio-route {
+		grid-template-columns: minmax(0, 56rem);
+		justify-content: center;
 	}
 }
 

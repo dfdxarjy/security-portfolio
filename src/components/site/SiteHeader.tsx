@@ -9,7 +9,7 @@ import ThemeControl from "./ThemeControl";
 const LINKS = [
 	{ href: "/case-studies/", label: "Case Studies" },
 	{ href: "/prolabs/", label: "Pro Labs" },
-	{ href: "/profiles/", label: "Profiles" },
+	{ href: "/method/", label: "Method" },
 ];
 
 function isCurrent(currentPath: string, href: string): boolean {

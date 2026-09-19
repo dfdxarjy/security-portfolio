@@ -19,25 +19,25 @@ export default function HomeHero({ studies }: { studies: Study[] }) {
 				<p className="mt-5 max-w-[68ch] text-pretty text-lg text-muted-foreground">
 					I focus on cybersecurity, with an emphasis on Active Directory, penetration testing, and incident investigation. I'm currently expanding my skills in SOC operations, DFIR, and detection engineering. I learn them through hands-on labs, HTB content, and practical security projects.
 				</p>
-				<div className="mt-7 flex flex-wrap gap-3">
+				<div className="mt-7 flex flex-wrap items-center gap-x-5 gap-y-3">
 					<a
-						href="#explorer"
+						href="/case-studies/"
 						className="inline-flex items-center rounded-md border border-primary bg-primary px-4 py-2 font-bold text-primary-foreground no-underline hover:brightness-110 focus-visible:brightness-110"
 					>
-						View case studies
+						Browse case studies
 					</a>
 				</div>
 			</div>
 			<aside
 				className="col-span-1 lg:col-start-8 lg:col-span-5"
-				aria-labelledby="case-index-title"
+				aria-labelledby="recent-work-title"
 			>
 				<div className="border-t border-input pt-5">
 					<h2
-						id="case-index-title"
+						id="recent-work-title"
 						className="font-mono text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground"
 					>
-						Case index
+						Recent work
 					</h2>
 					<ul className="mt-2 divide-y divide-input">
 						{studies.map((study) => (
@@ -55,7 +55,7 @@ export default function HomeHero({ studies }: { studies: Study[] }) {
 						))}
 					</ul>
 					<a
-						href="#explorer"
+						href="/case-studies/"
 						className="mt-2 inline-block py-1 font-mono text-xs text-muted-foreground no-underline hover:text-primary"
 					>
 						All case studies
