@@ -1,4 +1,6 @@
-export default function HomeHero() {
+import type { Study } from "./types";
+
+export default function HomeHero({ studies }: { studies: Study[] }) {
 	return (
 		<section
 			className="grid grid-cols-1 gap-8 py-16 lg:grid-cols-12 lg:gap-6 lg:py-24"
@@ -26,6 +28,40 @@ export default function HomeHero() {
 					</a>
 				</div>
 			</div>
+			<aside
+				className="hidden lg:col-start-8 lg:col-span-5 lg:block"
+				aria-labelledby="case-index-title"
+			>
+				<div className="border-t border-input pt-5">
+					<h2
+						id="case-index-title"
+						className="font-mono text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground"
+					>
+						Case index
+					</h2>
+					<ul className="mt-2 divide-y divide-input">
+						{studies.map((study) => (
+							<li key={study.id}>
+								<a
+									href={study.href}
+									className="flex flex-col gap-0.5 py-3 no-underline"
+								>
+									<span className="font-medium">{study.title}</span>
+									<span className="font-mono text-xs text-muted-foreground">
+										{study.label}
+									</span>
+								</a>
+							</li>
+						))}
+					</ul>
+					<a
+						href="#explorer"
+						className="mt-2 inline-block font-mono text-xs text-muted-foreground no-underline hover:text-primary"
+					>
+						All case studies
+					</a>
+				</div>
+			</aside>
 		</section>
 	);
 }
