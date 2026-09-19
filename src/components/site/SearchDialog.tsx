@@ -140,7 +140,7 @@ export default function SearchDialog({
 			aria-labelledby="search-dialog-title"
 			onClick={handleBackdropClick}
 			onKeyDown={handleKeyDown}
-			className="fixed inset-x-0 top-[10vh] bottom-auto mx-auto my-0 hidden h-fit max-h-[85dvh] w-[min(40rem,90vw)] flex-col overflow-hidden rounded-lg border border-border bg-background p-0 text-foreground shadow-none open:flex backdrop:bg-foreground/40">
+			className="fixed inset-x-0 top-[10vh] bottom-auto mx-auto my-0 hidden h-fit max-h-[85dvh] w-[min(40rem,90vw)] flex-col overflow-hidden rounded-lg border border-border bg-background p-0 text-foreground shadow-none open:flex backdrop:bg-black/60">
 			<div className="flex min-h-0 flex-col gap-3 p-4">
 				<div className="flex shrink-0 items-center justify-between gap-3">
 					<h2 id="search-dialog-title" className="text-sm font-semibold">Search the site</h2>
