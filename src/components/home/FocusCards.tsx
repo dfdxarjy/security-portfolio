@@ -31,7 +31,7 @@ const CARDS: Card[] = [
 
 export default function FocusCards() {
 	return (
-		<section className="py-16" aria-labelledby="focus-title">
+		<section className="pt-16 pb-4" aria-labelledby="focus-title">
 			<div className="max-w-[68ch]" data-reveal>
 				<h2
 					id="focus-title"
