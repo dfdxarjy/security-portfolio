@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Menu, X } from "lucide-react";
+import { Menu, Search, X } from "lucide-react";
 
 import { Button } from "../ui/button";
 import { cn } from "../../lib/utils";
@@ -24,11 +24,11 @@ export default function SiteHeader({ currentPath }: { currentPath: string }) {
 
 	return (
 		<header className="portfolio-header sticky top-0 z-10 border-b border-border bg-background">
-			<div className="mx-auto flex w-full max-w-[var(--portfolio-max-width)] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2 lg:px-8">
+			<div className="mx-auto flex w-full max-w-[var(--portfolio-max-width)] flex-wrap items-center justify-between gap-x-2 gap-y-2 px-4 py-2 sm:gap-x-4 lg:px-8">
 				<a
 					href="/"
 					aria-current={currentPath === "/" ? "page" : undefined}
-					className="brand-lockup portfolio-brand"
+					className="brand-lockup portfolio-brand shrink-0"
 				>
 					<span className="brand-wordmark" translate="no">
 						taktak.hu
@@ -51,14 +51,15 @@ export default function SiteHeader({ currentPath }: { currentPath: string }) {
 						</a>
 					))}
 				</nav>
-				<div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+				<div className="flex min-w-0 items-center justify-end gap-1 sm:gap-2">
 					<Button
 						variant="outline"
 						size="sm"
 						aria-label="Search"
 						className="shadow-none"
 						onClick={() => setSearchOpen(true)}>
-						Search
+						<Search aria-hidden="true" />
+						<span className="sr-only sm:not-sr-only">Search</span>
 					</Button>
 					<ThemeControl />
 					<Button

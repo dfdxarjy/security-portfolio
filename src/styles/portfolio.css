@@ -192,7 +192,8 @@ select {
    Reduced-motion, forced-colours and print handling elsewhere in this file is
    unchanged. */
 
-/* Mobile disclosure summaries (Sections, Contents, Case info) in the docs page
+/* Mobile disclosure summaries (Sections, Contents, Case facts / Related cases
+   and provenance) in the docs page
    template. Native <details>/<summary> semantics and keyboard behaviour stay;
    the chevron is a CSS-drawn affordance that rotates when the disclosure opens.
    No icon font or emoji. `list-none` is set in the markup. */

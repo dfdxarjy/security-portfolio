@@ -78,7 +78,7 @@ export const collections = {
 					.array(
 						z.object({
 							title: z.string().optional(),
-							url: z.string().optional(),
+							url: z.url({ protocol: /^https?$/ }).optional(),
 							publisher: z.string().optional(),
 						}),
 					)
