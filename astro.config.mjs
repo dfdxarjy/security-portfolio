@@ -23,8 +23,9 @@ export default defineConfig({
 			scriptDirective: {
 				resources: ["'self'"],
 				hashes: [
-					"sha256-OT6rncc3q/HAZxFhU8Z7usSuSFUYlKM4kgPHZV03rBg=",
+					"sha256-Z2WcKnfs9E/VBx56jNyEzuBZIeaDNqH1mNg0E9qrv+8=",
 					"sha256-bvjZC3AnPb+ys9toP8kN5cg7sF3ndpwX9+AxzZ7FjZM=",
+					"sha256-BPKCggQ3aILOs36jpj82KHsITiajwgKUt1tGXkcTFto=",
 				],
 			},
 			styleDirective: {

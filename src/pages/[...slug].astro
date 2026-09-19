@@ -285,7 +285,7 @@ const panelProps = {
 		<div
 			class="mx-auto grid w-full max-w-[86rem] grid-cols-1 gap-10 px-4 py-10 lg:px-8 xl:grid-cols-[15rem_minmax(0,1fr)_17rem]"
 		>
-			<div class="hidden xl:block">
+			<div class="hidden xl:block" data-reveal>
 				{
 					isCase ? (
 						<div class="sticky top-[var(--portfolio-header-h,5.5rem)]">
@@ -306,7 +306,7 @@ const panelProps = {
 
 			<div class="min-w-0">
 				<article class="portfolio-prose">
-					<h1 id="_top">{entry.data.title}</h1>
+					<h1 id="_top" data-reveal>{entry.data.title}</h1>
 					<Content />
 					{
 						isIndex && descendantGroups.length > 0 && (
@@ -317,9 +317,9 @@ const panelProps = {
 								{descendantGroups.map((group) => (
 									<>
 										{descendantGroups.length > 1 && <h2>{group.label}</h2>}
-										<ul>
+										<ul data-reveal-group>
 											{group.items.map((item) => (
-												<li>
+												<li data-reveal>
 													<a href={item.href}>{item.title}</a>
 													{item.description && (
 														<span class="portfolio-index__description">
@@ -345,7 +345,7 @@ const panelProps = {
 				}
 			</div>
 
-			<div class="hidden xl:block">
+			<div class="hidden xl:block" data-reveal>
 				<div class="sticky top-[var(--portfolio-header-h,5.5rem)]">
 					{isCase ? <CaseInfoPanel {...panelProps} /> : <Toc headings={headings} />}
 				</div>

@@ -41,7 +41,7 @@ const CARDS: Card[] = [
 export default function FocusCards({ counts }: { counts: Counts }) {
 	return (
 		<section className="py-12" aria-labelledby="focus-title">
-			<div className="max-w-[68ch]">
+			<div className="max-w-[68ch]" data-reveal>
 				<h2
 					id="focus-title"
 					className="text-3xl tracking-[-0.04em] sm:text-4xl"
@@ -52,12 +52,13 @@ export default function FocusCards({ counts }: { counts: Counts }) {
 					Windows and Linux machines, or DFIR case work.
 				</p>
 			</div>
-			<div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+			<div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4" data-reveal-group>
 				{CARDS.map((card) => (
 					<a
 						key={card.kind}
 						href={card.href}
-						className="block min-w-0 rounded-xl border border-input bg-card p-5 no-underline hover:border-primary focus-visible:border-primary"
+						className="portfolio-spotlight portfolio-spotlight--compact relative block min-w-0 rounded-xl border border-input bg-card p-5 no-underline focus-visible:border-primary"
+						data-reveal
 					>
 						<span className="font-mono text-3xl font-bold tabular-nums text-primary">
 							{counts[card.kind]}

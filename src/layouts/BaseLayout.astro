@@ -75,6 +75,16 @@ const {
 				}
 				document.documentElement.dataset.theme = theme;
 				document.documentElement.style.colorScheme = theme;
+				// Opt in to the scroll-reveal gate before first paint so reveal targets
+				// are never painted hidden; without JS the class is absent and all content
+				// stays visible. The gate is fail-open: the observer cancels this timer
+				// once it starts, but if the observer is blocked by CSP or init fails,
+				// the timer removes the gate after 2 seconds so targets cannot stay
+				// hidden forever.
+				document.documentElement.classList.add("js-reveal");
+				window.__revealFailOpenTimer = window.setTimeout(() => {
+					document.documentElement.classList.remove("js-reveal");
+				}, 2000);
 			})();
 		</script>
 		<style is:global>
@@ -141,6 +151,86 @@ const {
 					new ResizeObserver(measure).observe(header);
 				} else {
 					window.addEventListener("resize", measure);
+				}
+			})();
+		</script>
+		<script is:inline>
+			// Scroll reveal: transform + opacity only, one observer, no scroll
+			// listener. Static data-reveal targets and direct Markdown prose blocks
+			// are observed. Reduced-motion users get the final state immediately and
+			// no observer runs. This script cancels the prepaint fail-open timer only
+			// after its DOM queries succeed, so normal observer operation keeps reveal
+			// active past the 2-second mark; if a query throws, a blocked observer, or
+			// a failed init never reaches that point, the timer is left to fail open.
+			// If the observer is unavailable or init throws, every target is shown, so
+			// a failure can never leave content hidden.
+			//
+			// Shared cursor-spotlight listeners are installed in this same script,
+			// after the reveal logic, so they run even when there are zero reveal
+			// items and never add a second inline script (one CSP hash covers both).
+			(() => {
+				document.querySelectorAll(".portfolio-prose").forEach((prose) => {
+					prose
+						.querySelectorAll(
+							":scope > :is(h2, h3, p, ul, ol, blockquote, table, pre, figure, details, hr)",
+						)
+						.forEach((el) => el.setAttribute("data-reveal", ""));
+				});
+				const items = [...document.querySelectorAll("[data-reveal]")];
+				// Cancel the fail-open timer only now: both queries above could throw,
+				// and if either does the timer must remain so the prepaint gate is
+				// removed after 2 seconds instead of leaving targets hidden.
+				if (window.__revealFailOpenTimer) {
+					window.clearTimeout(window.__revealFailOpenTimer);
+					delete window.__revealFailOpenTimer;
+				}
+				if (items.length) {
+					const showAll = () =>
+						items.forEach((el) => el.classList.add("is-visible"));
+					try {
+						if (
+							window.matchMedia("(prefers-reduced-motion: reduce)").matches ||
+							typeof IntersectionObserver === "undefined"
+						) {
+							showAll();
+						} else {
+							const io = new IntersectionObserver(
+								(entries) => {
+									entries.forEach((entry) => {
+										if (entry.isIntersecting) {
+											entry.target.classList.add("is-visible");
+											io.unobserve(entry.target);
+										}
+									});
+								},
+								{ threshold: 0, rootMargin: "0px 0px -8% 0px" },
+							);
+							items.forEach((el) => io.observe(el));
+						}
+					} catch {
+						showAll();
+					}
+				}
+				const spotlightCards = document.querySelectorAll(".portfolio-spotlight");
+				// Reduced-motion users keep the CSS fallback border and never run the
+				// pointer handler, so no getBoundingClientRect fires on pointer moves.
+				if (
+					!window.matchMedia("(prefers-reduced-motion: reduce)").matches
+				) {
+					spotlightCards.forEach((card) => {
+						card.addEventListener("pointermove", (event) => {
+							if (event.pointerType === "touch") return;
+							const rect = card.getBoundingClientRect();
+							card.style.setProperty("--spotlight-mx", `${event.clientX - rect.left}px`);
+							card.style.setProperty("--spotlight-my", `${event.clientY - rect.top}px`);
+							card.style.setProperty("--spotlight-active", "1");
+						});
+						card.addEventListener("pointerleave", () => {
+							card.style.removeProperty("--spotlight-mx");
+							card.style.removeProperty("--spotlight-my");
+							card.style.removeProperty("--spotlight-active");
+						});
+					});
 				}
 			})();
 		</script>

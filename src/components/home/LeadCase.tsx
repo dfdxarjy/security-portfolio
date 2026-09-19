@@ -21,7 +21,9 @@ export default function LeadCase({
 				</p>
 			</div>
 			{study && (
-				<article className="mt-6 rounded-xl border border-border bg-card p-6">
+				<article
+					className="portfolio-spotlight relative mt-6 rounded-xl border border-border bg-card p-6"
+				>
 					<p className="font-mono text-[0.72rem] uppercase tracking-[0.12em] text-muted-foreground">
 						{study.label} · latest addition
 					</p>

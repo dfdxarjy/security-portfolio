@@ -181,3 +181,126 @@ select {
 @media (prefers-reduced-motion: reduce) {
 	*, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
 }
+
+/* Scroll reveal: transform + opacity only, opt in via the `js-reveal` class
+   the pre-paint head script adds, so no-JS visitors see all content. The
+   stagger index `--reveal-i` is set by nth-child below, never inline, and
+   capped at six steps so a long grid cannot drift. */
+.js-reveal [data-reveal] {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 420ms ease,
+    transform 420ms ease;
+  transition-delay: calc(min(var(--reveal-i, 0), 6) * 60ms);
+}
+.js-reveal [data-reveal].is-visible {
+  opacity: 1;
+  transform: none;
+}
+.js-reveal [data-reveal-group] > [data-reveal]:nth-child(2) {
+  --reveal-i: 1;
+}
+.js-reveal [data-reveal-group] > [data-reveal]:nth-child(3) {
+  --reveal-i: 2;
+}
+.js-reveal [data-reveal-group] > [data-reveal]:nth-child(4) {
+  --reveal-i: 3;
+}
+.js-reveal [data-reveal-group] > [data-reveal]:nth-child(5) {
+  --reveal-i: 4;
+}
+.js-reveal [data-reveal-group] > [data-reveal]:nth-child(6) {
+  --reveal-i: 5;
+}
+.js-reveal [data-reveal-group] > [data-reveal]:nth-child(n + 7) {
+  --reveal-i: 6;
+}
+/* A reveal target reached by keyboard focus must be visible at once, never a
+   hidden-but-focusable control. */
+.js-reveal [data-reveal]:focus-within {
+  opacity: 1;
+  transform: none;
+  transition: none;
+}
+/* Hover is gated to pointer devices: touch browsers emulate :hover on tap,
+   which would flash a target visible before the observer reveals it. */
+@media (hover: hover) {
+  .js-reveal [data-reveal]:hover {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .js-reveal [data-reveal],
+  .js-reveal [data-reveal].is-visible {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+@media print {
+  .js-reveal [data-reveal],
+  .js-reveal [data-reveal].is-visible {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* Cursor spotlight: a 1px pointer-tracked ring tracing the card border, shared
+   by the latest-case card and the homepage category cards. This is the
+   portfolio's single approved gradient exception. Gated so touch and
+   reduced-motion visitors get the plain existing border: opacity is the only
+   animated property and nothing in the layout moves. `isolation: isolate` keeps
+   the ring above the card border without covering content. The BaseLayout
+   pointer script writes `--spotlight-mx` / `--spotlight-my` and sets
+   `--spotlight-active` from the pointer; without JS the ring stays invisible. */
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .portfolio-spotlight {
+    isolation: isolate;
+  }
+  .portfolio-spotlight::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    pointer-events: none;
+    z-index: 1;
+    background: radial-gradient(
+      var(--spotlight-radius, 360px) circle at var(--spotlight-mx, 50%)
+        var(--spotlight-my, 50%),
+      var(--portfolio-accent),
+      transparent 72%
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    opacity: var(--spotlight-active, 0);
+    transition: opacity 240ms ease;
+  }
+}
+/* Smaller category cards get a tighter falloff than the broad lead-card ring. */
+.portfolio-spotlight--compact {
+  --spotlight-radius: 220px;
+}
+/* Reduced-motion visitors get no spotlight ring, so still show border feedback. */
+@media (hover: hover) and (prefers-reduced-motion: reduce) {
+  .portfolio-spotlight:hover {
+    border-color: var(--portfolio-accent);
+  }
+}
+/* No-JS visitors: `js-reveal` is absent, so the pointer script never runs; keep
+   hover border feedback in its place. */
+@media (hover: hover) {
+  html:not(.js-reveal) .portfolio-spotlight:hover {
+    border-color: var(--portfolio-accent);
+  }
+}
