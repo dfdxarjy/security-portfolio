@@ -125,7 +125,7 @@ const jsonLd = {
 			<HomeHero studies={railStudies} />
 			<FocusCards />
 			<div data-reveal>
-				<Explorer studies={studies} client:load />
+				<Explorer studies={studies} client:idle={{ timeout: 500 }} />
 			</div>
 		</div>
 	</main>
