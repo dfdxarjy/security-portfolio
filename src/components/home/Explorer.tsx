@@ -177,7 +177,7 @@ export default function Explorer({ studies }: { studies: Study[] }) {
 	return (
 		<section
 			id="explorer"
-			className="border-t border-border py-12"
+			className="py-12"
 			aria-labelledby="explorer-title"
 		>
 			<div className="max-w-[68ch]">

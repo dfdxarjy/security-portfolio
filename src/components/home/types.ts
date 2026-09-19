@@ -18,13 +18,6 @@ export interface Study {
 	search: string;
 }
 
-export interface LeadStudy {
-	title: string;
-	href: string;
-	description: string;
-	label: string;
-}
-
 export interface Counts {
 	all: number;
 	linux: number;
