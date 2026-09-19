@@ -1,5 +1,5 @@
 interface Card {
-	kind: "all" | "linux" | "windows" | "dfir";
+	kind: "linux" | "windows" | "dfir";
 	href: string;
 	label: string;
 	description: string;
@@ -27,18 +27,11 @@ const CARDS: Card[] = [
 		description:
 			"Reconstructing timelines from logs and tracing persistence.",
 	},
-	{
-		kind: "all",
-		href: "/case-studies/",
-		label: "All case studies",
-		description:
-			"The full library of reviewed investigations and methodologies.",
-	},
 ];
 
 export default function FocusCards() {
 	return (
-		<section className="py-12" aria-labelledby="focus-title">
+		<section className="py-16" aria-labelledby="focus-title">
 			<div className="max-w-[68ch]" data-reveal>
 				<h2
 					id="focus-title"
@@ -50,21 +43,28 @@ export default function FocusCards() {
 					Windows and Linux machines, or DFIR case work.
 				</p>
 			</div>
-			<div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4" data-reveal-group>
+			<ul
+				className="mt-6 list-none border-t border-[var(--portfolio-line)] pl-0"
+				data-reveal-group
+			>
 				{CARDS.map((card) => (
-					<a
+					<li
 						key={card.kind}
-						href={card.href}
-						className="portfolio-spotlight portfolio-spotlight--compact relative block min-w-0 rounded-xl border border-input bg-card p-5 no-underline focus-visible:border-primary"
+						className="border-b border-[var(--portfolio-line)]"
 						data-reveal
 					>
-						<h3 className="text-lg">{card.label}</h3>
-						<p className="mt-1 text-pretty text-sm text-muted-foreground">
-							{card.description}
-						</p>
-					</a>
+						<a
+							href={card.href}
+							className="grid gap-1 py-4 no-underline transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:grid-cols-[12rem_1fr] md:gap-6"
+						>
+							<span className="font-medium">{card.label}</span>
+							<span className="text-sm text-muted-foreground">
+								{card.description}
+							</span>
+						</a>
+					</li>
 				))}
-			</div>
+			</ul>
 		</section>
 	);
 }
