@@ -1,5 +1,3 @@
-import type { Counts } from "./types";
-
 interface Card {
 	kind: "all" | "linux" | "windows" | "dfir";
 	href: string;
@@ -38,7 +36,7 @@ const CARDS: Card[] = [
 	},
 ];
 
-export default function FocusCards({ counts }: { counts: Counts }) {
+export default function FocusCards() {
 	return (
 		<section className="py-12" aria-labelledby="focus-title">
 			<div className="max-w-[68ch]" data-reveal>
@@ -60,10 +58,7 @@ export default function FocusCards({ counts }: { counts: Counts }) {
 						className="portfolio-spotlight portfolio-spotlight--compact relative block min-w-0 rounded-xl border border-input bg-card p-5 no-underline focus-visible:border-primary"
 						data-reveal
 					>
-						<span className="font-mono text-3xl font-bold tabular-nums text-primary">
-							{counts[card.kind]}
-						</span>
-						<h3 className="mt-3 text-lg">{card.label}</h3>
+						<h3 className="text-lg">{card.label}</h3>
 						<p className="mt-1 text-pretty text-sm text-muted-foreground">
 							{card.description}
 						</p>

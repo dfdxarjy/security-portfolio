@@ -71,13 +71,6 @@ const studies = studiesRaw.map((study) => {
 		search: searchableText(study),
 	};
 });
-const counts = {
-	all: studies.length,
-	linux: studies.filter((study) => study.category === "linux").length,
-	windows: studies.filter((study) => study.category === "windows").length,
-	dfir: studies.filter((study) => study.category === "dfir").length,
-};
-
 // Lead case is always the newest: explicit immutable `addedAt`
 // (portfolio-addition date) descending, then stable id ascending, first entry.
 // Entries without `addedAt` are omitted here but stay in the explorer. No Git
@@ -152,7 +145,7 @@ const jsonLd = {
 	<main id="main-content" tabindex="-1">
 		<div class="mx-auto w-full max-w-[86rem] px-4 pb-16 lg:px-8">
 			<HomeHero />
-			<FocusCards counts={counts} />
+			<FocusCards />
 			<div data-reveal>
 				<LeadCase study={leadStudy} meta={leadMeta} />
 			</div>
