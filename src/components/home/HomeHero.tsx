@@ -20,7 +20,7 @@ export default function HomeHero() {
 				<div className="mt-7 flex flex-wrap gap-3">
 					<a
 						href="#explorer"
-						className="inline-flex items-center rounded-md border border-primary bg-primary px-4 py-2 font-bold text-primary-foreground no-underline hover:brightness-110"
+						className="inline-flex items-center rounded-md border border-primary bg-primary px-4 py-2 font-bold text-primary-foreground no-underline hover:brightness-110 focus-visible:brightness-110"
 					>
 						View case studies
 					</a>
