@@ -71,7 +71,7 @@ if (htmlFiles.length === 0) {
 }
 
 // 3. Extract executable inline scripts and hash their exact emitted text.
-const scriptRe = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi;
+const scriptRe = /<script\b([^>]*)>([\s\S]*?)<\/script\b[^>]*>/gi;
 const attrTypeRe = /\btype\s*=\s*["']([^"']*)["']|type\s*=\s*([^\s"'>]+)/i;
 const attrSrcRe = /\bsrc\s*=/i;
 const nonExecutableTypes = new Set(["application/ld+json"]);
