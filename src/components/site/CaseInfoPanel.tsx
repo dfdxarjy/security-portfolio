@@ -12,6 +12,7 @@ type Props = {
 	skill?: string
 	tags: string[]
 	published?: string
+	publishedLabel?: string
 	updated?: string
 	updatedLabel?: string
 	evidenceQuality?: string
@@ -26,6 +27,7 @@ export function CaseInfoPanel({
 	skill,
 	tags,
 	published,
+	publishedLabel,
 	updated,
 	updatedLabel,
 	evidenceQuality,
@@ -37,7 +39,7 @@ export function CaseInfoPanel({
 	if (tools.length > 0) rows.push(["Tools", tools.join(", ")])
 	if (skill) rows.push(["Skill", skill])
 	if (tags.length > 0) rows.push(["Tags", tags.join(", ")])
-	if (published) rows.push(["Published", published])
+	if (published) rows.push([publishedLabel ?? "Published", published])
 	if (updated) rows.push([updatedLabel ?? "Updated", updated])
 	if (evidenceQuality) rows.push(["Evidence", evidenceQuality])
 

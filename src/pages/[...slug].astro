@@ -81,9 +81,15 @@ const related = (await getCollection('docs'))
 	.slice(0, 3)
 	.map((item) => ({ href: '/' + item.id + '/', title: item.data.title }));
 
+// The case panel's date rows reflect the frontmatter field they carry: only a
+// real `publishedAt` is labelled "Published"; the portfolio-addition date is
+// labelled "Added". Labels never come from the Git commit fallback used for
+// non-case documentation pages.
 const published = entry.data.publishedAt ?? entry.data.addedAt;
-const updated = entry.data.updatedAt;
-const updatedLabel = lastUpdated ? 'Last updated' : 'Updated';
+const added = entry.data.addedAt;
+const publishedLabel = entry.data.publishedAt ? 'Published' : added ? 'Added' : undefined;
+const updated = published ? entry.data.updatedAt : added ?? entry.data.updatedAt;
+const updatedLabel = published ? 'Updated' : added ? 'Added' : 'Updated';
 
 const reportUrl = `https://github.com/taktak0x/security-portfolio/issues/new?${new URLSearchParams(
 	{
@@ -221,6 +227,7 @@ const panelProps = {
 	skill: entry.data.skill,
 	tags: entry.data.tags ?? [],
 	published,
+	publishedLabel,
 	updated,
 	updatedLabel,
 	evidenceQuality: entry.data.evidenceQuality,
@@ -238,7 +245,7 @@ const panelProps = {
 	jsonLd={jsonLd}
 	currentPath={currentPath}
 >
-	<main id="main-content" class="bg-background">
+	<main id="main-content" tabindex="-1" class="bg-background">
 		{
 			!isCase && (
 				<div class="mx-auto w-full max-w-[86rem] px-4 pb-6 xl:hidden">
@@ -250,6 +257,19 @@ const panelProps = {
 							<SidebarNav currentPath={currentPath} />
 						</div>
 					</details>
+				</div>
+			)
+		}
+
+		{
+			isCase && (
+				<div class="mx-auto w-full max-w-[86rem] px-4 pt-6 xl:hidden">
+					<a
+						href={categoryHref}
+						class="font-mono text-[0.78rem] tracking-[0.02em] text-primary no-underline hover:underline focus-visible:underline"
+					>
+						<span aria-hidden="true">←</span> Back to {railLabel}
+					</a>
 				</div>
 			)
 		}

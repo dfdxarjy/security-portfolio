@@ -7,7 +7,7 @@ import LeadCase from "../components/home/LeadCase.tsx";
 import Explorer from "../components/home/Explorer.tsx";
 import { PERSON, PERSON_ID } from "../lib/schema.ts";
 
-const title = "Taktak — Security Portfolio";
+const title = "TakTak — Security Portfolio";
 const description =
 	"Security case studies across red and blue team work, incident investigation, and Windows and Active Directory environments.";
 
@@ -149,9 +149,9 @@ const jsonLd = {
 	jsonLd={jsonLd}
 	currentPath="/"
 >
-	<main id="main-content">
+	<main id="main-content" tabindex="-1">
 		<div class="mx-auto w-full max-w-[86rem] px-4 pb-16 lg:px-8">
-			<HomeHero counts={counts} />
+			<HomeHero />
 			<FocusCards counts={counts} />
 			<div data-reveal>
 				<LeadCase study={leadStudy} meta={leadMeta} />
