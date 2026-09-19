@@ -3,8 +3,6 @@ title: Pro Labs
 description: Completed Hack The Box Pro Labs and Mini Pro Labs, with their issued certificates.
 ---
 
-## Pro Labs
-
 Each entry records a completed Hack The Box lab credential and shows the certificate the platform issued for it.
 
 - [Hack The Box Pro Labs: Dante](/prolabs/dante/)

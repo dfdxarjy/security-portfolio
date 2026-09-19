@@ -3,7 +3,7 @@ import { getCollection } from "astro:content";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import HomeHero from "../components/home/HomeHero.tsx";
 import FocusCards from "../components/home/FocusCards.tsx";
-import Explorer from "../components/home/Explorer.tsx";
+import type { Study } from "../components/home/types";
 import { PERSON, PERSON_ID } from "../lib/schema.ts";
 
 const title = "TakTak — Security Portfolio";
@@ -21,7 +21,7 @@ const studiesRaw = allDocs
 	.sort((a, b) => a.data.title.localeCompare(b.data.title));
 
 // Category derived from collection path so cards show factual, path-based labels.
-const category = (study: (typeof studiesRaw)[number]) => {
+const category = (study: (typeof studiesRaw)[number]): Study["category"] => {
 	if (study.id.includes("/sherlocks/")) return "dfir";
 	if (study.id.includes("/windows/")) return "windows";
 	return "linux";
@@ -30,57 +30,34 @@ const label = (kind: string) =>
 	kind === "dfir"
 		? "DFIR / Sherlock"
 		: `${kind[0].toUpperCase()}${kind.slice(1)} machine`;
-const cleanDescription = (value: string) =>
-	value
-		.replace(/^A\s+sanitized\s+/i, "")
-		.replace(/^sanitized\s+/i, "")
-		.replace(/^./, (char) => char.toUpperCase());
-// Normalized, lowercased haystack of the same user-visible fields the cards render.
-const searchableText = (study: (typeof studiesRaw)[number]) =>
-	[
-		study.data.title,
-		cleanDescription(study.data.description),
-		category(study),
-		label(category(study)),
-		...(study.data.tags ?? []),
-		study.data.objective,
-		...(study.data.tools ?? []),
-		study.data.skill,
-		study.data.outcome,
-	]
-		.filter(Boolean)
-		.join(" ")
-		.replace(/\s+/g, " ")
-		.trim()
-		.toLowerCase();
-
-// Serialisable payload handed to the hydrated explorer.
-const studies = studiesRaw.map((study) => {
-	const kind = category(study);
-	return {
-		id: study.id,
-		href: `/${study.id}/`,
-		title: study.data.title,
-		description: cleanDescription(study.data.description),
-		category: kind,
-		label: label(kind),
-		tools: study.data.tools ?? [],
-		tags: study.data.tags ?? [],
-		addedAt: study.data.addedAt ?? "",
-		search: searchableText(study),
-	};
-});
-// Hero rail: the newest three case studies, derived from the same serialised
-// payload the explorer uses. Explicit immutable `addedAt` (portfolio-addition
-// date) descending, then stable id ascending. Entries without `addedAt` are
-// omitted. No Git commit time or file mtime is read, and `featured` is not
-// consulted.
-const railStudies = [...studies]
-	.filter((study) => study.addedAt)
+// Overview rail: the newest three case studies. Explicit immutable `addedAt`
+// (portfolio-addition date) descending, then stable id ascending. Entries
+// without `addedAt` are omitted. No Git commit time or file mtime is read, and
+// `featured` is not consulted. The full searchable archive, with its own URL
+// state contract, lives at `/case-studies/`.
+const railStudies: Study[] = studiesRaw
+	.filter((study) => study.data.addedAt)
 	.sort(
-		(a, b) => b.addedAt.localeCompare(a.addedAt) || a.id.localeCompare(b.id),
+		(a, b) =>
+			(b.data.addedAt ?? "").localeCompare(a.data.addedAt ?? "") ||
+			a.id.localeCompare(b.id),
 	)
-	.slice(0, 3);
+	.slice(0, 3)
+	.map((study) => {
+		const kind = category(study);
+		return {
+			id: study.id,
+			href: `/${study.id}/`,
+			title: study.data.title,
+			description: study.data.description,
+			category: kind,
+			label: label(kind),
+			tools: study.data.tools ?? [],
+			tags: study.data.tags ?? [],
+			addedAt: study.data.addedAt ?? "",
+			search: "",
+		};
+	});
 
 // The only authorised `sameAs` URLs are the Markdown links in the profiles page;
 // derive them from that raw body so no URL is hand-copied into this file.
@@ -120,13 +97,30 @@ const jsonLd = {
 	jsonLd={jsonLd}
 	currentPath="/"
 >
+	{/* Legacy deep links: before the redesign the explorer lived on `/` and
+	    encoded its view as `?kind/q/sort#explorer`. It now lives at
+	    `/case-studies/` with the same URL contract, so forward those old URLs
+	    once, verbatim, and leave an ordinary homepage visit untouched. */}
+	<script is:inline>
+		(() => {
+			const params = new URLSearchParams(window.location.search);
+			if (
+				window.location.hash === "#explorer" ||
+				params.has("kind") ||
+				params.has("focus") ||
+				params.has("q") ||
+				params.has("sort")
+			) {
+				window.location.replace(
+					"/case-studies/" + window.location.search + window.location.hash,
+				);
+			}
+		})();
+	</script>
 	<main id="main-content" tabindex="-1">
-		<div class="mx-auto w-full max-w-[var(--portfolio-max-width)] px-4 pb-16 lg:px-8">
+		<div class="mx-auto w-full max-w-[var(--portfolio-max-width)] px-4 lg:px-8">
 			<HomeHero studies={railStudies} />
 			<FocusCards />
-			<div data-reveal>
-				<Explorer studies={studies} client:idle={{ timeout: 500 }} />
-			</div>
 		</div>
 	</main>
 </BaseLayout>

@@ -10,6 +10,8 @@ type Entry = {
 	tags?: string[];
 	tools?: string[];
 	category?: string;
+	kind?: string;
+	label?: string;
 };
 
 type Status = "idle" | "loading" | "ready" | "error";
@@ -19,6 +21,7 @@ function fieldValues(entry: Entry): string[] {
 		entry.title,
 		entry.description,
 		entry.category,
+		entry.label,
 		...(entry.tags ?? []),
 		...(entry.tools ?? []),
 	].filter((value): value is string => typeof value === "string");
@@ -126,7 +129,7 @@ export default function SearchDialog({
 			className="fixed inset-0 m-auto h-fit max-h-[85dvh] w-[min(40rem,90vw)] overflow-y-auto overscroll-contain rounded-lg border border-border bg-background p-0 text-foreground shadow-none backdrop:bg-foreground/40">
 			<div className="flex flex-col gap-3 p-4">
 				<div className="flex items-center justify-between gap-3">
-					<h2 id="search-dialog-title" className="text-sm font-semibold">Search</h2>
+					<h2 id="search-dialog-title" className="text-sm font-semibold">Search the site</h2>
 					<Button
 						type="button"
 						variant="ghost"
@@ -140,9 +143,10 @@ export default function SearchDialog({
 					ref={inputRef}
 					type="search"
 					aria-label="Search query"
+					className="shadow-none"
 					value={query}
 					onChange={(event) => setQuery(event.target.value)}
-					placeholder="Search case studies, tools, tags…"
+					placeholder="Search case studies, credentials, and more…"
 				/>
 				<p role="status" aria-live="polite" className="text-xs text-muted-foreground">
 					{message}
@@ -154,8 +158,20 @@ export default function SearchDialog({
 								<a
 									href={entry.href}
 									onClick={() => dialogRef.current?.close()}
-									className="block rounded-sm px-2 py-1 hover:bg-accent hover:text-accent-foreground">
-									{entry.title ?? entry.href}
+									className="block rounded-sm px-2 py-1.5 hover:bg-accent hover:text-accent-foreground">
+									<span className="flex items-baseline justify-between gap-3">
+										<span className="truncate text-sm">{entry.title ?? entry.href}</span>
+										{entry.label && (
+											<span className="shrink-0 font-mono text-[0.7rem] uppercase tracking-wide text-muted-foreground">
+												{entry.label}
+											</span>
+										)}
+									</span>
+									{entry.description && (
+										<span className="mt-0.5 block text-xs text-muted-foreground">
+											{entry.description}
+										</span>
+									)}
 								</a>
 							</li>
 						))}

@@ -8,6 +8,8 @@ import { Pagination } from '../components/site/Pagination.tsx';
 import { DocsMeta } from '../components/site/DocsMeta.tsx';
 import { CaseRail } from '../components/site/CaseRail.tsx';
 import { CaseInfoPanel } from '../components/site/CaseInfoPanel.tsx';
+import Explorer from '../components/home/Explorer.tsx';
+import type { Study } from '../components/home/types';
 import { PERSON, PERSON_ID } from '../lib/schema.ts';
 
 export async function getStaticPaths() {
@@ -100,9 +102,13 @@ const reportUrl = `https://github.com/taktak0x/security-portfolio/issues/new?${n
 const isIndexEntry = (item: CollectionEntry<'docs'>) =>
 	(item.filePath ?? '').split('/').pop()?.replace(/\.(md|mdx)$/, '') === 'index';
 
+// Credential records are sibling links in the Pro Labs index, not a linear
+// document sequence, so they never get prev/next pagination.
+const isCredential = entry.id.startsWith('prolabs/') && !isIndexEntry(entry);
+
 let prev: { href: string; title: string } | undefined;
 let next: { href: string; title: string } | undefined;
-if (!isCase && !isIndexEntry(entry)) {
+if (!isCase && !isIndexEntry(entry) && !isCredential) {
 	const siblings = (await getCollection('docs'))
 		.filter(
 			(item) =>
@@ -181,6 +187,109 @@ if (isIndex) {
 	descendantGroups.sort((a, b) => a.label.localeCompare(b.label));
 }
 
+// The `/case-studies/` library page is the canonical searchable archive: it is
+// the explorer's one mount point and carries the full serialisable payload. The
+// homepage keeps only a short recent-work rail, so the explorer is not rendered
+// there. Category/label derivation mirrors that rail.
+const isCaseStudiesIndex = entry.id === 'case-studies';
+let archiveStudies: Study[] = [];
+if (isCaseStudiesIndex) {
+	const raw = (await getCollection('docs'))
+		.filter(
+			({ id, data }) =>
+				id.startsWith('case-studies/') &&
+				data.type === 'case-study' &&
+				data.status === 'published-ready',
+		)
+		.sort((a, b) => a.data.title.localeCompare(b.data.title));
+	const categoryOf = (study: CollectionEntry<'docs'>): Study['category'] => {
+		if (study.id.includes('/sherlocks/')) return 'dfir';
+		if (study.id.includes('/windows/')) return 'windows';
+		return 'linux';
+	};
+	const labelOf = (kind: string) =>
+		kind === 'dfir'
+			? 'DFIR / Sherlock'
+			: `${kind[0].toUpperCase()}${kind.slice(1)} machine`;
+	const cleanDescription = (value: string) =>
+		value
+			.replace(/^A\s+sanitized\s+/i, '')
+			.replace(/^sanitized\s+/i, '')
+			.replace(/^./, (char) => char.toUpperCase());
+	const searchableText = (study: CollectionEntry<'docs'>) =>
+		[
+			study.data.title,
+			cleanDescription(study.data.description),
+			categoryOf(study),
+			labelOf(categoryOf(study)),
+			...(study.data.tags ?? []),
+			study.data.objective,
+			...(study.data.tools ?? []),
+			study.data.skill,
+			study.data.outcome,
+		]
+			.filter(Boolean)
+			.join(' ')
+			.replace(/\s+/g, ' ')
+			.trim()
+			.toLowerCase();
+	archiveStudies = raw.map((study) => {
+		const kind = categoryOf(study);
+		return {
+			id: study.id,
+			href: `/${study.id}/`,
+			title: study.data.title,
+			description: cleanDescription(study.data.description),
+			category: kind,
+			label: labelOf(kind),
+			tools: study.data.tools ?? [],
+			tags: study.data.tags ?? [],
+			addedAt: study.data.addedAt ?? '',
+			search: searchableText(study),
+		};
+	});
+}
+
+// Page archetypes. The catch-all renders six shapes from one grid: the case
+// report, the searchable archive, the static collection indexes, the method
+// reference document, the credential records and the profiles index. The
+// `data-page` value comes from the route; case pages keep every rail, and each
+// other archetype picks only the chrome its shape needs.
+const isMethod = entry.id === 'method';
+const isProfiles = entry.id === 'profiles';
+const pageKind = isCase
+	? 'case'
+	: isCredential
+		? 'credential'
+		: isMethod
+			? 'method'
+			: isProfiles
+				? 'profiles'
+				: isCaseStudiesIndex
+					? 'archive'
+					: isIndex
+						? 'collection-index'
+						: 'page';
+
+// The left rail is site navigation: meaningful for case pages and any future
+// fallback document. Collection indexes are their own navigation, method and
+// credentials use the reading rail, and profiles stays a bare index; the header
+// and footer keep section navigation on every page.
+const showLeftRail = pageKind === 'case' || pageKind === 'page';
+// The right rail is the case info panel, or the on-this-page table of contents
+// for the reference-style reading pages. The fallback document keeps it: it is
+// a three-column document (navigation rail, article, contents), so the base
+// three-track route must have a matching third child.
+const showRightRail =
+	pageKind === 'case' ||
+	pageKind === 'method' ||
+	pageKind === 'credential' ||
+	pageKind === 'page';
+// A git last-updated line is only meaningful on document pages, not on the
+// collection or profile indexes.
+const showDocsMeta =
+	pageKind === 'method' || pageKind === 'credential' || pageKind === 'page';
+
 // JSON-LD is emitted only on case pages: an Article node plus a BreadcrumbList
 // built from the canonical pathname. Non-case pages get none.
 let jsonLd: Record<string, unknown> | undefined;
@@ -240,9 +349,9 @@ const panelProps = {
 	jsonLd={jsonLd}
 	currentPath={currentPath}
 >
-	<main id="main-content" tabindex="-1" class="bg-background">
+	<main id="main-content" tabindex="-1" class="bg-background" data-page={pageKind}>
 		{
-			!isCase && (
+			pageKind === 'page' && (
 				<div class="mx-auto w-full max-w-[var(--portfolio-max-width)] px-4 pb-6 xl:hidden">
 					<details class="rounded-[var(--portfolio-radius)] border border-border bg-card">
 						<summary class="cursor-pointer list-none px-4 py-3 font-mono text-sm font-bold text-foreground portfolio-disclosure">
@@ -298,33 +407,33 @@ const panelProps = {
 		}
 
 		<div
-			class="portfolio-case-grid mx-auto grid w-full max-w-[var(--portfolio-max-width)] grid-cols-1 gap-10 px-4 py-10 lg:px-8"
+			class="portfolio-route mx-auto grid w-full max-w-[var(--portfolio-max-width)] grid-cols-1 gap-10 px-4 py-10 lg:px-8"
 		>
-			<div class="hidden xl:block" data-reveal>
-				{
-					isCase ? (
+			{
+				showLeftRail && (
+					<div class="hidden xl:block" data-reveal>
 						<div class="sticky top-[calc(var(--portfolio-header-h,5.5rem)+1rem)]">
-							<CaseRail
-								client:load
-								categoryHref={categoryHref}
-								categoryLabel={railLabel}
-								headings={headings}
-							/>
+							{isCase ? (
+								<CaseRail
+									client:load
+									categoryHref={categoryHref}
+									categoryLabel={railLabel}
+									headings={headings}
+								/>
+							) : (
+								<SidebarNav currentPath={currentPath} />
+							)}
 						</div>
-					) : (
-						<div class="sticky top-[calc(var(--portfolio-header-h,5.5rem)+1rem)]">
-							<SidebarNav currentPath={currentPath} />
-						</div>
-					)
-				}
-			</div>
+					</div>
+				)
+			}
 
 			<div class="min-w-0">
-				<article class="portfolio-prose">
+				<article class="portfolio-prose" data-page={pageKind}>
 					<h1 id="_top" data-reveal>{entry.data.title}</h1>
 					<Content />
 					{
-						isIndex && descendantGroups.length > 0 && (
+						isIndex && !isCaseStudiesIndex && descendantGroups.length > 0 && (
 							<nav
 								class="portfolio-index"
 								aria-label={`Case studies in ${entry.data.title}`}
@@ -351,20 +460,34 @@ const panelProps = {
 					}
 				</article>
 				{
+					isCaseStudiesIndex && (
+						<div data-reveal>
+							<Explorer
+								studies={archiveStudies}
+								client:idle={{ timeout: 500 }}
+							/>
+						</div>
+					)
+				}
+				{
 					!isCase && (
 						<>
-							<DocsMeta lastUpdated={lastUpdated} />
+							{showDocsMeta && <DocsMeta lastUpdated={lastUpdated} />}
 							<Pagination prev={prev} next={next} />
 						</>
 					)
 				}
 			</div>
 
-			<div class="hidden xl:block" data-reveal>
-				<div class="sticky top-[calc(var(--portfolio-header-h,5.5rem)+1rem)]">
-					{isCase ? <CaseInfoPanel {...panelProps} /> : <Toc headings={headings} />}
-				</div>
-			</div>
+			{
+				showRightRail && (
+					<div class="hidden xl:block" data-reveal>
+						<div class="sticky top-[calc(var(--portfolio-header-h,5.5rem)+1rem)]">
+							{isCase ? <CaseInfoPanel {...panelProps} /> : <Toc headings={headings} />}
+						</div>
+					</div>
+				)
+			}
 		</div>
 
 		{
