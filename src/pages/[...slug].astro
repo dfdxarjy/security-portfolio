@@ -261,7 +261,7 @@ const panelProps = {
 				<div class="mx-auto w-full max-w-[var(--portfolio-max-width)] px-4 pt-6 xl:hidden">
 					<a
 						href={categoryHref}
-						class="font-mono text-[0.78rem] tracking-[0.02em] text-primary no-underline hover:underline focus-visible:underline"
+						class="inline-flex min-h-6 items-center gap-1 font-mono text-[0.78rem] tracking-[0.02em] text-primary no-underline hover:underline focus-visible:underline"
 					>
 						<span aria-hidden="true">←</span> Back to {railLabel}
 					</a>
@@ -298,7 +298,7 @@ const panelProps = {
 		}
 
 		<div
-			class="mx-auto grid w-full max-w-[var(--portfolio-max-width)] grid-cols-1 gap-10 px-4 py-10 lg:px-8 xl:grid-cols-[15rem_minmax(0,1fr)_17rem]"
+			class="portfolio-case-grid mx-auto grid w-full max-w-[var(--portfolio-max-width)] grid-cols-1 gap-10 px-4 py-10 lg:px-8"
 		>
 			<div class="hidden xl:block" data-reveal>
 				{

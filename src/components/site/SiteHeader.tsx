@@ -46,12 +46,12 @@ export default function SiteHeader({ currentPath }: { currentPath: string }) {
 							key={href}
 							href={href}
 							aria-current={isCurrent(currentPath, href) ? "page" : undefined}
-							className="text-muted-foreground no-underline hover:text-foreground aria-[current=page]:text-foreground">
+							className="inline-flex min-h-6 items-center text-muted-foreground no-underline hover:text-foreground aria-[current=page]:text-foreground">
 							{label}
 						</a>
 					))}
 				</nav>
-				<div className="flex items-center gap-2">
+				<div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
 					<Button
 						variant="outline"
 						size="sm"

@@ -71,6 +71,10 @@
 	line-height: var(--lh-body);
 	color: var(--portfolio-ink);
 	overflow-wrap: break-word;
+	/* Query container for the table-reflow rule below; its width is the article
+	   column, and container-query rem tracks the root font so the rule scales
+	   with text zoom rather than the viewport. */
+	container-type: inline-size;
 }
 .portfolio-prose > :first-child { margin-top: 0; }
 
@@ -204,6 +208,19 @@
 	color: var(--shiki-dark);
 }
 
+/*
+ * Case/article grid. The side rails are capped in CSS pixels as well as rem so
+ * a 200% text zoom (or a larger user root font) cannot let the rem-sized rails
+ * swallow the article column. At the default root the caps equal the previous
+ * 15rem/17rem, so the desktop layout is unchanged. Collapses below the breakpoint
+ * through the grid-cols-1 base.
+ */
+@media (min-width: 80rem) {
+	.portfolio-case-grid {
+		grid-template-columns: min(15rem, 240px) minmax(0, 1fr) min(17rem, 272px);
+	}
+}
+
 .portfolio-prose table {
 	width: 100%;
 	margin: 1.5rem 0;
@@ -218,6 +235,18 @@
 	overflow-wrap: break-word;
 }
 .portfolio-prose :where(th, td):first-child { min-width: 7.5rem; }
+/* Narrow reflow: once the article column is small relative to the root font
+   (a narrow viewport, or 200% text in the multi-column case layout), drop the
+   first-column floor and fit the table to the column so a wide table cannot
+   spill into the case info panel or force page-level horizontal scroll. The
+   32rem threshold sits above every zoomed article column measured (<=27.5rem)
+   and below every 100% article column (>=38rem), so default desktop keeps the
+   automatic layout. Container-query rem is root-relative, so the rule scales
+   with the text. */
+@container (max-width: 32rem) {
+	.portfolio-prose table { table-layout: fixed; }
+	.portfolio-prose :where(th, td):first-child { min-width: 0; }
+}
 .portfolio-prose th {
 	background: var(--portfolio-accent-soft);
 	color: var(--portfolio-ink);

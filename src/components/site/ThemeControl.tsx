@@ -73,7 +73,7 @@ export default function ThemeControl() {
 					aria-pressed={choice === value}
 					onClick={() => select(value)}
 					className={cn(
-						"inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground",
+						"inline-flex min-h-6 items-center gap-1.5 rounded-sm px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground",
 						choice === value && "bg-secondary text-secondary-foreground",
 					)}>
 					<Icon aria-hidden="true" className="size-3.5" />

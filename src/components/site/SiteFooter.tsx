@@ -18,7 +18,7 @@ export default function SiteFooter() {
 				<p>&copy; {new Date().getFullYear()} taktak.hu</p>
 				<nav aria-label="Footer" className="portfolio-footer-links">
 					{LINKS.map(({ href, label }) => (
-						<a key={href} href={href}>
+						<a key={href} href={href} className="inline-flex min-h-6 items-center">
 							{label}
 						</a>
 					))}

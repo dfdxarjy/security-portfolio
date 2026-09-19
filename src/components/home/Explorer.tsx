@@ -215,7 +215,7 @@ export default function Explorer({ studies }: { studies: Study[] }) {
 						placeholder="Try AD CS, Docker, Kerberos, or event logs"
 						value={state.query}
 						onChange={(event) => onSearch(event.target.value)}
-						className="h-9 w-full min-w-0 rounded-md border border-input bg-card px-3 text-sm text-foreground"
+						className="h-9 w-full min-w-0 rounded-md border border-input bg-card px-3 text-sm text-foreground placeholder:text-muted-foreground"
 					/>
 				</div>
 				<div className="grid gap-1.5">
@@ -269,7 +269,7 @@ export default function Explorer({ studies }: { studies: Study[] }) {
 				{ordered.map((study) => (
 					<article
 						key={study.id}
-						className="explorer-card flex min-w-0 flex-col rounded-xl border border-border bg-card p-5"
+						className="explorer-card relative flex min-w-0 flex-col rounded-xl border border-border bg-card p-5 hover:border-primary focus-within:border-primary"
 						hidden={!visible.has(study.id)}
 					>
 						<span className="font-mono text-xs uppercase tracking-wide text-primary">
@@ -278,7 +278,7 @@ export default function Explorer({ studies }: { studies: Study[] }) {
 						<h3 className="mt-2 text-base leading-snug">
 							<a
 								href={study.href}
-								className="no-underline hover:text-primary focus-visible:text-primary"
+								className="no-underline hover:text-primary focus-visible:text-primary after:absolute after:inset-0 after:rounded-xl after:content-['']"
 							>
 								{study.title}
 							</a>
@@ -319,11 +319,16 @@ export default function Explorer({ studies }: { studies: Study[] }) {
 
 			{/* No-JS fallback: paging and the button are JS-only, so reveal every
 			    card and hide the load-more control. Scoped to the card class so
-			    the empty-state element stays hidden. */}
+			    the empty-state element stays hidden. The rules must sit in the
+			    `base` cascade layer, not unlayered: Tailwind preflight sets
+			    `[hidden]{display:none !important}` in that layer, and for
+			    important declarations an unlayered rule loses to a layered one,
+			    so an unlayered override is silently ignored. Inside `base` the
+			    card rule also outranks preflight on specificity. */}
 			<noscript
 				dangerouslySetInnerHTML={{
 					__html:
-						"<style>.explorer-card[hidden]{display:flex !important}.explorer-load-more-wrap{display:none !important}</style>",
+						"<style>@layer base{.explorer-card[hidden]{display:flex !important}.explorer-load-more-wrap{display:none !important}}</style>",
 				}}
 			/>
 

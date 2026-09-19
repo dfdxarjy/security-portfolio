@@ -145,6 +145,7 @@ select {
 	font-weight: 600;
 	line-height: var(--lh-tight);
 	text-wrap: balance;
+	overflow-wrap: break-word;
 }
 
 :where(code, kbd, samp, pre) {
