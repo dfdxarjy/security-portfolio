@@ -16,6 +16,9 @@ type Entry = {
 
 type Status = "idle" | "loading" | "ready" | "error";
 
+// One source of truth for the result cap and its truncation message.
+const MAX_RESULTS = 20;
+
 function fieldValues(entry: Entry): string[] {
 	return [
 		entry.title,
@@ -86,16 +89,15 @@ export default function SearchDialog({
 	}, [open]);
 
 	const trimmed = query.trim().toLowerCase();
-	const results = React.useMemo(() => {
+	const matches = React.useMemo(() => {
 		if (!trimmed) return [];
-		return entries
-			.filter((entry) =>
-				fieldValues(entry).some((value) =>
-					value.toLowerCase().includes(trimmed),
-				),
-			)
-			.slice(0, 20);
+		return entries.filter((entry) =>
+			fieldValues(entry).some((value) =>
+				value.toLowerCase().includes(trimmed),
+			),
+		);
 	}, [entries, trimmed]);
+	const results = matches.slice(0, MAX_RESULTS);
 
 	let message = "Start typing to search.";
 	if (status === "loading") {
@@ -103,20 +105,32 @@ export default function SearchDialog({
 	} else if (status === "error") {
 		message = "Search is unavailable right now.";
 	} else if (trimmed) {
-		message =
-			results.length > 0
-				? `${results.length} result${results.length === 1 ? "" : "s"}.`
-				: `No results for “${query.trim()}”.`;
+		const total = matches.length;
+		if (total === 0) {
+			message = `No results for “${query.trim()}”.`;
+		} else if (total > results.length) {
+			message = `${total} results. Showing the first ${MAX_RESULTS}.`;
+		} else {
+			message = `${total} result${total === 1 ? "" : "s"}.`;
+		}
 	}
 
+	// Single close path: update controlled state synchronously (so a fast
+	// reopen is not coalesced away by the async native `close` event) and close
+	// the native dialog. The `close` listener remains for external closes.
+	const closeDialog = React.useCallback(() => {
+		onClose();
+		dialogRef.current?.close();
+	}, [onClose]);
+
 	const handleBackdropClick = (event: React.MouseEvent<HTMLDialogElement>) => {
-		if (event.target === dialogRef.current) dialogRef.current?.close();
+		if (event.target === dialogRef.current) closeDialog();
 	};
 
 	const handleKeyDown = (event: React.KeyboardEvent<HTMLDialogElement>) => {
 		if (event.key === "Escape") {
 			event.preventDefault();
-			dialogRef.current?.close();
+			closeDialog();
 		}
 	};
 
@@ -126,16 +140,16 @@ export default function SearchDialog({
 			aria-labelledby="search-dialog-title"
 			onClick={handleBackdropClick}
 			onKeyDown={handleKeyDown}
-			className="fixed inset-0 m-auto h-fit max-h-[85dvh] w-[min(40rem,90vw)] overflow-y-auto overscroll-contain rounded-lg border border-border bg-background p-0 text-foreground shadow-none backdrop:bg-foreground/40">
-			<div className="flex flex-col gap-3 p-4">
-				<div className="flex items-center justify-between gap-3">
+			className="fixed inset-x-0 top-[10vh] bottom-auto mx-auto my-0 hidden h-fit max-h-[85dvh] w-[min(40rem,90vw)] flex-col overflow-hidden rounded-lg border border-border bg-background p-0 text-foreground shadow-none open:flex backdrop:bg-foreground/40">
+			<div className="flex min-h-0 flex-col gap-3 p-4">
+				<div className="flex shrink-0 items-center justify-between gap-3">
 					<h2 id="search-dialog-title" className="text-sm font-semibold">Search the site</h2>
 					<Button
 						type="button"
 						variant="ghost"
 						size="sm"
 						className="shadow-none"
-						onClick={() => dialogRef.current?.close()}>
+						onClick={closeDialog}>
 						Close
 					</Button>
 				</div>
@@ -143,21 +157,21 @@ export default function SearchDialog({
 					ref={inputRef}
 					type="search"
 					aria-label="Search query"
-					className="shadow-none"
+					className="shrink-0 shadow-none"
 					value={query}
 					onChange={(event) => setQuery(event.target.value)}
 					placeholder="Search case studies, credentials, and more…"
 				/>
-				<p role="status" aria-live="polite" className="text-xs text-muted-foreground">
+				<p role="status" aria-live="polite" className="shrink-0 text-xs text-muted-foreground">
 					{message}
 				</p>
 				{status === "ready" && results.length > 0 && (
-					<ul className="flex flex-col gap-1">
+					<ul className="flex min-h-0 flex-col gap-1 overflow-y-auto overscroll-contain">
 						{results.map((entry) => (
 							<li key={entry.href}>
 								<a
 									href={entry.href}
-									onClick={() => dialogRef.current?.close()}
+									onClick={closeDialog}
 									className="block rounded-sm px-2 py-1.5 hover:bg-accent hover:text-accent-foreground">
 									<span className="flex items-baseline justify-between gap-3">
 										<span className="truncate text-sm">{entry.title ?? entry.href}</span>

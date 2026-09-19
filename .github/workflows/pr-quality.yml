@@ -43,5 +43,8 @@ jobs:
       - name: Check accessibility
         run: pnpm run check:a11y
 
+      - name: Check browser interactions
+        run: pnpm run check:interactions
+
       - name: Check performance budgets
         run: pnpm run check:lighthouse

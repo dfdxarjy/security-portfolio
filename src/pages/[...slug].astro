@@ -378,34 +378,6 @@ const panelProps = {
 			)
 		}
 
-		{
-			isCase &&
-				headings.some((heading) => heading.depth === 2 && heading.slug) && (
-					<div class="mx-auto w-full max-w-[var(--portfolio-max-width)] px-4 pb-6 xl:hidden">
-						<details class="rounded-[var(--portfolio-radius)] border border-border bg-card">
-							<summary class="cursor-pointer list-none px-4 py-3 font-mono text-sm font-bold text-foreground portfolio-disclosure">
-								Contents
-							</summary>
-							<div class="px-4 pb-4">
-								<nav aria-label="Case contents">
-									<ul>
-										{headings
-											.filter(
-												(heading) => heading.depth === 2 && heading.slug,
-											)
-											.map((heading) => (
-												<li>
-													<a href={'#' + heading.slug}>{heading.text}</a>
-												</li>
-											))}
-									</ul>
-								</nav>
-							</div>
-						</details>
-					</div>
-				)
-		}
-
 		<div
 			class="portfolio-route mx-auto grid w-full max-w-[var(--portfolio-max-width)] grid-cols-1 gap-10 px-4 py-10 lg:px-8"
 		>
@@ -429,42 +401,87 @@ const panelProps = {
 			}
 
 			<div class="min-w-0">
-				<article class="portfolio-prose" data-page={pageKind}>
-					<h1 id="_top" data-reveal>{entry.data.title}</h1>
-					<Content />
+				<article data-page={pageKind}>
+					<div class="portfolio-prose">
+						<h1 id="_top" data-reveal>{entry.data.title}</h1>
+					</div>
 					{
-						isIndex && !isCaseStudiesIndex && descendantGroups.length > 0 && (
-							<nav
-								class="portfolio-index"
-								aria-label={`Case studies in ${entry.data.title}`}
-							>
-								{descendantGroups.map((group) => (
-									<>
-										{descendantGroups.length > 1 && <h2>{group.label}</h2>}
-										<ul data-reveal-group>
-											{group.items.map((item) => (
-												<li data-reveal>
-													<a href={item.href}>{item.title}</a>
-													{item.description && (
-														<span class="portfolio-index__description">
-															{item.description}
-														</span>
-													)}
-												</li>
-											))}
-										</ul>
-									</>
-								))}
-							</nav>
+						isCase && (
+							<div class="pb-6 xl:hidden">
+								<details class="rounded-[var(--portfolio-radius)] border border-border bg-card">
+									<summary class="cursor-pointer list-none px-4 py-3 font-mono text-sm font-bold text-foreground portfolio-disclosure">
+										Case facts
+									</summary>
+									<div class="px-4 pb-4">
+										<CaseInfoPanel {...panelProps} variant="facts" />
+									</div>
+								</details>
+							</div>
 						)
 					}
+					{
+						isCase &&
+							headings.some((heading) => heading.depth === 2 && heading.slug) && (
+								<div class="pb-6 xl:hidden">
+									<details class="rounded-[var(--portfolio-radius)] border border-border bg-card">
+										<summary class="cursor-pointer list-none px-4 py-3 font-mono text-sm font-bold text-foreground portfolio-disclosure">
+											Contents
+										</summary>
+										<div class="px-4 pb-4">
+											<nav aria-label="Case contents">
+												<ul>
+													{headings
+														.filter(
+															(heading) => heading.depth === 2 && heading.slug,
+														)
+														.map((heading) => (
+															<li>
+																<a href={'#' + heading.slug}>{heading.text}</a>
+															</li>
+														))}
+												</ul>
+											</nav>
+										</div>
+									</details>
+								</div>
+							)
+					}
+					<div class="portfolio-prose">
+						<Content />
+						{
+							isIndex && !isCaseStudiesIndex && descendantGroups.length > 0 && (
+								<nav
+									class="portfolio-index"
+									aria-label={`Case studies in ${entry.data.title}`}
+								>
+									{descendantGroups.map((group) => (
+										<>
+											{descendantGroups.length > 1 && <h2>{group.label}</h2>}
+											<ul data-reveal-group>
+												{group.items.map((item) => (
+													<li data-reveal>
+														<a href={item.href}>{item.title}</a>
+														{item.description && (
+															<span class="portfolio-index__description">
+																{item.description}
+															</span>
+														)}
+													</li>
+												))}
+											</ul>
+										</>
+									))}
+								</nav>
+							)
+						}
+					</div>
 				</article>
 				{
 					isCaseStudiesIndex && (
 						<div data-reveal>
 							<Explorer
 								studies={archiveStudies}
-								client:idle={{ timeout: 500 }}
+								client:load
 							/>
 						</div>
 					)
@@ -495,10 +512,10 @@ const panelProps = {
 				<div class="mx-auto w-full max-w-[var(--portfolio-max-width)] px-4 pb-10 xl:hidden">
 					<details class="rounded-[var(--portfolio-radius)] border border-border bg-card">
 						<summary class="cursor-pointer list-none px-4 py-3 font-mono text-sm font-bold text-foreground portfolio-disclosure">
-							Case info
+							Related cases and provenance
 						</summary>
 						<div class="px-4 pb-4">
-							<CaseInfoPanel {...panelProps} />
+							<CaseInfoPanel {...panelProps} variant="related" />
 						</div>
 					</details>
 				</div>

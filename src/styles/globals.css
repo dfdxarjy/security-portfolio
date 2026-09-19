@@ -149,9 +149,19 @@
 	font-size: var(--step--1);
 }
 /* Collection index rows: the anchor fills the row so the ruled line is the
-   target, with the description reading as its supporting line. */
+   target, with the description reading as its supporting line. A stretched
+   pseudo covers the padded row so the whole row is one link and the sibling
+   description is clickable without nesting a link. */
+main[data-page='collection-index'] .portfolio-index li {
+	position: relative;
+}
 main[data-page='collection-index'] .portfolio-index a {
 	display: block;
+}
+main[data-page='collection-index'] .portfolio-index a::after {
+	content: "";
+	position: absolute;
+	inset: 0;
 }
 
 /* Profiles is deliberately light: a ruled index of its public links, with the

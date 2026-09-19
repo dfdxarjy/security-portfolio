@@ -150,6 +150,14 @@ export default function Explorer({ studies }: { studies: Study[] }) {
 	const visible = new Set(matched.slice(0, limit).map((study) => study.id));
 	const hideLoadMore = !(browsing && matched.length > state.shown);
 
+	// Truthful count: browsing pages show how many of the matches are rendered;
+	// an active filter/search renders every match, so the plain total is correct.
+	const visibleCount = visible.size;
+	const resultLabel =
+		visibleCount < matched.length
+			? `Showing ${visibleCount} of ${matched.length}`
+			: `${matched.length} result${matched.length === 1 ? "" : "s"}`;
+
 	// Hiding the button that was just activated would drop focus to <body>;
 	// move it to the grid so the user stays in the explorer.
 	React.useEffect(() => {
@@ -256,9 +264,14 @@ export default function Explorer({ studies }: { studies: Study[] }) {
 				role="status"
 				aria-live="polite"
 				aria-atomic="true"
-				className="mb-2 font-mono tabular-nums text-sm text-muted-foreground"
+				className="explorer-result-status mb-2 font-mono tabular-nums text-sm text-muted-foreground"
 			>
-				{matched.length} results
+				<span className="explorer-result-js">{resultLabel}</span>
+				{/* No-JS only: every card is revealed, so the truthful count is the
+				    full total. Shown via the noscript rule below, hidden otherwise. */}
+				<span className="explorer-result-fallback" hidden>
+					Showing all {studies.length} case studies
+				</span>
 			</p>
 
 			<div
@@ -321,17 +334,19 @@ export default function Explorer({ studies }: { studies: Study[] }) {
 			</div>
 
 			{/* No-JS fallback: paging and the button are JS-only, so reveal every
-			    card and hide the load-more control. Scoped to the card class so
-			    the empty-state element stays hidden. The rules must sit in the
-			    `base` cascade layer, not unlayered: Tailwind preflight sets
-			    `[hidden]{display:none !important}` in that layer, and for
-			    important declarations an unlayered rule loses to a layered one,
-			    so an unlayered override is silently ignored. Inside `base` the
-			    card rule also outranks preflight on specificity. */}
+			    card, hide the load-more control, and swap the JS-paginated count
+			    ("Showing N of M" would be wrong once all matches are shown) for the
+			    truthful full total. Scoped to the card class so the empty-state
+			    element stays hidden. The rules must sit in the `base` cascade layer,
+			    not unlayered: Tailwind preflight sets `[hidden]{display:none
+			    !important}` in that layer, and for important declarations an
+			    unlayered rule loses to a layered one, so an unlayered override is
+			    silently ignored. Inside `base` the card and fallback rules also
+			    outrank preflight on specificity. */}
 			<noscript
 				dangerouslySetInnerHTML={{
 					__html:
-						"<style>@layer base{.explorer-card[hidden]{display:grid !important}.explorer-load-more-wrap{display:none !important}}</style>",
+						"<style>@layer base{.explorer-card[hidden]{display:grid !important}.explorer-load-more-wrap{display:none !important}.explorer-result-js{display:none !important}.explorer-result-fallback[hidden]{display:inline !important}}</style>",
 				}}
 			/>
 
