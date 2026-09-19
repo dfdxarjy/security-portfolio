@@ -124,14 +124,18 @@ for (const file of htmlFiles) {
 	const metaTags = [...head.matchAll(/<meta\b[^>]*>/gi)].map((m) => m[0]);
 	const descriptions = metaTags.filter((tag) => (attr(tag, 'name') ?? '').toLowerCase() === 'description');
 	const nonEmptyDescriptions = descriptions.filter((tag) => (attr(tag, 'content') ?? '').trim());
-	// The 404 page carries no description on purpose: it is not indexable content and
-	// has nothing to summarise. It is still checked for title, canonical and lang.
-	// `rel` is project-root relative (e.g. "dist/404.html"), so match on suffix.
-	if (!rel.endsWith('404.html') && nonEmptyDescriptions.length !== 1) {
+	// The 404 page does carry a description, but it is exempt from the normal
+	// exactly-one requirement and from duplicate-description reporting below: it is
+	// not indexable content and is not compared against real pages, and it is also
+	// skipped by the sitemap coverage check. It is still checked for title,
+	// canonical and lang. `rel` is project-root relative (e.g. "dist/404.html"),
+	// so match on suffix.
+	const is404 = rel.endsWith('404.html');
+	if (!is404 && nonEmptyDescriptions.length !== 1) {
 		problems.push(`${rel}: expected exactly one non-empty <meta name="description">, found ${nonEmptyDescriptions.length} (${descriptions.length} tag(s) total)`);
 	}
 
-	if (nonEmptyDescriptions.length === 1) {
+	if (!is404 && nonEmptyDescriptions.length === 1) {
 		const content = (attr(nonEmptyDescriptions[0], 'content') ?? '').trim();
 		if (!descriptionsByContent.has(content)) descriptionsByContent.set(content, []);
 		descriptionsByContent.get(content).push({ rel, caseStudy: isCaseStudyPage(rel) });
