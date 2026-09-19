@@ -248,7 +248,7 @@ const panelProps = {
 	<main id="main-content" tabindex="-1" class="bg-background">
 		{
 			!isCase && (
-				<div class="mx-auto w-full max-w-[86rem] px-4 pb-6 xl:hidden">
+				<div class="mx-auto w-full max-w-[var(--portfolio-max-width)] px-4 pb-6 xl:hidden">
 					<details class="rounded-[var(--portfolio-radius)] border border-border bg-card">
 						<summary class="cursor-pointer list-none px-4 py-3 font-mono text-sm font-bold text-foreground portfolio-disclosure">
 							Sections
@@ -263,7 +263,7 @@ const panelProps = {
 
 		{
 			isCase && (
-				<div class="mx-auto w-full max-w-[86rem] px-4 pt-6 xl:hidden">
+				<div class="mx-auto w-full max-w-[var(--portfolio-max-width)] px-4 pt-6 xl:hidden">
 					<a
 						href={categoryHref}
 						class="font-mono text-[0.78rem] tracking-[0.02em] text-primary no-underline hover:underline focus-visible:underline"
@@ -277,7 +277,7 @@ const panelProps = {
 		{
 			isCase &&
 				headings.some((heading) => heading.depth === 2 && heading.slug) && (
-					<div class="mx-auto w-full max-w-[86rem] px-4 pb-6 xl:hidden">
+					<div class="mx-auto w-full max-w-[var(--portfolio-max-width)] px-4 pb-6 xl:hidden">
 						<details class="rounded-[var(--portfolio-radius)] border border-border bg-card">
 							<summary class="cursor-pointer list-none px-4 py-3 font-mono text-sm font-bold text-foreground portfolio-disclosure">
 								Contents
@@ -303,7 +303,7 @@ const panelProps = {
 		}
 
 		<div
-			class="mx-auto grid w-full max-w-[86rem] grid-cols-1 gap-10 px-4 py-10 lg:px-8 xl:grid-cols-[15rem_minmax(0,1fr)_17rem]"
+			class="mx-auto grid w-full max-w-[var(--portfolio-max-width)] grid-cols-1 gap-10 px-4 py-10 lg:px-8 xl:grid-cols-[15rem_minmax(0,1fr)_17rem]"
 		>
 			<div class="hidden xl:block" data-reveal>
 				{
@@ -374,7 +374,7 @@ const panelProps = {
 
 		{
 			isCase && (
-				<div class="mx-auto w-full max-w-[86rem] px-4 pb-10 xl:hidden">
+				<div class="mx-auto w-full max-w-[var(--portfolio-max-width)] px-4 pb-10 xl:hidden">
 					<details class="rounded-[var(--portfolio-radius)] border border-border bg-card">
 						<summary class="cursor-pointer list-none px-4 py-3 font-mono text-sm font-bold text-foreground portfolio-disclosure">
 							Case info

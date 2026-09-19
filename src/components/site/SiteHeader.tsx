@@ -24,7 +24,7 @@ export default function SiteHeader({ currentPath }: { currentPath: string }) {
 
 	return (
 		<header className="portfolio-header sticky top-0 z-10 border-b border-border bg-background">
-			<div className="mx-auto flex w-full max-w-[86rem] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2 lg:px-8">
+			<div className="mx-auto flex w-full max-w-[var(--portfolio-max-width)] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2 lg:px-8">
 				<a
 					href="/"
 					aria-current={currentPath === "/" ? "page" : undefined}
