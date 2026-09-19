@@ -143,6 +143,20 @@ const {
 				const root = document.documentElement;
 				if (root.dataset.headerHeightInit === "true") return;
 				root.dataset.headerHeightInit = "true";
+				// Re-raster the fixed SVG grain after a resize settles. A single
+				// trailing-debounced replace keeps no work running during a drag.
+				let grainTimer;
+				window.addEventListener(
+					"resize",
+					() => {
+						window.clearTimeout(grainTimer);
+						grainTimer = window.setTimeout(() => {
+							const grain = document.querySelector(".surface-grain");
+							if (grain) grain.replaceWith(grain.cloneNode(true));
+						}, 150);
+					},
+					{ passive: true },
+				);
 				const header = document.querySelector(".portfolio-header");
 				if (!header) return;
 				const measure = () =>

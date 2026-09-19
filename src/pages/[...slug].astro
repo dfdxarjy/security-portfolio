@@ -32,9 +32,6 @@ const description = entry.data.description;
 const canonical = new URL(Astro.url.pathname, Astro.site).href;
 const currentPath = Astro.url.pathname;
 
-const editUrl =
-	'https://github.com/taktak0x/security-portfolio/edit/main/' + entry.filePath;
-
 let lastUpdated: string | undefined;
 try {
 	const commitDate = execFileSync(
@@ -86,10 +83,9 @@ const related = (await getCollection('docs'))
 // labelled "Added". Labels never come from the Git commit fallback used for
 // non-case documentation pages.
 const published = entry.data.publishedAt ?? entry.data.addedAt;
-const added = entry.data.addedAt;
-const publishedLabel = entry.data.publishedAt ? 'Published' : added ? 'Added' : undefined;
-const updated = published ? entry.data.updatedAt : added ?? entry.data.updatedAt;
-const updatedLabel = published ? 'Updated' : added ? 'Added' : 'Updated';
+const publishedLabel = entry.data.publishedAt ? 'Published' : 'Added';
+const updated = entry.data.updatedAt;
+const updatedLabel = 'Updated';
 
 const reportUrl = `https://github.com/taktak0x/security-portfolio/issues/new?${new URLSearchParams(
 	{
@@ -232,7 +228,6 @@ const panelProps = {
 	updatedLabel,
 	evidenceQuality: entry.data.evidenceQuality,
 	related,
-	editUrl,
 	reportUrl,
 };
 ---
@@ -308,7 +303,7 @@ const panelProps = {
 			<div class="hidden xl:block" data-reveal>
 				{
 					isCase ? (
-						<div class="sticky top-[var(--portfolio-header-h,5.5rem)]">
+						<div class="sticky top-[calc(var(--portfolio-header-h,5.5rem)+1rem)]">
 							<CaseRail
 								client:load
 								categoryHref={categoryHref}
@@ -317,7 +312,7 @@ const panelProps = {
 							/>
 						</div>
 					) : (
-						<div class="sticky top-[var(--portfolio-header-h,5.5rem)]">
+						<div class="sticky top-[calc(var(--portfolio-header-h,5.5rem)+1rem)]">
 							<SidebarNav currentPath={currentPath} />
 						</div>
 					)
@@ -358,7 +353,7 @@ const panelProps = {
 				{
 					!isCase && (
 						<>
-							<DocsMeta editUrl={editUrl} lastUpdated={lastUpdated} />
+							<DocsMeta lastUpdated={lastUpdated} />
 							<Pagination prev={prev} next={next} />
 						</>
 					)
@@ -366,7 +361,7 @@ const panelProps = {
 			</div>
 
 			<div class="hidden xl:block" data-reveal>
-				<div class="sticky top-[var(--portfolio-header-h,5.5rem)]">
+				<div class="sticky top-[calc(var(--portfolio-header-h,5.5rem)+1rem)]">
 					{isCase ? <CaseInfoPanel {...panelProps} /> : <Toc headings={headings} />}
 				</div>
 			</div>

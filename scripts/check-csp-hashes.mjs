@@ -5,7 +5,11 @@
 // astro.config.mjs `security.csp.scriptDirective.hashes`. Astro does not
 // recompute those, so if the script text changes the configured hash silently
 // stops matching and CSP blocks the script at runtime. This check fails when a
-// configured hash matches no built inline script.
+// configured hash matches no built inline script, and in the inverse direction
+// when a built executable inline script is not covered by the script-src
+// hashes its page actually emits. Astro-generated scripts carry their own
+// hashes in that emitted directive, so they are covered by construction and are
+// never reported as missing; an uncovered hash means an authored script.
 //
 // Assumptions, kept deliberately narrow for the current static output:
 //   * Only `dist/**/*.html` is scanned (the build runs before this check).
@@ -71,12 +75,33 @@ const scriptRe = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi;
 const attrTypeRe = /\btype\s*=\s*["']([^"']*)["']|type\s*=\s*([^\s"'>]+)/i;
 const attrSrcRe = /\bsrc\s*=/i;
 const nonExecutableTypes = new Set(["application/ld+json"]);
+// The emitted policy lives in the `content` attribute of the CSP meta tag, so
+// parse that attribute first. Reading script-src from anywhere in the document
+// would trust unrelated text (JSON-LD, rendered code blocks) as the policy.
+const cspMetaRe =
+	/<meta\b[^>]*http-equiv\s*=\s*["']?content-security-policy["']?[^>]*>/i;
+const cspContentRe = /\bcontent\s*=\s*("([^"]*)"|'([^']*)')/i;
+const cspScriptRe = /script-src([^;]*)/i;
+const hashRe = /sha256-[A-Za-z0-9+/=]+/g;
+
+const extractCspScriptSrc = (html) => {
+	const meta = cspMetaRe.exec(html)?.[0];
+	if (!meta) return "";
+	const content = cspContentRe.exec(meta);
+	const policy = content?.[2] ?? content?.[3] ?? "";
+	return cspScriptRe.exec(policy)?.[1] ?? "";
+};
 
 const foundHashes = new Map(); // hash -> sample relative file
+const uncoveredHashes = new Map(); // hash -> sample relative file
 let executableInline = 0;
 
 for (const file of htmlFiles) {
 	const html = readFileSync(file, "utf8");
+	// Hashes the emitted CSP script-src directive grants for this page. This
+	// includes configured hashes plus the ones Astro generates for its own
+	// inline scripts, so a built script missing here is genuinely uncovered.
+	const pageHashes = new Set(extractCspScriptSrc(html).match(hashRe) ?? []);
 	let match;
 	scriptRe.lastIndex = 0;
 	while ((match = scriptRe.exec(html)) !== null) {
@@ -91,6 +116,9 @@ for (const file of htmlFiles) {
 		if (!foundHashes.has(hash)) {
 			foundHashes.set(hash, path.relative(repoRoot, file));
 		}
+		if (!pageHashes.has(hash) && !uncoveredHashes.has(hash)) {
+			uncoveredHashes.set(hash, path.relative(repoRoot, file));
+		}
 	}
 }
 
@@ -101,7 +129,8 @@ console.log(
 	`check-csp-hashes: scanned ${htmlFiles.length} HTML files, ` +
 		`${executableInline} executable inline scripts, ` +
 		`${foundHashes.size} distinct hashes, ` +
-		`${configuredHashes.size} configured hashes.`,
+		`${configuredHashes.size} configured hashes, ` +
+		`${uncoveredHashes.size} uncovered hashes.`,
 );
 
 if (missing.length > 0) {
@@ -118,4 +147,23 @@ if (missing.length > 0) {
 	process.exit(1);
 }
 
-console.log("check-csp-hashes: all configured hashes matched built scripts.");
+// 5. Every built executable inline script must be covered by a hash in the
+// script-src directive of the page that emits it.
+if (uncoveredHashes.size > 0) {
+	for (const [hash, file] of uncoveredHashes) {
+		console.error(
+			`check-csp-hashes: built inline script has no covering script-src hash: ` +
+				`${hash} (for example ${file})`,
+		);
+	}
+	console.error(
+		`check-csp-hashes: ${uncoveredHashes.size} built inline script hash(es) ` +
+			`are uncovered. Add each to astro.config.mjs ` +
+			`security.csp.scriptDirective.hashes.`,
+	);
+	process.exit(1);
+}
+
+console.log(
+	"check-csp-hashes: all configured hashes matched, all built inline scripts covered.",
+);

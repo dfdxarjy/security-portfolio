@@ -24,7 +24,7 @@ export default defineConfig({
 				resources: ["'self'"],
 				hashes: [
 					"sha256-Z2WcKnfs9E/VBx56jNyEzuBZIeaDNqH1mNg0E9qrv+8=",
-					"sha256-bvjZC3AnPb+ys9toP8kN5cg7sF3ndpwX9+AxzZ7FjZM=",
+					"sha256-Zq2C3D7tul51zk4otXeF3betszC3IgHnvOlehVJyxOE=",
 					"sha256-BPKCggQ3aILOs36jpj82KHsITiajwgKUt1tGXkcTFto=",
 				],
 			},

@@ -43,6 +43,9 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Check CSP script hashes
+        run: node scripts/check-csp-hashes.mjs
+
       - name: Check metadata
         run: pnpm run check:meta
 
