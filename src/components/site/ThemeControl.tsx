@@ -1,12 +1,24 @@
 import * as React from "react";
 import { Laptop, Moon, Sun } from "lucide-react";
 
-import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuLabel,
+	DropdownMenuRadioGroup,
+	DropdownMenuRadioItem,
+	DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 
 type Choice = "auto" | "light" | "dark";
 
+let sharedChoice: Choice | null = null;
+let systemMedia: MediaQueryList | null = null;
+const subscribers = new Set<() => void>();
+
 const OPTIONS: { value: Choice; label: string; Icon: typeof Laptop }[] = [
-	{ value: "auto", label: "Auto", Icon: Laptop },
+	{ value: "auto", label: "System", Icon: Laptop },
 	{ value: "light", label: "Light", Icon: Sun },
 	{ value: "dark", label: "Dark", Icon: Moon },
 ];
@@ -31,56 +43,82 @@ function applyTheme(theme: "light" | "dark") {
 	document.documentElement.style.colorScheme = theme;
 }
 
+function getChoice(): Choice {
+	if (sharedChoice === null) sharedChoice = readStored();
+	return sharedChoice;
+}
+
+const onSystemChange = () => {
+	if (getChoice() === "auto") applyTheme(systemMedia?.matches ? "dark" : "light");
+};
+
+function updateSystemListener() {
+	if (typeof window === "undefined") return;
+	if (getChoice() === "auto" && systemMedia === null) {
+		systemMedia = window.matchMedia("(prefers-color-scheme: dark)");
+		systemMedia.addEventListener("change", onSystemChange);
+	} else if (getChoice() !== "auto" && systemMedia !== null) {
+		systemMedia.removeEventListener("change", onSystemChange);
+		systemMedia = null;
+	}
+}
+
+function initializeTheme() {
+	updateSystemListener();
+	applyTheme(resolve(getChoice()));
+}
+
+function setSharedChoice(next: Choice) {
+	sharedChoice = next;
+	try {
+		if (next === "auto") localStorage.removeItem("starlight-theme");
+		else localStorage.setItem("starlight-theme", next);
+	} catch {}
+	updateSystemListener();
+	applyTheme(resolve(next));
+	for (const subscriber of subscribers) subscriber();
+}
+
 export default function ThemeControl() {
 	// Initial state is `auto` so the server and first client render agree; the
 	// stored choice is synced in an effect, after hydration, to avoid a flash.
 	const [choice, setChoice] = React.useState<Choice>("auto");
 
 	React.useEffect(() => {
-		setChoice(readStored());
+		initializeTheme();
+		const syncChoice = () => setChoice(getChoice());
+		syncChoice();
+		subscribers.add(syncChoice);
+		return () => {
+			subscribers.delete(syncChoice);
+		};
 	}, []);
 
 	const select = React.useCallback((next: Choice) => {
-		setChoice(next);
-		applyTheme(resolve(next));
-		try {
-			if (next === "auto") {
-				localStorage.removeItem("starlight-theme");
-			} else {
-				localStorage.setItem("starlight-theme", next);
-			}
-		} catch {}
+		setSharedChoice(next);
 	}, []);
 
-	// Exactly one system listener, alive only while the choice is auto.
-	React.useEffect(() => {
-		if (choice !== "auto") return;
-		const media = window.matchMedia("(prefers-color-scheme: dark)");
-		const onChange = () => applyTheme(media.matches ? "dark" : "light");
-		media.addEventListener("change", onChange);
-		return () => media.removeEventListener("change", onChange);
-	}, [choice]);
+	const current = OPTIONS.find((option) => option.value === choice) ?? OPTIONS[0];
 
 	return (
-		<div
-			role="group"
-			aria-label="Theme"
-			className="flex items-center gap-0.5 rounded-md border border-border p-0.5">
-			{OPTIONS.map(({ value, label, Icon }) => (
-				<button
-					key={value}
-					type="button"
-					aria-pressed={choice === value}
-					onClick={() => select(value)}
-					className={cn(
-						"inline-flex min-h-6 items-center gap-1.5 rounded-sm border border-transparent px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground",
-						choice === value &&
-							"border-primary bg-secondary text-secondary-foreground underline underline-offset-2",
-					)}>
-					<Icon aria-hidden="true" className="size-3.5" />
-					<span className="sr-only md:not-sr-only">{label}</span>
-				</button>
-			))}
-		</div>
+		<DropdownMenu>
+			<DropdownMenuTrigger asChild>
+				<Button variant="outline" size="sm" aria-label={`Theme: ${current.label}`}>
+					<current.Icon aria-hidden="true" data-icon="inline-start" />
+					<span>{current.label}</span>
+				</Button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end">
+				<DropdownMenuLabel>Theme</DropdownMenuLabel>
+				<DropdownMenuRadioGroup value={choice} onValueChange={(value) => select(value as Choice)}>
+					{OPTIONS.map(({ value, label, Icon }) => (
+						<DropdownMenuRadioItem key={value} value={value}>
+							<Icon aria-hidden="true" data-icon="inline-start" />
+							{label}
+						</DropdownMenuRadioItem>
+					))}
+				</DropdownMenuRadioGroup>
+			</DropdownMenuContent>
+		</DropdownMenu>
 	);
 }

@@ -24,11 +24,11 @@ export default function SiteHeader({ currentPath }: { currentPath: string }) {
 
 	return (
 		<header className="portfolio-header sticky top-0 z-10 border-b border-border bg-background">
-			<div className="mx-auto flex w-full max-w-[var(--portfolio-max-width)] flex-wrap items-center justify-between gap-x-2 gap-y-2 px-4 py-2 sm:gap-x-4 lg:px-8">
+			<div className="mx-auto flex min-h-14 w-full max-w-[var(--portfolio-max-width)] flex-wrap items-center gap-x-2 gap-y-2 px-4 py-2 sm:gap-x-4 md:grid md:grid-cols-[1fr_auto_1fr] md:gap-x-0 lg:px-8">
 				<a
 					href="/"
 					aria-current={currentPath === "/" ? "page" : undefined}
-					className="brand-lockup portfolio-brand shrink-0"
+					className="brand-lockup portfolio-brand shrink-0 md:justify-self-start"
 				>
 					<span className="brand-wordmark" translate="no">
 						taktak.hu
@@ -38,7 +38,7 @@ export default function SiteHeader({ currentPath }: { currentPath: string }) {
 					id="site-nav"
 					aria-label="Primary navigation"
 					className={cn(
-						"order-last w-full flex-col gap-2 text-sm md:order-none md:w-auto md:flex-row md:items-center md:gap-4",
+						"order-last w-full flex-col gap-2 text-sm md:order-none md:w-auto md:flex-row md:items-center md:justify-self-center md:gap-6",
 						menuOpen ? "flex" : "hidden md:flex",
 					)}>
 					{LINKS.map(({ href, label }) => (
@@ -50,8 +50,12 @@ export default function SiteHeader({ currentPath }: { currentPath: string }) {
 							{label}
 						</a>
 					))}
+					<div className="flex items-center justify-between border-t border-border pt-2 md:hidden">
+						<span className="text-sm text-muted-foreground">Theme</span>
+						<ThemeControl />
+					</div>
 				</nav>
-				<div className="flex min-w-0 items-center justify-end gap-1 sm:gap-2">
+				<div className="ml-auto flex min-w-0 items-center justify-end gap-1 sm:gap-2.5 md:justify-self-end">
 					<Button
 						variant="outline"
 						size="sm"
@@ -61,7 +65,9 @@ export default function SiteHeader({ currentPath }: { currentPath: string }) {
 						<Search aria-hidden="true" />
 						<span className="sr-only sm:not-sr-only">Search</span>
 					</Button>
-					<ThemeControl />
+					<div className="hidden md:block ml-1 border-l border-border pl-2 sm:ml-2 sm:pl-3">
+						<ThemeControl />
+					</div>
 					<Button
 						variant="ghost"
 						size="icon-sm"
